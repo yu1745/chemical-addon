@@ -7,6 +7,7 @@ import com.yu1745.chemicaladdon.registry.AllBlocks;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
@@ -19,6 +20,7 @@ import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour.Properties;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraftforge.network.NetworkHooks;
 
 /**
  * Controller of the reaction vessel multiblock (M1 template: 3x3x3 hollow
@@ -56,7 +58,9 @@ public class ReactorControllerBlock extends Block implements EntityBlock {
 		}
 		if (level.getBlockEntity(pos) instanceof ReactorControllerBlockEntity controller) {
 			if (controller.isAssembled()) {
-				player.openMenu(controller);
+				// NetworkHooks.openScreen sends the extra data (block pos) the menu
+				// needs on the client; vanilla openMenu(MenuProvider) sends none
+				NetworkHooks.openScreen((ServerPlayer) player, controller, pos);
 			} else {
 				boolean ok = controller.tryAssemble();
 				player.displayClientMessage(Component.literal(ok
