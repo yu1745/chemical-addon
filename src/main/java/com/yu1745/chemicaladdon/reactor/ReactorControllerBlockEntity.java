@@ -14,7 +14,10 @@ import com.yu1745.chemicaladdon.registry.AllBlocks;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
@@ -247,7 +250,33 @@ public class ReactorControllerBlockEntity extends BlockEntity implements MenuPro
 	private void sync() {
 		if (level != null && !level.isClientSide) {
 			level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), Block.UPDATE_CLIENTS);
+			// sendBlockUpdated does NOT carry BE nbt; push an explicit update packet
+			// so the client BE (tank contents, temperature, progress) refreshes
+			if (level instanceof ServerLevel serverLevel) {
+				ClientboundBlockEntityDataPacket packet = ClientboundBlockEntityDataPacket.create(this);
+				serverLevel.getServer().getPlayerList()
+					.broadcast(null, worldPosition.getX(), worldPosition.getY(), worldPosition.getZ(), 64.0,
+						serverLevel.dimension(), packet);
+			}
 		}
+	}
+
+	@Override
+	public CompoundTag getUpdateTag() {
+		CompoundTag tag = super.getUpdateTag();
+		saveAdditional(tag);
+		return tag;
+	}
+
+	@Nullable
+	@Override
+	public ClientboundBlockEntityDataPacket getUpdatePacket() {
+		return ClientboundBlockEntityDataPacket.create(this);
+	}
+
+	@Override
+	public void onDataPacket(Connection net, ClientboundBlockEntityDataPacket pkt) {
+		handleUpdateTag(pkt.getTag());
 	}
 
 	@SuppressWarnings("unchecked")
@@ -332,6 +361,7 @@ public class ReactorControllerBlockEntity extends BlockEntity implements MenuPro
 			if (ok) {
 				assembled = true;
 				tank.setCapacity(TANK_CAPACITY * height); // 16 buckets per interior layer
+				bindBricks(worldPosition, inward, side, height);
 				setChanged();
 				sync();
 				return true;
@@ -340,10 +370,53 @@ public class ReactorControllerBlockEntity extends BlockEntity implements MenuPro
 		return false;
 	}
 
+	/** Points every structural brick of this vessel at the controller (or clears it). */
+	private void bindBricks(BlockPos masterPos, Direction inward, Direction side, int height) {
+		if (level == null) {
+			return;
+		}
+		for (int s = -1; s <= 1; s++) {
+			for (int d = 0; d <= 2; d++) {
+				if (s == 0 && d == 0) {
+					continue; // the controller itself
+				}
+				bindBrick(worldPosition.offset(side.getStepX() * s + inward.getStepX() * d, -1,
+					side.getStepZ() * s + inward.getStepZ() * d), masterPos);
+				bindBrick(worldPosition.offset(side.getStepX() * s + inward.getStepX() * d, height,
+					side.getStepZ() * s + inward.getStepZ() * d), masterPos);
+				for (int y = 0; y < height; y++) {
+					bindBrick(worldPosition.offset(side.getStepX() * s + inward.getStepX() * d, y,
+						side.getStepZ() * s + inward.getStepZ() * d), masterPos);
+				}
+			}
+		}
+	}
+
+	private void bindBrick(BlockPos pos, @Nullable BlockPos masterPos) {
+		if (level == null) {
+			return;
+		}
+		if (level.getBlockEntity(pos) instanceof ChemicalBrickBlockEntity brick) {
+			brick.setMaster(masterPos);
+		}
+	}
+
 	public void invalidateStructure() {
 		if (assembled) {
 			assembled = false;
 			setProgress(0, null);
+			// clear master pointers on nearby bricks so they stop proxying
+			if (level != null) {
+				for (int dx = -3; dx <= 3; dx++) {
+					for (int dy = -3; dy <= 3; dy++) {
+						for (int dz = -3; dz <= 3; dz++) {
+							if (level.getBlockEntity(worldPosition.offset(dx, dy, dz)) instanceof ChemicalBrickBlockEntity brick) {
+								brick.setMaster(null);
+							}
+						}
+					}
+				}
+			}
 			setChanged();
 			sync();
 		}
@@ -427,10 +500,4 @@ public class ReactorControllerBlockEntity extends BlockEntity implements MenuPro
 		activeRecipe = tag.contains("activeRecipe") ? ResourceLocation.tryParse(tag.getString("activeRecipe")) : null;
 	}
 
-	@Override
-	public CompoundTag getUpdateTag() {
-		CompoundTag tag = super.getUpdateTag();
-		saveAdditional(tag);
-		return tag;
-	}
 }

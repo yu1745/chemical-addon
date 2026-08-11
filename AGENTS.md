@@ -29,7 +29,25 @@
 - Jade 是客户端 mod：服务端测试不加载它（服务端启动正常），真正的 mixin 仍可能只在 `runClient` 触发；若 dev 客户端仍崩，回退到不在 dev 加 Jade（生产服 forge1 已原生运行，不受影响）。
 
 - 依赖：Forge 47.4.0、Create 6.0.8-289（`:slim`，maven.createmod.net）、Registrate MC1.20-1.3.3、Ponder、Flywheel、JEI（compileOnly）。
-- 上游参考：`/home/wangyu/server/develop/create-forge_1.20.1`（Create 本体源码）、`createaddition-forge_1.20.1`（addon 工程模板）、`TinkersConstructForge`（组合系统参考）、`create-tfmg-forge_1.20.1`（蒸馏塔/储罐结构参考）、`mc_source_1.20.1_neoforge`（vanilla 1.20.1 反编译源码，官方映射命名，与本工程 parchment 命名一致，查 MC 类直接 grep 这里）、**`mc_source_forge_1.20.1`**（Forge 47.4.0 反编译源码，official+parchment 2023.06.26 命名，含 net/minecraftforge Forge API 源码，与本工程编译环境逐字节一致——查 MC/Forge API 类首选，5453 个 Java 文件；由本工程构建产物经 Vineflower 产出，如需重生成：`/tmp/chemical-addon-shell` 空壳工程 + `java -jar vineflower.jar` 反编译 `~/.gradle/caches/forge_gradle/minecraft_user_repo/.../forge-1.20.1-47.4.0_mapped_parchment_2023.06.26-1.20.1.jar`）。
+
+## 参考成熟实现（重要规则）
+
+**写任何机制/结构/能力对接之前，先读成熟 mod 的同款实现，照它的模式写，不要自己发明。** 尤其是多方块、能力代理、网络同步这类容易踩坑的领域。已参考过的成熟实现：
+
+| 参考源 | 位置 | 参考内容 |
+|--------|------|---------|
+| **Create 本体** | `../create-forge_1.20.1/` | 多方块能力代理（FluidTank 的 `handlerForCapability` 惰性递归到 controller、每个结构方块都是 BE）；流体管道端点识别（`FluidPropagator.hasFluidCapability`）；ProcessingRecipe 配方管线；动能/热级/BoilerHeater 对接 |
+| **Create Crafts & Additions** | `../createaddition-forge_1.20.1/` | addon 工程模板（build.gradle 依赖、run 配置）、`BaseElectricBlockEntity` 耗电机器基类、电动马达/电网对接 |
+| **Tinkers Construct（匠魂）** | `../TinkersConstructForge/` | JSON 修饰器组合机制（数据驱动+可组合+可扩展，化学组合系统架构来源）；熔炼炉多流体罐（SmelteryTank List<FluidStack>）；多方块主仆（ServantTileEntity masterPos 模式，注意其结构件不代理能力，代理参考 Create） |
+| **Create TFMG** | `../create-tfmg-forge_1.20.1/` | 蒸馏塔/钢储罐/工业机器多方块结构参考 |
+
+> 规则：新增机制前先到上表找对应实现读一遍；若参考了新的 mod 实现，把参考源追加到本表。
+
+## 源码参考（MC / Forge API）
+
+- **`../mc_source_forge_1.20.1/`**（本机相对路径：`/home/wangyu/server/develop/mc_source_forge_1.20.1/`）——Forge 47.4.0 反编译源码，official+parchment 2023.06.26 命名，含 `net/minecraft`（Forge patch 版）与 `net/minecraftforge`（Forge API），**与本工程编译环境逐字节一致**。查 MC 类、Forge API（Capability/IFluidHandler/NetworkHooks/事件）的精确签名与实现时，**直接 grep 这里**（5453 个 Java 文件）。重生成方法见下方上游参考条目的 mc_source_forge 说明。
+- `../mc_source_1.20.1_neoforge/`——vanilla 1.20.1 反编译源码（官方映射命名），仅 net/minecraft，作交叉参考。
+- 上游参考：`/home/wangyu/server/develop/create-forge_1.20.1`（Create 本体源码）、`createaddition-forge_1.20.1`（addon 工程模板）、`TinkersConstructForge`（组合系统参考）、`create-tfmg-forge_1.20.1`（蒸馏塔/储罐结构参考）、**`mc_source_forge_1.20.1`**（Forge 47.4.0 反编译源码，official+parchment 2023.06.26 命名，含 net/minecraftforge Forge API 源码，与本工程编译环境逐字节一致——查 MC/Forge API 类首选，5453 个 Java 文件；由本工程构建产物经 Vineflower 产出，如需重生成：`/tmp/chemical-addon-shell` 空壳工程 + `java -jar vineflower.jar` 反编译 `~/.gradle/caches/forge_gradle/minecraft_user_repo/.../forge-1.20.1-47.4.0_mapped_parchment_2023.06.26-1.20.1.jar`）。
 
 ## 物种资源生成（重要）
 

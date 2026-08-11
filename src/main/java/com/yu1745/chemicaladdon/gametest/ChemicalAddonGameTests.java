@@ -13,12 +13,16 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.event.RegisterGameTestsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.capability.IFluidHandler.FluidAction;
+import net.minecraftforge.common.capabilities.ForgeCapabilities;
+import net.minecraftforge.common.util.LazyOptional;
+import net.minecraftforge.fluids.capability.IFluidHandler;
 import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
 import net.minecraftforge.fml.common.Mod.EventBusSubscriber.Bus;
 import net.minecraftforge.gametest.GameTestHolder;
@@ -54,6 +58,34 @@ public class ChemicalAddonGameTests {
 		helper.setBlock(new BlockPos(1, 2, 2), Blocks.AIR.defaultBlockState());
 		ReactorControllerBlockEntity be = reactor(helper);
 		helper.assertFalse(be.isAssembled(), "reactor must not assemble with a missing wall brick");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void reactorFluidCapabilityExposed(GameTestHelper helper) {
+		buildReactor(helper);
+		ReactorControllerBlockEntity be = reactor(helper);
+		LazyOptional<IFluidHandler> cap = be.getCapability(ForgeCapabilities.FLUID_HANDLER);
+		helper.assertTrue(cap.isPresent(), "FLUID_HANDLER capability must be exposed");
+		helper.assertTrue(be.getTank().getTankCapacity(0) > 0, "tank capacity must be > 0");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void brickProxiesCapabilityToController(GameTestHelper helper) {
+		buildReactor(helper);
+		// a wall brick (not the controller): its FLUID_HANDLER must proxy to the controller
+		BlockPos brickPos = new BlockPos(1, 2, 1);
+		BlockEntity brickBe = helper.getBlockEntity(brickPos);
+		helper.assertTrue(brickBe != null, "brick should have a BE");
+		LazyOptional<IFluidHandler> cap = brickBe.getCapability(ForgeCapabilities.FLUID_HANDLER);
+		helper.assertTrue(cap.isPresent(), "brick must expose FLUID_HANDLER via proxy");
+		IFluidHandler handler = cap.orElse(null);
+		int filled = handler.fill(new FluidStack(AllFluids.WATER.get().getSource(), 1000), FluidAction.EXECUTE);
+		helper.assertTrue(filled == 1000, "filling through the brick must reach the controller tank");
+		ReactorControllerBlockEntity controller = reactor(helper);
+		helper.assertTrue(hasFluid(controller, AllFluids.WATER.get().getSource(), 900),
+			"controller tank should hold the water poured via the brick");
 		helper.succeed();
 	}
 

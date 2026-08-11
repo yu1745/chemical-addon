@@ -8,7 +8,10 @@ import com.yu1745.chemicaladdon.registry.AllBlocks;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
@@ -96,14 +99,42 @@ public class SettlingBasinBlockEntity extends BlockEntity {
 			}
 		}
 		assembled = true;
+		bindBricks(worldPosition);
 		setChanged();
 		sync();
 		return true;
 	}
 
+	/** Points every structural brick of this basin at the controller (or clears it). */
+	private void bindBricks(@Nullable BlockPos masterPos) {
+		if (level == null) {
+			return;
+		}
+		for (int dx = -1; dx <= 1; dx++) {
+			for (int dz = -1; dz <= 1; dz++) {
+				if (dx == 0 && dz == 0) {
+					continue; // the controller itself
+				}
+				bindBrick(worldPosition.offset(dx, -1, dz), masterPos);
+				bindBrick(worldPosition.offset(dx, 0, dz), masterPos);
+			}
+		}
+	}
+
+	private void bindBrick(BlockPos pos, @Nullable BlockPos masterPos) {
+		if (level == null) {
+			return;
+		}
+		if (level.getBlockEntity(pos) instanceof ChemicalBrickBlockEntity brick) {
+			brick.setMaster(masterPos);
+		}
+	}
+
 	public void invalidateStructure() {
 		if (assembled) {
 			assembled = false;
+			// clear master pointers on nearby bricks so they stop proxying
+			bindBricks(null);
 			setChanged();
 			sync();
 		}
@@ -135,7 +166,31 @@ public class SettlingBasinBlockEntity extends BlockEntity {
 	private void sync() {
 		if (level != null && !level.isClientSide) {
 			level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), Block.UPDATE_CLIENTS);
+			if (level instanceof ServerLevel serverLevel) {
+				ClientboundBlockEntityDataPacket packet = ClientboundBlockEntityDataPacket.create(this);
+				serverLevel.getServer().getPlayerList()
+					.broadcast(null, worldPosition.getX(), worldPosition.getY(), worldPosition.getZ(), 64.0,
+						serverLevel.dimension(), packet);
+			}
 		}
+	}
+
+	@Override
+	public CompoundTag getUpdateTag() {
+		CompoundTag tag = super.getUpdateTag();
+		saveAdditional(tag);
+		return tag;
+	}
+
+	@Nullable
+	@Override
+	public ClientboundBlockEntityDataPacket getUpdatePacket() {
+		return ClientboundBlockEntityDataPacket.create(this);
+	}
+
+	@Override
+	public void onDataPacket(Connection net, ClientboundBlockEntityDataPacket pkt) {
+		handleUpdateTag(pkt.getTag());
 	}
 
 	@Override
@@ -172,12 +227,6 @@ public class SettlingBasinBlockEntity extends BlockEntity {
 		items.deserializeNBT(tag.getCompound("items"));
 	}
 
-	@Override
-	public CompoundTag getUpdateTag() {
-		CompoundTag tag = super.getUpdateTag();
-		saveAdditional(tag);
-		return tag;
-	}
 
 	/** Controller block of the settling basin. */
 	public static class SettlingBasinBlock extends Block implements EntityBlock {

@@ -7,6 +7,9 @@ import com.yu1745.chemicaladdon.registry.AllBlockEntities;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.Connection;
+import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
@@ -100,7 +103,31 @@ public class FilterPressBlockEntity extends BlockEntity {
 		setChanged();
 		if (level != null && !level.isClientSide) {
 			level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), Block.UPDATE_CLIENTS);
+			if (level instanceof ServerLevel serverLevel) {
+				ClientboundBlockEntityDataPacket packet = ClientboundBlockEntityDataPacket.create(this);
+				serverLevel.getServer().getPlayerList()
+					.broadcast(null, worldPosition.getX(), worldPosition.getY(), worldPosition.getZ(), 64.0,
+						serverLevel.dimension(), packet);
+			}
 		}
+	}
+
+	@Override
+	public CompoundTag getUpdateTag() {
+		CompoundTag tag = super.getUpdateTag();
+		saveAdditional(tag);
+		return tag;
+	}
+
+	@Nullable
+	@Override
+	public ClientboundBlockEntityDataPacket getUpdatePacket() {
+		return ClientboundBlockEntityDataPacket.create(this);
+	}
+
+	@Override
+	public void onDataPacket(Connection net, ClientboundBlockEntityDataPacket pkt) {
+		handleUpdateTag(pkt.getTag());
 	}
 
 	public ReactorTank getInput() {
@@ -153,10 +180,4 @@ public class FilterPressBlockEntity extends BlockEntity {
 		items.deserializeNBT(tag.getCompound("items"));
 	}
 
-	@Override
-	public CompoundTag getUpdateTag() {
-		CompoundTag tag = super.getUpdateTag();
-		saveAdditional(tag);
-		return tag;
-	}
 }

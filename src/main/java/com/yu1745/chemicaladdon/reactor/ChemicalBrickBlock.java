@@ -1,22 +1,33 @@
 package com.yu1745.chemicaladdon.reactor;
 
+import javax.annotation.Nullable;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockBehaviour.Properties;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * Structural block of the reaction vessel shell. When broken, any nearby
- * reactor controller is notified so the structure de-assembles.
+ * Structural block of the reaction vessel / settling basin shell. Has a light
+ * BE that proxies fluid/item capabilities to the assembled master (Create
+ * FluidTank pattern). When broken, any nearby controller is notified so the
+ * structure de-assembles.
  */
-public class ChemicalBrickBlock extends Block {
+public class ChemicalBrickBlock extends Block implements EntityBlock {
 
 	private static final int SEARCH_RADIUS = 3;
 
 	public ChemicalBrickBlock(Properties properties) {
 		super(properties);
+	}
+
+	@Nullable
+	@Override
+	public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
+		return new ChemicalBrickBlockEntity(pos, state);
 	}
 
 	@Override

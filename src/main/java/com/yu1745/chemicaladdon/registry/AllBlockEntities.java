@@ -1,6 +1,7 @@
 package com.yu1745.chemicaladdon.registry;
 
 import com.yu1745.chemicaladdon.ChemicalAddon;
+import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlockEntity;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.SettlingBasinBlockEntity;
@@ -15,6 +16,11 @@ public class AllBlockEntities {
 
 	private static final DeferredRegister<BlockEntityType<?>> REGISTER =
 		DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, ChemicalAddon.MODID);
+
+	public static final RegistryObject<BlockEntityType<ChemicalBrickBlockEntity>> CHEMICAL_BRICK =
+		REGISTER.register("chemical_brick",
+			() -> BlockEntityType.Builder.of(ChemicalBrickBlockEntity::new, AllBlocks.CHEMICAL_BRICK.get())
+				.build(null));
 
 	public static final RegistryObject<BlockEntityType<ReactorControllerBlockEntity>> REACTOR_CONTROLLER =
 		REGISTER.register("reactor_controller",
