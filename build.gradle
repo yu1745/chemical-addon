@@ -26,6 +26,13 @@ minecraft {
             arg '-mixin.config=create.mixins.json'
             property "mixin.env.remapRefMap", "true"
             property "mixin.env.refMapRemappingFile", "${projectDir}/build/createSrgToMcp/output.srg"
+            // Auto-enter a local singleplayer world to speed up iteration.
+            // Set via -PquickPlayWorld=<name> (defaults to "New World").
+            // Leave blank/empty to start normally.
+            def quickPlayWorld = (project.findProperty('quickPlayWorld') ?: 'New World') as String
+            if (quickPlayWorld?.trim()) {
+                args '--quickPlaySingleplayer', quickPlayWorld.trim()
+            }
             mods {
                 chemicaladdon {
                     source sourceSets.main
