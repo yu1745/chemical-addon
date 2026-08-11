@@ -32,6 +32,8 @@
 
 ## 参考成熟实现（重要规则）
 
+**本模组是 Create 的原生附属：Create 及其依赖库（catnip 等）就是我们的基础设施，能依赖的都应依赖，不要自己重新实现。** 写机制时优先考虑直接继承/复用 Create 基类与工具（SmartBlockEntity/SmartBlockEntityRenderer、LerpedFloat、AnimationTickHolder、CreateLang、IHaveGoggleInformation、ValueSettingsBehaviour、ProcessingRecipe 管线等），不要重复造轮子；自研只覆盖 Create 没有的部分（多流体流股、反应引擎、化学物种）。
+
 **写任何机制/结构/能力对接之前，先读成熟 mod 的同款实现，照它的模式写，不要自己发明。** 尤其是多方块、能力代理、网络同步这类容易踩坑的领域。已参考过的成熟实现：
 
 | 参考源 | 位置 | 参考内容 |
@@ -69,6 +71,17 @@ python3 tools/gen_species.py
 
 - 方块/物品/流体用 CreateRegistrate（`ChemicalAddon.registrate()`），创造模式标签自动收录本 mod 命名空间物品。
 - 流体用 `REGISTRATE.standardFluid(id, props -> new ChemFluidType(props, id, isGas))` + `.properties(b -> b.density/viscosity/temperature)`；纹理约定 `textures/fluid/<id>_still.png` / `_flow.png`。
+
+## 设计基调：世界内交互优先，GUI 弱化（全模组铁律）
+
+> **有生态源码证据支撑，不是拍脑袋**：Create 本体 ~40 个 GUI 类全部是物品/物流/配置用途、createaddition 0 GUI、TFMG 仅 2 个配置 GUI、New Age/Broken Bad/Estrogen 0 GUI、Big Cannons/Steam 'n' Rails 仅在引信/物品栏有例外；匠魂重 GUI 但也提供世界内 gauge。完整证据见 `plans/00-ecosystem-recon.md §7`。任何新机制/新方块在动手前先过一遍下面四条。
+
+1. **状态展示 = 世界内仪表，不是 GUI 面板**。温度/容量/进度/压力等状态用贴面仪表方块展示（参照 Create Gauge 转速/应力表、createaddition EnergyMeter、TFMG VoltMeter 模式：贴面连接结构、读内部状态、可红石输出/阈值报警，如 S02 温度计/S03 压力表/S04 浓度计）。机械信息同步走护目镜 HUD（Create `IHaveGoggleInformation` 标准通道，实现接口即自动获得）。GUI 不承担信息面板职责。
+2. **无配方选择**。反应引擎保持自动匹配（匹配到什么就是什么）；玩家通过控制输入（投什么料、加热到多少度、加压多少）定向反应。匹配失败必须可诊断：用状态渲染（仪表/指示灯/粒子）表达「为什么没反应」（缺料/温度不足/无匹配配方/产物满），不做配方选择列表。
+3. **控制 = 世界内/物理表达，不做 GUI 数字输入**。连续物理量（温度/转速/应力/功率）由物理装置决定（热源数量与燃烧等级、压缩机/冷却管道、电位器式方块）；离散数值参数（阈值/时序）用 Create `ValueSettingsBehaviour`/`ScrollValueBehaviour` 世界内滚动调值（对准方块滚动+右键，浮层显示数值），不写 GUI 数字输入框/slider。
+4. **例外仅三类，均有功能理由**：①无物理表达手段的精确数值（如引信延迟秒数）允许 ScrollInput 滑条；②物品存取槽位（Create 风格槽位交互）；③创建期一次性选型界面。
+
+> 注意：此基调修订了 plans/04-machines.md 中 S01 控制面板的旧规格（"配方选择、参数设定（温度目标/压力上限/搅拌转速）"）——配方选择改为自动匹配+诊断渲染，参数设定改为世界内物理表达。后续实现以本文为准。
 
 ## 规范
 

@@ -103,7 +103,44 @@
 
 **合计自研方块约 25–30 种**（对比 v1 计划的 70 种）；配方/反应引擎复用 ProcessingRecipe 管线后，反应相关代码量减半。
 
-## 7. 待验证（spike，不阻塞计划）
+## 7. 交互设计基调调研（2026-10，源码证据）
+
+> 结论先行：**Create 生态的共识是「世界内交互优先，GUI 弱化」**——状态用贴面仪表/物理件/护目镜 HUD 展示，参数用世界内滚动值或物理装置控制，GUI 只做物品槽位、物流配置与创建期选型。本模组 AGENTS.md「设计基调」一节据此立为铁律。
+
+### 7.1 本地源码统计（直接 grep，可靠）
+
+| 模组 | 容器 GUI 类 | 状态展示（世界内） | 参数控制 |
+|------|------------|-------------------|---------|
+| **Create 本体** | ~40 个，全部为物品/工具管理（Toolbox/Blueprint/Filter/Schematicannon）、物流配置（RedstoneLink/DisplayLink/SequencedGearshift/ThresholdSwitch）、列车时刻表 | 贴面 Gauge（转速表/应力表 `content/kinetics/gauge/`）、护目镜 HUD（`IHaveGoggleInformation` + `GoggleOverlayRenderer`）、Display Board/指示灯 | `ValueSettingsBehaviour` 世界内浮层拖动调值（`foundation/blockEntity/behaviour/ValueSettings*`）+ 物理装置（阀轮/挡板/热源） |
+| **createaddition** | **0 个** | EnergyMeterBlock 贴面能量表（`blocks/energy_meter/`）、RedstoneRelay | `ScrollValueBehaviour` 世界内滚动设转速（ElectricMotorBlockEntity） |
+| **TFMG**（化工多方块，最接近我们） | 2 个（EngineController 引擎集中管理、ElectriciansWrench 配置）——蒸馏塔/精炼塔等机器**无 GUI** | VoltMeterBlock 贴面电压表、SegmentedDisplay 分段显示屏、Multimeter 万用表 HUD overlay | Potentiometer 电位器方块（世界内旋钮） |
+| **匠魂**（对照，重 GUI 风格） | 重 GUI（冶炼炉/合金炉/熔化炉），但液位也提供世界内 GaugeBlock（`smeltery/block/RenderingGaugeBlock`） | — | — |
+
+### 7.2 社区附属源码调研（shallow 子代理，GitHub 直读）
+
+| 模组 | 容器 GUI | 交互方式 |
+|------|---------|---------|
+| Steam 'n' Rails | 基本为零 | 信号灯用物理臂杆表达红/绿状态；GUI 仅创建期选型（转向架 BogeyMenu）、列车员工具箱/指令轮盘 |
+| Create: New Age（核电） | **0 个** | 反应堆状态 = 方块状态 + 物理件（插拔燃料棒、搭建散热通风控制温度） |
+| Create: Broken Bad（化工） | **0 个** | 化学处理走 Create 原生配方机器；新增方块也是贴世界交互件（铃/托盘） |
+| Create Big Cannons | 炮体本身 0 GUI | 炮架仰角用 Create ValueSettings（世界滚动+右键）；**例外**：引信精确数值（延迟秒数/近炸阈值）用 ScrollInput 滑条（无物理表达手段）、弹匣为纯物品栏 |
+| Create: Estrogen | **0 个** | 离心机等纯世界内配方处理 |
+
+### 7.3 例外集（生态中仅此三类，均有明确功能理由）
+
+1. **无物理表达手段的精确数值**（Big Cannons 引信秒数/阈值）→ 允许 ScrollInput 滑条。
+2. **物品存取/槽位**（弹匣、列车员工具箱）→ Create 风格槽位交互。
+3. **创建期一次性选型**（转向架）→ 非运行时状态，允许配置界面。
+
+### 7.4 对本模组的落点
+
+- S02 温度计/S03 压力表/S04 浓度计 = 贴面仪表（Create Gauge 模式：贴面连接结构、读内部状态、红石输出/阈值）。
+- 釜状态信息同步 = `IHaveGoggleInformation` 护目镜 HUD（Create 标准通道，实现该接口即自动获得）。
+- 阈值/时序类参数 = `ValueSettingsBehaviour`/`ScrollValueBehaviour` 世界内滚动调值。
+- 温度/容量等连续物理量 = 物理装置表达（热源数量与燃烧等级、压缩机/冷却管道）。
+- 反应匹配失败 = 状态渲染（仪表/指示灯/粒子）表达「为什么没反应」。
+
+## 8. 待验证（spike，不阻塞计划）
 
 1. SmartFluidTank 单流体假设（未细读，基本可断定）。
 2. 我们的釜体要"密封/压力"概念，Basin 无此概念——需确认釜体自研后还能否复用 ProcessingRecipe 执行逻辑（可：ProcessingRecipe 只是配方描述，执行端我们自写）。
