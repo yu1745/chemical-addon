@@ -88,6 +88,12 @@ SOLIDS = [
     ("filter_cake",            "滤渣",   "Filter Cake",     0x908878),
 ]
 
+# (id, cn, en, color)
+BLOCKS = [
+    ("chemical_brick",    "化工砖", "Chemical Brick",    0x8E8478),
+    ("reactor_controller", "反应釜控制器", "Reactor Controller", 0x6E6E6E),
+]
+
 # ---------------------------------------------------------------- png writer
 def write_png(path, rgba_rows):
     def chunk(tag, data):
@@ -151,6 +157,50 @@ def gen_item_models():
             f.write('{\n  "parent": "minecraft:item/generated",\n  "textures": {\n'
                     f'    "layer0": "chemicaladdon:item/{sid}"\n  }}\n}}\n')
 
+def make_brick_texture(rgb):
+    """Brick pattern: 8x8 brick rows with dark mortar lines."""
+    r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
+    rows = []
+    for y in range(16):
+        row = []
+        mortar_y = (y % 8) == 7
+        for x in range(16):
+            offset = 4 if (y // 8) % 2 else 0
+            mortar = mortar_y or (x + offset) % 8 == 7
+            if mortar:
+                row += [int(r * 0.55), int(g * 0.55), int(b * 0.55), 255]
+            else:
+                row += [r, g, b, 255]
+        rows.append(row)
+    return rows
+
+
+def make_panel_texture(rgb):
+    """Machine panel: metal base, dark display strip, status lamp."""
+    r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
+    rows = []
+    for y in range(16):
+        row = []
+        for x in range(16):
+            if y in (0, 15) or x in (0, 15):
+                row += [int(r * 1.2), int(g * 1.2), int(b * 1.2), 255]  # edge highlight
+            elif 7 <= y <= 9 and 3 <= x <= 12:
+                row += [46, 92, 62, 255]  # display strip
+            elif y == 4 and 12 <= x <= 14:
+                row += [200, 60, 60, 255]  # status lamp
+            else:
+                row += [r, g, b, 255]
+        rows.append(row)
+    return rows
+
+
+def gen_block_textures():
+    d = os.path.join(ASSETS, "textures/block")
+    os.makedirs(d, exist_ok=True)
+    write_png(os.path.join(d, "chemical_brick.png"), make_brick_texture(0x8E8478))
+    write_png(os.path.join(d, "reactor_controller.png"), make_panel_texture(0x6E6E6E))
+
+
 def gen_lang():
     zh = {"itemGroup.chemicaladdon": "化学附属"}
     en = {"itemGroup.chemicaladdon": "Chemical Addon"}
@@ -160,6 +210,9 @@ def gen_lang():
     for sid, cn, en_name, _ in SOLIDS:
         zh[f"item.chemicaladdon.{sid}"] = cn
         en[f"item.chemicaladdon.{sid}"] = en_name
+    for sid, cn, en_name, _ in BLOCKS:
+        zh[f"block.chemicaladdon.{sid}"] = cn
+        en[f"block.chemicaladdon.{sid}"] = en_name
     import json as _json
     with open(os.path.join(ASSETS, "lang/zh_cn.json"), "w", encoding="utf-8") as f:
         _json.dump(zh, f, ensure_ascii=False, indent=2)
@@ -217,7 +270,8 @@ def gen_items_java():
 if __name__ == "__main__":
     gen_textures()
     gen_item_models()
+    gen_block_textures()
     gen_lang()
     gen_fluids_java()
     gen_items_java()
-    print(f"OK: {len(FLUIDS)} fluids, {len(SOLIDS)} solids -> textures/models/lang/Java generated")
+    print(f"OK: {len(FLUIDS)} fluids, {len(SOLIDS)} solids, {len(BLOCKS)} blocks -> textures/models/lang/Java generated")

@@ -55,5 +55,7 @@
   "item.chemicaladdon.ammonium_nitrate": "硝酸铵",
   "item.chemicaladdon.urea": "尿素",
   "item.chemicaladdon.calcium_chloride": "氯化钙",
-  "item.chemicaladdon.filter_cake": "滤渣"
+  "item.chemicaladdon.filter_cake": "滤渣",
+  "block.chemicaladdon.chemical_brick": "化工砖",
+  "block.chemicaladdon.reactor_controller": "反应釜控制器"
 }

@@ -3,13 +3,18 @@ package com.yu1745.chemicaladdon;
 import com.mojang.logging.LogUtils;
 import com.simibubi.create.foundation.data.CreateRegistrate;
 import com.yu1745.chemicaladdon.composition.SpeciesManager;
+import com.yu1745.chemicaladdon.registry.AllBlockEntities;
+import com.yu1745.chemicaladdon.registry.AllBlocks;
 import com.yu1745.chemicaladdon.registry.AllCreativeModeTabs;
 import com.yu1745.chemicaladdon.registry.AllFluids;
 import com.yu1745.chemicaladdon.registry.AllItems;
+import com.yu1745.chemicaladdon.registry.AllMenuTypes;
 
+import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.AddReloadListenerEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 
@@ -27,9 +32,15 @@ public class ChemicalAddon {
 		IEventBus modBus = FMLJavaModLoadingContext.get().getModEventBus();
 
 		AllCreativeModeTabs.register(modBus);
+		AllBlockEntities.register(modBus);
+		AllMenuTypes.register(modBus);
 		AllFluids.register();
 		AllItems.register();
+		AllBlocks.register();
 		REGISTRATE.registerEventListeners(modBus);
+
+		// client: control panel screens
+		DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> ChemicalAddonClient::init);
 
 		// Datapack-driven species definitions (composition system, M0 skeleton)
 		MinecraftForge.EVENT_BUS.addListener((AddReloadListenerEvent event) -> event.addListener(SpeciesManager.RELOADER));

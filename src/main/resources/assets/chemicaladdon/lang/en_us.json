@@ -55,5 +55,7 @@
   "item.chemicaladdon.ammonium_nitrate": "Ammonium Nitrate",
   "item.chemicaladdon.urea": "Urea",
   "item.chemicaladdon.calcium_chloride": "Calcium Chloride",
-  "item.chemicaladdon.filter_cake": "Filter Cake"
+  "item.chemicaladdon.filter_cake": "Filter Cake",
+  "block.chemicaladdon.chemical_brick": "Chemical Brick",
+  "block.chemicaladdon.reactor_controller": "Reactor Controller"
 }

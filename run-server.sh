@@ -84,6 +84,11 @@ on_signal() {
 }
 trap on_signal INT TERM
 
+# 截断服务器日志：上次运行的残留 "Done (" 会导致假阳性（服务器还没启动
+# 就判定成功）。截断后日志只可能来自本次服务器进程，无竞态窗口。
+mkdir -p "$SCRIPT_DIR/run"
+: > "$LOG_FILE" 2>/dev/null || true
+
 # 开启 job control：让后台 gradle 独占一个进程组，整体结束时不误伤终端
 set -m
 ./gradlew runServer --console=plain "$@" &
