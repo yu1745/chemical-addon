@@ -17,9 +17,16 @@
 ./run-server.sh          # 冒烟测试：启动 dev 服务器、输出透传，识别到 "Done (" 后
                          # 三级关闭（组 SIGTERM → 轮询 → SIGKILL）并退出 0；
                          # 环境变量 WAIT_DONE_TIMEOUT / SHUTDOWN_GRACE_SECONDS
+./gradlew runGameTestServer   # 跑 GameTest（chemicaladdon/gametest/，5 个测试，需先 build）
 ```
 
 > ⚠️ runServer 永不自行返回：不要用 `cmd | script` 或 `cmd && script` 形式调用；`run-server.sh` 自行负责启动与收尾。关闭策略为纯 PID 方案（`$!` → PGID → 整组信号），**禁止**在脚本里用进程名/路径匹配（会误伤容器内的生产服 forge1 JVM）。
+
+### 运行时依赖（mod）怎么加
+
+- **不要**把第三方 mod 的原版 jar 直接丢进 `run/mods/`：dev 环境是 parchment 映射，第三方 mod 打包的 mixin refmap（官方映射）对不上，运行时崩（如 Jade 的 `StringRenderOutputMixin @Shadow f_92940_`）。
+- 正确方式：在 `build.gradle` 用 `runtimeOnly(fg.deobf("..."))` 声明，由 ForgeGradle 反混淆（JEI 用官方 maven，Jade 用 CurseForge Maven `curse.maven:jade-324717:8479276`）。
+- Jade 是客户端 mod：服务端测试不加载它（服务端启动正常），真正的 mixin 仍可能只在 `runClient` 触发；若 dev 客户端仍崩，回退到不在 dev 加 Jade（生产服 forge1 已原生运行，不受影响）。
 
 - 依赖：Forge 47.4.0、Create 6.0.8-289（`:slim`，maven.createmod.net）、Registrate MC1.20-1.3.3、Ponder、Flywheel、JEI（compileOnly）。
 - 上游参考：`/home/wangyu/server/develop/create-forge_1.20.1`（Create 本体源码）、`createaddition-forge_1.20.1`（addon 工程模板）、`TinkersConstructForge`（组合系统参考）、`create-tfmg-forge_1.20.1`（蒸馏塔/储罐结构参考）、`mc_source_1.20.1_neoforge`（vanilla 1.20.1 反编译源码，官方映射命名，与本工程 parchment 命名一致，查 MC 类直接 grep 这里）、**`mc_source_forge_1.20.1`**（Forge 47.4.0 反编译源码，official+parchment 2023.06.26 命名，含 net/minecraftforge Forge API 源码，与本工程编译环境逐字节一致——查 MC/Forge API 类首选，5453 个 Java 文件；由本工程构建产物经 Vineflower 产出，如需重生成：`/tmp/chemical-addon-shell` 空壳工程 + `java -jar vineflower.jar` 反编译 `~/.gradle/caches/forge_gradle/minecraft_user_repo/.../forge-1.20.1-47.4.0_mapped_parchment_2023.06.26-1.20.1.jar`）。

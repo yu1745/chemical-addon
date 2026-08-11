@@ -85,6 +85,13 @@ repositories {
     maven { url = "https://maven.createmod.net" } // Create, Ponder, Flywheel
     maven { url = "https://maven.tterrag.com" } // Registrate
     maven { url = "https://maven.blamejared.com/" } // JEI
+    // CurseForge Maven: allows runtimeOnly deps like Jade by file id
+    maven {
+        url 'https://www.cursemaven.com'
+        content {
+            includeGroup "curse.maven"
+        }
+    }
 }
 
 dependencies {
@@ -105,6 +112,13 @@ dependencies {
     compileOnly(fg.deobf("mezz.jei:jei-${jei_minecraft_version}-common-api:${jei_version}"))
     compileOnly(fg.deobf("mezz.jei:jei-${jei_minecraft_version}-forge-api:${jei_version}"))
     runtimeOnly(fg.deobf("mezz.jei:jei-${jei_minecraft_version}-forge:${jei_version}"))
+
+    // Jade (client-side helper UI). From CurseForge Maven so it resolves for any
+    // clone (no local  jar). File 8479276 = Jade-1.20.1-Forge-11.13.3.
+    // NOTE: Jade's mixin refmap ships with official mappings; if the parchment
+    // dev runtime cannot apply it, dev runs that load Jade may fail. Production
+    // forge1 already runs it natively and is unaffected.
+    runtimeOnly(fg.deobf("curse.maven:jade-324717:8479276"))
 }
 
 // Example for how to get properties into the manifest for reading at runtime.
