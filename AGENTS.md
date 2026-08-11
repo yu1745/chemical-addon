@@ -14,10 +14,15 @@
 ```bash
 ./gradlew build          # 编译 + 打包（JDK 17 已由 gradle.properties 的 org.gradle.java.home 钉定）
 ./gradlew runData        # 未来 datagen（配方/模型 provider 接入后使用）
+./run-server.sh          # 冒烟测试：启动 dev 服务器、输出透传，识别到 "Done (" 后
+                         # 三级关闭（组 SIGTERM → 轮询 → SIGKILL）并退出 0；
+                         # 环境变量 WAIT_DONE_TIMEOUT / SHUTDOWN_GRACE_SECONDS
 ```
 
+> ⚠️ runServer 永不自行返回：不要用 `cmd | script` 或 `cmd && script` 形式调用；`run-server.sh` 自行负责启动与收尾。关闭策略为纯 PID 方案（`$!` → PGID → 整组信号），**禁止**在脚本里用进程名/路径匹配（会误伤容器内的生产服 forge1 JVM）。
+
 - 依赖：Forge 47.4.0、Create 6.0.8-289（`:slim`，maven.createmod.net）、Registrate MC1.20-1.3.3、Ponder、Flywheel、JEI（compileOnly）。
-- 上游参考：`/home/wangyu/server/develop/create-forge_1.20.1`（Create 本体源码）、`createaddition-forge_1.20.1`（addon 工程模板）、`TinkersConstructForge`（组合系统参考）、`create-tfmg-forge_1.20.1`（蒸馏塔/储罐结构参考）、`mc_source_1.20.1_neoforge`（vanilla 1.20.1 反编译源码，官方映射命名，与本工程 parchment 命名一致，查 MC 类直接 grep 这里）。
+- 上游参考：`/home/wangyu/server/develop/create-forge_1.20.1`（Create 本体源码）、`createaddition-forge_1.20.1`（addon 工程模板）、`TinkersConstructForge`（组合系统参考）、`create-tfmg-forge_1.20.1`（蒸馏塔/储罐结构参考）、`mc_source_1.20.1_neoforge`（vanilla 1.20.1 反编译源码，官方映射命名，与本工程 parchment 命名一致，查 MC 类直接 grep 这里）、**`mc_source_forge_1.20.1`**（Forge 47.4.0 反编译源码，official+parchment 2023.06.26 命名，含 net/minecraftforge Forge API 源码，与本工程编译环境逐字节一致——查 MC/Forge API 类首选，5453 个 Java 文件；由本工程构建产物经 Vineflower 产出，如需重生成：`/tmp/chemical-addon-shell` 空壳工程 + `java -jar vineflower.jar` 反编译 `~/.gradle/caches/forge_gradle/minecraft_user_repo/.../forge-1.20.1-47.4.0_mapped_parchment_2023.06.26-1.20.1.jar`）。
 
 ## 物种资源生成（重要）
 
