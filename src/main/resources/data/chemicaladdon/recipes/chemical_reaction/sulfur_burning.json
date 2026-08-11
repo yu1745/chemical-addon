@@ -1,0 +1,13 @@
+{
+  "type": "chemicaladdon:chemical_reaction",
+  "ingredients": [
+    { "item": "chemicaladdon:sulfur" },
+    { "fluid": "chemicaladdon:oxygen", "amount": 1000 }
+  ],
+  "results": [
+    { "fluid": "chemicaladdon:sulfur_dioxide", "amount": 1000 }
+  ],
+  "processingTime": 100,
+  "heatRequirement": "heated",
+  "deltaHeat": 150
+}

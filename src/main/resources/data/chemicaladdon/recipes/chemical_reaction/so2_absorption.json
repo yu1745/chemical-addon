@@ -1,0 +1,12 @@
+{
+  "type": "chemicaladdon:chemical_reaction",
+  "ingredients": [
+    { "fluid": "chemicaladdon:sulfur_dioxide", "amount": 1000 },
+    { "fluid": "chemicaladdon:water", "amount": 1000 }
+  ],
+  "results": [
+    { "fluid": "chemicaladdon:dilute_sulfuric_acid", "amount": 2000 }
+  ],
+  "processingTime": 200,
+  "deltaHeat": 100
+}

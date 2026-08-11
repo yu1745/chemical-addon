@@ -4,6 +4,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraftforge.fluids.FluidStack;
 
@@ -53,6 +54,28 @@ public class ReactorScreen extends AbstractContainerScreen<ReactorMenu> {
 				"  - " + stack.getDisplayName().getString() + ": " + stack.getAmount() + " mB",
 				x + 8, ty, 0xAAAAAA);
 			ty += 10;
+		}
+		graphics.drawString(font, "Items:", x + 8, ty, 0xFFFFFF);
+		ty += 11;
+		for (int i = 0; i < reactor.getItems().getSlots(); i++) {
+			if (ty > y + imageHeight - 12) {
+				break;
+			}
+			ItemStack stack = reactor.getItems().getStackInSlot(i);
+			if (!stack.isEmpty()) {
+				graphics.drawString(font,
+					"  - " + stack.getHoverName().getString() + " x" + stack.getCount(),
+					x + 8, ty, 0xAAAAAA);
+				ty += 10;
+			}
+		}
+		// reaction progress
+		if (reactor.getActiveRecipe() != null) {
+			graphics.drawString(font,
+				"Reacting: " + reactor.getActiveRecipe().getPath() + " (" + (int) (reactor.getProgress() * 100) + "%)",
+				x + 8, ty, 0x50FF50);
+		} else {
+			graphics.drawString(font, "Idle", x + 8, ty, 0x808080);
 		}
 	}
 

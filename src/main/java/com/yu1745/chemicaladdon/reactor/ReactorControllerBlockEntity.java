@@ -3,6 +3,11 @@ package com.yu1745.chemicaladdon.reactor;
 import javax.annotation.Nullable;
 
 import com.simibubi.create.content.processing.burner.BlazeBurnerBlock;
+import com.simibubi.create.content.processing.recipe.HeatCondition;
+import com.simibubi.create.content.processing.recipe.ProcessingOutput;
+import com.simibubi.create.foundation.fluid.FluidIngredient;
+import com.yu1745.chemicaladdon.recipe.AllRecipeTypes;
+import com.yu1745.chemicaladdon.recipe.ChemicalReactionRecipe;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
 import com.yu1745.chemicaladdon.registry.AllBlocks;
 
@@ -10,10 +15,16 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.Container;
+import net.minecraft.world.Containers;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -21,25 +32,48 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.common.util.LazyOptional;
+import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.capability.IFluidHandler;
+import net.minecraftforge.items.IItemHandler;
+import net.minecraftforge.items.ItemHandlerHelper;
+import net.minecraftforge.items.ItemStackHandler;
 
 /**
  * Reaction vessel controller. Holds the multi-fluid tank (stream container),
- * the temperature field, structure state and the control panel menu.
- * M1 scope: 3x3x3 structure, fluid IO via Forge FLUID_HANDLER (Create pipes
- * connect directly), Blaze Burner heating, GUI display. Reactions come in M1c.
+ * the item buffer, temperature, structure state, the reaction engine
+ * (auto-matching of whitelisted chemical_reaction recipes with progress /
+ * intermediate completion / delta-heat) and the control panel menu.
+ *
+ * M1: 3x3x3 structure, fluid IO via Forge FLUID_HANDLER (Create pipes connect
+ * directly), item IO via ITEM_HANDLER (funnels/hoppers), Blaze Burner heating,
+ * recipes run automatically when inputs and conditions match.
  */
 public class ReactorControllerBlockEntity extends BlockEntity implements MenuProvider {
 
 	public static final int TANK_CAPACITY = 16000; // mB (16 buckets), fixed for M1
 	public static final int AMBIENT_TEMP = 20;
+	public static final int ITEM_SLOTS = 4;
+	public static final int MAX_TEMP = 1000;
+
+	private static final int HEAT_TICK = 20;
+	private static final int REACTION_TICK = 10;
 
 	private final ReactorTank tank = new ReactorTank(TANK_CAPACITY, this::onTankChanged);
+	private final ItemStackHandler items = new ItemStackHandler(ITEM_SLOTS) {
+		@Override
+		protected void onContentsChanged(int slot) {
+			onTankChanged();
+		}
+	};
 	private final LazyOptional<IFluidHandler> fluidCap = LazyOptional.of(() -> tank);
+	private final LazyOptional<IItemHandler> itemCap = LazyOptional.of(() -> items);
 
 	private boolean assembled = false;
 	private int temperature = AMBIENT_TEMP;
 	private int tickCounter = 0;
+	private float progress = 0;
+	@Nullable
+	private ResourceLocation activeRecipe = null;
 
 	public ReactorControllerBlockEntity(BlockPos pos, BlockState state) {
 		super(AllBlockEntities.REACTOR_CONTROLLER.get(), pos, state);
@@ -49,11 +83,16 @@ public class ReactorControllerBlockEntity extends BlockEntity implements MenuPro
 		if (level == null || level.isClientSide) {
 			return;
 		}
-		if (++tickCounter < 20) {
-			return;
+		tickCounter++;
+		if (tickCounter % HEAT_TICK == 0) {
+			updateHeat();
 		}
-		tickCounter = 0;
+		if (tickCounter % REACTION_TICK == 0) {
+			tickReaction();
+		}
+	}
 
+	private void updateHeat() {
 		// heating from a Blaze Burner directly below the vessel
 		BlockState below = level.getBlockState(worldPosition.below());
 		int target = switch (BlazeBurnerBlock.getHeatLevelOf(below)) {
@@ -62,15 +101,155 @@ public class ReactorControllerBlockEntity extends BlockEntity implements MenuPro
 			default -> AMBIENT_TEMP;
 		};
 		temperature += (target - temperature) / 10;
+		sync();
+	}
 
-		level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), Block.UPDATE_CLIENTS);
+	private void tickReaction() {
+		if (!assembled) {
+			setProgress(0, null);
+			return;
+		}
+		ChemicalReactionRecipe recipe = findRecipe();
+		if (recipe == null) {
+			setProgress(0, null);
+			return;
+		}
+		float next = progress + (float) REACTION_TICK / recipe.getProcessingDuration();
+		if (next >= 1.0f) {
+			completeRecipe(recipe);
+			setProgress(0, recipe.getId());
+			sync();
+		} else {
+			setProgress(next, recipe.getId());
+		}
+	}
+
+	private void setProgress(float value, @Nullable ResourceLocation recipeId) {
+		boolean changed = progress != value || !java.util.Objects.equals(activeRecipe, recipeId);
+		progress = value;
+		activeRecipe = recipeId;
+		if (changed) {
+			sync();
+		}
+	}
+
+	@Nullable
+	private ChemicalReactionRecipe findRecipe() {
+		if (level == null) {
+			return null;
+		}
+		for (ChemicalReactionRecipe recipe : level.getRecipeManager().getAllRecipesFor(chemicalReactionType())) {
+			if (matches(recipe)) {
+				return recipe;
+			}
+		}
+		return null;
+	}
+
+	private boolean matches(ChemicalReactionRecipe recipe) {
+		// heat condition vs current temperature
+		HeatCondition heat = recipe.getRequiredHeat();
+		if (heat == HeatCondition.HEATED && temperature < 400) {
+			return false;
+		}
+		if (heat == HeatCondition.SUPERHEATED && temperature < 800) {
+			return false;
+		}
+		// item ingredients (each consumes 1)
+		for (Ingredient ingredient : recipe.getIngredients()) {
+			if (!hasItem(ingredient)) {
+				return false;
+			}
+		}
+		// fluid ingredients
+		for (FluidIngredient fluid : recipe.getFluidIngredients()) {
+			if (!hasFluid(fluid)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private boolean hasItem(Ingredient ingredient) {
+		for (int i = 0; i < items.getSlots(); i++) {
+			ItemStack stack = items.getStackInSlot(i);
+			if (!stack.isEmpty() && ingredient.test(stack)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private boolean hasFluid(FluidIngredient ingredient) {
+		int total = 0;
+		for (FluidStack stack : tank.getFluids()) {
+			if (ingredient.test(stack)) {
+				total += stack.getAmount();
+			}
+		}
+		return total >= ingredient.getRequiredAmount();
+	}
+
+	private void completeRecipe(ChemicalReactionRecipe recipe) {
+		// consume item inputs (1 per ingredient)
+		for (Ingredient ingredient : recipe.getIngredients()) {
+			for (int i = 0; i < items.getSlots(); i++) {
+				ItemStack stack = items.getStackInSlot(i);
+				if (!stack.isEmpty() && ingredient.test(stack)) {
+					stack.shrink(1);
+					items.setStackInSlot(i, stack);
+					break;
+				}
+			}
+		}
+		// consume fluid inputs
+		for (FluidIngredient fluid : recipe.getFluidIngredients()) {
+			int remaining = fluid.getRequiredAmount();
+			for (int i = 0; i < tank.getTanks() && remaining > 0; i++) {
+				FluidStack stack = tank.getFluidInTank(i);
+				if (fluid.test(stack)) {
+					int drained = tank.drain(new FluidStack(stack.getFluid(), remaining), IFluidHandler.FluidAction.EXECUTE).getAmount();
+					remaining -= drained;
+				}
+			}
+		}
+		// item outputs (chance-based)
+		for (ProcessingOutput output : recipe.getRollableResults()) {
+			ItemStack out = output.getStack();
+			if (out.isEmpty() || (output.getChance() < 1 && level.random.nextFloat() >= output.getChance())) {
+				continue;
+			}
+			ItemStack remainder = ItemHandlerHelper.insertItemStacked(items, out.copy(), false);
+			if (!remainder.isEmpty() && level != null) {
+				Containers.dropItemStack(level, worldPosition.getX(), worldPosition.getY(), worldPosition.getZ(), remainder);
+			}
+		}
+		// fluid outputs
+		for (FluidStack out : recipe.getFluidResults()) {
+			tank.fill(out.copy(), IFluidHandler.FluidAction.EXECUTE);
+		}
+		// heat effect (exothermic raises temperature)
+		if (recipe.getDeltaHeat() != 0) {
+			temperature = Math.max(AMBIENT_TEMP, Math.min(MAX_TEMP, temperature + recipe.getDeltaHeat()));
+		}
 	}
 
 	private void onTankChanged() {
 		setChanged();
 		if (level != null && !level.isClientSide) {
+			sync();
+		}
+	}
+
+	private void sync() {
+		if (level != null && !level.isClientSide) {
 			level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), Block.UPDATE_CLIENTS);
 		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private RecipeType<ChemicalReactionRecipe> chemicalReactionType() {
+		return (RecipeType<ChemicalReactionRecipe>) (RecipeType<?>) AllRecipeTypes.CHEMICAL_REACTION.getType();
 	}
 
 	/**
@@ -125,7 +304,7 @@ public class ReactorControllerBlockEntity extends BlockEntity implements MenuPro
 			if (ok) {
 				assembled = true;
 				setChanged();
-				level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), Block.UPDATE_CLIENTS);
+				sync();
 				return true;
 			}
 		}
@@ -135,10 +314,9 @@ public class ReactorControllerBlockEntity extends BlockEntity implements MenuPro
 	public void invalidateStructure() {
 		if (assembled) {
 			assembled = false;
+			setProgress(0, null);
 			setChanged();
-			if (level != null && !level.isClientSide) {
-				level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), Block.UPDATE_CLIENTS);
-			}
+			sync();
 		}
 	}
 
@@ -152,6 +330,19 @@ public class ReactorControllerBlockEntity extends BlockEntity implements MenuPro
 
 	public ReactorTank getTank() {
 		return tank;
+	}
+
+	public ItemStackHandler getItems() {
+		return items;
+	}
+
+	public float getProgress() {
+		return progress;
+	}
+
+	@Nullable
+	public ResourceLocation getActiveRecipe() {
+		return activeRecipe;
 	}
 
 	@Override
@@ -170,6 +361,9 @@ public class ReactorControllerBlockEntity extends BlockEntity implements MenuPro
 		if (cap == ForgeCapabilities.FLUID_HANDLER) {
 			return fluidCap.cast();
 		}
+		if (cap == ForgeCapabilities.ITEM_HANDLER) {
+			return itemCap.cast();
+		}
 		return super.getCapability(cap, side);
 	}
 
@@ -177,6 +371,7 @@ public class ReactorControllerBlockEntity extends BlockEntity implements MenuPro
 	public void invalidateCaps() {
 		super.invalidateCaps();
 		fluidCap.invalidate();
+		itemCap.invalidate();
 	}
 
 	@Override
@@ -185,6 +380,11 @@ public class ReactorControllerBlockEntity extends BlockEntity implements MenuPro
 		tag.putBoolean("assembled", assembled);
 		tag.putInt("temperature", temperature);
 		tag.put("tank", tank.serializeNBT());
+		tag.put("items", items.serializeNBT());
+		tag.putFloat("progress", progress);
+		if (activeRecipe != null) {
+			tag.putString("activeRecipe", activeRecipe.toString());
+		}
 	}
 
 	@Override
@@ -193,6 +393,9 @@ public class ReactorControllerBlockEntity extends BlockEntity implements MenuPro
 		assembled = tag.getBoolean("assembled");
 		temperature = tag.getInt("temperature");
 		tank.deserializeNBT(tag.getCompound("tank"));
+		items.deserializeNBT(tag.getCompound("items"));
+		progress = tag.getFloat("progress");
+		activeRecipe = tag.contains("activeRecipe") ? ResourceLocation.tryParse(tag.getString("activeRecipe")) : null;
 	}
 
 	@Override
