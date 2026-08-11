@@ -1,0 +1,5 @@
+{
+  "variants": {
+    "": { "model": "chemicaladdon:block/settling_basin" }
+  }
+}
