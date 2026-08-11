@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "chemicaladdon:item/slaked_lime"
+  }
+}

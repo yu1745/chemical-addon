@@ -1,0 +1,26 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT"
+
+[[mods]]
+modId="chemicaladdon"
+version="${file.jarVersion}"
+displayName="Chemical Addon"
+authors="yu1745"
+description='''
+Inorganic chemistry expansion for Create: multiblock reaction vessels, closed-loop chemical production (chlor-alkali, Solvay, ammonia), waste treatment.
+'''
+
+[[dependencies.chemicaladdon]]
+    modId="forge"
+    mandatory=true
+    versionRange="[47,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.chemicaladdon]]
+    modId="create"
+    mandatory=true
+    versionRange="[6.0.8,7)"
+    ordering="NONE"
+    side="BOTH"

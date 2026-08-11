@@ -1,0 +1,8 @@
+{
+  "formula": "NaCl(aq)",
+  "phase": "LIQUID",
+  "components": [
+    { "species": "chemicaladdon:water", "maxConcentration": 0.74 },
+    { "species": "chemicaladdon:rock_salt", "maxConcentration": 0.26 }
+  ]
+}
