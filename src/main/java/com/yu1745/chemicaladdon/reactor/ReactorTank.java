@@ -6,6 +6,8 @@ import java.util.List;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.world.level.material.FlowingFluid;
+import net.minecraft.world.level.material.Fluid;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.capability.IFluidHandler;
 import net.minecraftforge.fluids.capability.IFluidHandler.FluidAction;
@@ -17,13 +19,24 @@ import net.minecraftforge.fluids.capability.IFluidHandler.FluidAction;
  */
 public class ReactorTank implements IFluidHandler {
 
-	private final int capacity;
+	private int capacity;
 	private final Runnable onChanged;
 	private final List<FluidStack> fluids = new ArrayList<>();
 
 	public ReactorTank(int capacity, Runnable onChanged) {
 		this.capacity = capacity;
 		this.onChanged = onChanged;
+	}
+
+	/** Fluids are stored as their source instance so recipe matching (Create's
+	 * FluidIngredient fixes to the source) works regardless of what instance
+	 * the pipes/callers carry. */
+	private static Fluid sourceOf(FluidStack stack) {
+		return stack.getFluid() instanceof FlowingFluid flowing ? flowing.getSource() : stack.getFluid();
+	}
+
+	public void setCapacity(int capacity) {
+		this.capacity = capacity;
 	}
 
 	public List<FluidStack> getFluids() {
@@ -68,14 +81,15 @@ public class ReactorTank implements IFluidHandler {
 			return 0;
 		}
 		if (action.execute()) {
+			Fluid fluid = sourceOf(resource);
 			for (FluidStack f : fluids) {
-				if (f.isFluidEqual(resource)) {
+				if (f.getFluid() == fluid) {
 					f.grow(amount);
 					onChanged.run();
 					return amount;
 				}
 			}
-			fluids.add(new FluidStack(resource.getFluid(), amount));
+			fluids.add(new FluidStack(fluid, amount));
 			onChanged.run();
 		}
 		return amount;
@@ -86,15 +100,16 @@ public class ReactorTank implements IFluidHandler {
 		if (resource.isEmpty()) {
 			return FluidStack.EMPTY;
 		}
+		Fluid target = sourceOf(resource);
 		for (FluidStack f : fluids) {
-			if (f.isFluidEqual(resource)) {
+			if (f.getFluid() == target) {
 				int amount = Math.min(f.getAmount(), resource.getAmount());
 				if (action.execute()) {
 					f.shrink(amount);
 					removeEmpty();
 					onChanged.run();
 				}
-				return new FluidStack(resource.getFluid(), amount);
+				return new FluidStack(target, amount);
 			}
 		}
 		return FluidStack.EMPTY;

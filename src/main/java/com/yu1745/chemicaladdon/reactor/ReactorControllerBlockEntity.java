@@ -50,10 +50,12 @@ import net.minecraftforge.items.ItemStackHandler;
  */
 public class ReactorControllerBlockEntity extends BlockEntity implements MenuProvider {
 
-	public static final int TANK_CAPACITY = 16000; // mB (16 buckets), fixed for M1
+	public static final int TANK_CAPACITY = 16000; // mB base (16 buckets) at height 3
 	public static final int AMBIENT_TEMP = 20;
 	public static final int ITEM_SLOTS = 4;
 	public static final int MAX_TEMP = 1000;
+	public static final int MIN_HEIGHT = 3;
+	public static final int MAX_HEIGHT = 6;
 
 	private static final int HEAT_TICK = 20;
 	private static final int REACTION_TICK = 10;
@@ -93,8 +95,9 @@ public class ReactorControllerBlockEntity extends BlockEntity implements MenuPro
 	}
 
 	private void updateHeat() {
-		// heating from a Blaze Burner directly below the vessel
-		BlockState below = level.getBlockState(worldPosition.below());
+		// heating from a Blaze Burner directly below the vessel's bottom layer
+		// (controller sits on the first wall layer; bottom is one below, burner two)
+		BlockState below = level.getBlockState(worldPosition.below(2));
 		int target = switch (BlazeBurnerBlock.getHeatLevelOf(below)) {
 			case KINDLED -> 500;
 			case SEETHING -> 900;
@@ -253,9 +256,11 @@ public class ReactorControllerBlockEntity extends BlockEntity implements MenuPro
 	}
 
 	/**
-	 * Validates the 3x3x3 hollow brick shell. The controller must sit in the
-	 * middle of one wall; the structure extends 2 blocks in the inward
-	 * direction, ±1 along the wall, ±1 vertically. Tries all 4 wall faces.
+	 * Validates the 3x3 hollow brick shell with height 3..6. The controller
+	 * must sit in the first wall layer (directly above the bottom); the
+	 * structure extends 2 blocks in the inward direction, ±1 along the wall,
+	 * and MIN_HEIGHT..MAX_HEIGHT vertically. Tries all 4 wall faces.
+	 * Tank capacity scales with interior volume (16 buckets per interior layer).
 	 */
 	public boolean tryAssemble() {
 		if (level == null || level.isClientSide) {
@@ -267,42 +272,66 @@ public class ReactorControllerBlockEntity extends BlockEntity implements MenuPro
 			Direction side = inward.getAxis() == Direction.Axis.X ? Direction.NORTH : Direction.EAST;
 			boolean ok = true;
 
-			// bottom (y-1) and top (y+1) layers: full 3x3 of bricks
+			// bottom layer (y-1): full 3x3 of bricks
 			for (int s = -1; s <= 1 && ok; s++) {
 				for (int d = 0; d <= 2 && ok; d++) {
-					BlockPos bottom = worldPosition.offset(
+					BlockPos p = worldPosition.offset(
 						side.getStepX() * s + inward.getStepX() * d, -1, side.getStepZ() * s + inward.getStepZ() * d);
-					if (!level.getBlockState(bottom).is(brick.getBlock())) {
-						ok = false;
-					}
-					BlockPos top = worldPosition.offset(
-						side.getStepX() * s + inward.getStepX() * d, 1, side.getStepZ() * s + inward.getStepZ() * d);
-					if (!level.getBlockState(top).is(brick.getBlock())) {
+					if (!level.getBlockState(p).is(brick.getBlock())) {
 						ok = false;
 					}
 				}
 			}
 
-			// wall layer (y): ring of bricks, controller at its own spot, interior air
-			for (int s = -1; s <= 1 && ok; s++) {
-				for (int d = 0; d <= 2 && ok; d++) {
-					if (s == 0 && d == 0) {
-						continue; // the controller itself
-					}
-					BlockPos p = worldPosition.offset(
-						side.getStepX() * s + inward.getStepX() * d, 0, side.getStepZ() * s + inward.getStepZ() * d);
-					if (s == 0 && d == 1) {
-						if (!level.getBlockState(p).isAir()) {
-							ok = false; // interior must be hollow
+			// wall layers y=0..: count consecutive ring layers; the ring is the
+			// 8 blocks around the interior column (s=0,d=1 is the hollow core on
+			// every wall layer, (s=0,d=0) is the controller on y=0 / wall above it)
+			int height = 0;
+			for (int y = 0; y < MAX_HEIGHT - 2 && ok; y++) {
+				boolean layerIsRing = true;
+				for (int s = -1; s <= 1 && layerIsRing; s++) {
+					for (int d = 0; d <= 2 && layerIsRing; d++) {
+						if (y == 0 && s == 0 && d == 0) {
+							continue; // the controller itself
 						}
-					} else if (!level.getBlockState(p).is(brick.getBlock())) {
-						ok = false;
+						BlockPos p = worldPosition.offset(
+							side.getStepX() * s + inward.getStepX() * d, y, side.getStepZ() * s + inward.getStepZ() * d);
+						if (s == 0 && d == 1) {
+							if (!level.getBlockState(p).isAir()) {
+								layerIsRing = false; // interior column must be hollow
+							}
+						} else if (!level.getBlockState(p).is(brick.getBlock())) {
+							layerIsRing = false;
+						}
+					}
+				}
+				if (layerIsRing) {
+					height++;
+				} else {
+					break;
+				}
+			}
+
+			if (height < MIN_HEIGHT - 2) {
+				ok = false; // too short (bottom + walls + top needed)
+			}
+
+			// top layer at y = height: full 3x3 of bricks
+			if (ok) {
+				for (int s = -1; s <= 1 && ok; s++) {
+					for (int d = 0; d <= 2 && ok; d++) {
+						BlockPos p = worldPosition.offset(
+							side.getStepX() * s + inward.getStepX() * d, height, side.getStepZ() * s + inward.getStepZ() * d);
+						if (!level.getBlockState(p).is(brick.getBlock())) {
+							ok = false;
+						}
 					}
 				}
 			}
 
 			if (ok) {
 				assembled = true;
+				tank.setCapacity(TANK_CAPACITY * height); // 16 buckets per interior layer
 				setChanged();
 				sync();
 				return true;

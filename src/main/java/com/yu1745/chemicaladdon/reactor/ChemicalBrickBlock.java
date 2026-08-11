@@ -29,6 +29,9 @@ public class ChemicalBrickBlock extends Block {
 						if (be instanceof ReactorControllerBlockEntity controller) {
 							controller.invalidateStructure();
 						}
+						if (be instanceof SettlingBasinBlockEntity basin) {
+							basin.invalidateStructure();
+						}
 					}
 				}
 			}

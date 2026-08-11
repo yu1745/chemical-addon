@@ -92,6 +92,8 @@ SOLIDS = [
 BLOCKS = [
     ("chemical_brick",    "化工砖", "Chemical Brick",    0x8E8478),
     ("reactor_controller", "反应釜控制器", "Reactor Controller", 0x6E6E6E),
+    ("filter_press",      "过滤机", "Filter Press",      0x7A7A8A),
+    ("settling_basin",    "沉淀池控制器", "Settling Basin", 0x5E6E7A),
 ]
 
 # ---------------------------------------------------------------- png writer
@@ -199,6 +201,8 @@ def gen_block_textures():
     os.makedirs(d, exist_ok=True)
     write_png(os.path.join(d, "chemical_brick.png"), make_brick_texture(0x8E8478))
     write_png(os.path.join(d, "reactor_controller.png"), make_panel_texture(0x6E6E6E))
+    write_png(os.path.join(d, "filter_press.png"), make_panel_texture(0x7A7A8A))
+    write_png(os.path.join(d, "settling_basin.png"), make_panel_texture(0x5E6E7A))
 
 
 def gen_lang():

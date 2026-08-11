@@ -57,5 +57,7 @@
   "item.chemicaladdon.calcium_chloride": "Calcium Chloride",
   "item.chemicaladdon.filter_cake": "Filter Cake",
   "block.chemicaladdon.chemical_brick": "Chemical Brick",
-  "block.chemicaladdon.reactor_controller": "Reactor Controller"
+  "block.chemicaladdon.reactor_controller": "Reactor Controller",
+  "block.chemicaladdon.filter_press": "Filter Press",
+  "block.chemicaladdon.settling_basin": "Settling Basin"
 }

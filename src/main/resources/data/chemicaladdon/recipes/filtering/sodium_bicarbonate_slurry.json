@@ -1,0 +1,11 @@
+{
+  "type": "chemicaladdon:filtering",
+  "ingredients": [
+    { "fluid": "chemicaladdon:sodium_bicarbonate_slurry", "amount": 1000 }
+  ],
+  "results": [
+    { "fluid": "chemicaladdon:water", "amount": 500 },
+    { "item": "chemicaladdon:sodium_bicarbonate", "count": 1 }
+  ],
+  "processingTime": 100
+}

@@ -57,5 +57,7 @@
   "item.chemicaladdon.calcium_chloride": "氯化钙",
   "item.chemicaladdon.filter_cake": "滤渣",
   "block.chemicaladdon.chemical_brick": "化工砖",
-  "block.chemicaladdon.reactor_controller": "反应釜控制器"
+  "block.chemicaladdon.reactor_controller": "反应釜控制器",
+  "block.chemicaladdon.filter_press": "过滤机",
+  "block.chemicaladdon.settling_basin": "沉淀池控制器"
 }

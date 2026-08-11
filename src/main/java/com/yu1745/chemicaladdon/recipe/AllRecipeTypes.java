@@ -24,7 +24,8 @@ import net.minecraftforge.registries.RegistryObject;
  */
 public enum AllRecipeTypes implements IRecipeTypeInfo {
 
-	CHEMICAL_REACTION(ChemicalReactionRecipe::new);
+	CHEMICAL_REACTION(ChemicalReactionRecipe::new),
+	FILTERING(FilteringRecipe::new);
 
 	private final ResourceLocation id;
 	private final RegistryObject<RecipeSerializer<?>> serializerObject;
@@ -52,6 +53,11 @@ public enum AllRecipeTypes implements IRecipeTypeInfo {
 	@Override
 	public <T extends RecipeType<?>> T getType() {
 		return (T) typeObject.get();
+	}
+
+	@SuppressWarnings("unchecked")
+	public static RecipeType<FilteringRecipe> filteringType() {
+		return (RecipeType<FilteringRecipe>) (RecipeType<?>) FILTERING.typeObject.get();
 	}
 
 	public static class RecipeSerializers {
