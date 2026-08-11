@@ -9,7 +9,6 @@ import com.yu1745.chemicaladdon.registry.AllBlocks;
 import com.yu1745.chemicaladdon.registry.AllCreativeModeTabs;
 import com.yu1745.chemicaladdon.registry.AllFluids;
 import com.yu1745.chemicaladdon.registry.AllItems;
-import com.yu1745.chemicaladdon.registry.AllMenuTypes;
 
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.AddReloadListenerEvent;
@@ -34,13 +33,12 @@ public class ChemicalAddon {
 		AllCreativeModeTabs.register(modBus);
 		AllRecipeTypes.register(modBus);
 		AllBlockEntities.register(modBus);
-		AllMenuTypes.register(modBus);
 		AllFluids.register();
 		AllItems.register();
 		AllBlocks.register();
 		REGISTRATE.registerEventListeners(modBus);
 
-		// client: control panel screens (runs after registries are populated)
+		// client: block entity renderers (runs after registries are populated)
 		modBus.addListener((FMLClientSetupEvent event) -> ChemicalAddonClient.init());
 
 		// Datapack-driven species definitions (composition system, M0 skeleton)

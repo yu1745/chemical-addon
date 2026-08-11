@@ -94,6 +94,7 @@ BLOCKS = [
     ("reactor_controller", "反应釜控制器", "Reactor Controller", 0x6E6E6E),
     ("filter_press",      "过滤机", "Filter Press",      0x7A7A8A),
     ("settling_basin",    "沉淀池控制器", "Settling Basin", 0x5E6E7A),
+    ("electrolyzer",      "电解槽", "Electrolyzer",     0x5E7A8A),
 ]
 
 # ---------------------------------------------------------------- png writer
@@ -196,18 +197,88 @@ def make_panel_texture(rgb):
     return rows
 
 
+def make_open_panel_texture(rgb):
+    """Machine panel for the open-topped vessel variant: a bright lip along the
+    top edge marks the open rim."""
+    rows = make_panel_texture(rgb)
+    rim = [255, 214, 90, 255] * 16  # flat row: 16 px of gold rim
+    rows[0] = rim
+    rows[1] = rim
+    return rows
+
+
 def gen_block_textures():
     d = os.path.join(ASSETS, "textures/block")
     os.makedirs(d, exist_ok=True)
     write_png(os.path.join(d, "chemical_brick.png"), make_brick_texture(0x8E8478))
     write_png(os.path.join(d, "reactor_controller.png"), make_panel_texture(0x6E6E6E))
+    write_png(os.path.join(d, "reactor_controller_open.png"), make_open_panel_texture(0x6E6E6E))
     write_png(os.path.join(d, "filter_press.png"), make_panel_texture(0x7A7A8A))
     write_png(os.path.join(d, "settling_basin.png"), make_panel_texture(0x5E6E7A))
+    write_png(os.path.join(d, "electrolyzer.png"), make_panel_texture(0x5E7A8A))
+
+
+# Extra lang keys added by hand (GUIs, goggles, diagnostics, assemble messages).
+# These survive regeneration; edit them here, never in the generated json.
+EXTRA_LANG_ZH = {
+    "itemGroup.chemicaladdon": "化学附属",
+    "goggles.chemicaladdon.temperature": "温度：%s°C",
+    "goggles.chemicaladdon.heat.none": "无热级",
+    "goggles.chemicaladdon.heat.heated": "加热",
+    "goggles.chemicaladdon.heat.superheated": "超级加热",
+    "goggles.chemicaladdon.contents": "釜内：",
+    "goggles.chemicaladdon.items": "物品：",
+    "goggles.chemicaladdon.progress": "进度：%s%%（%s）",
+    "goggles.chemicaladdon.status": "状态：",
+    "status.chemicaladdon.not_assembled": "未成型",
+    "status.chemicaladdon.reacting": "反应中",
+    "status.chemicaladdon.temperature": "温度不满足",
+    "status.chemicaladdon.output_full": "输出已满",
+    "status.chemicaladdon.no_recipe": "无匹配配方",
+    "assemble.chemicaladdon.ok": "§a反应釜结构成型！右键打开面板存取物品",
+    "assemble.chemicaladdon.fail": "§c结构不完整（%s）：%s",
+    "assemble.chemicaladdon.bottom_gap": "底面缺少化工砖",
+    "assemble.chemicaladdon.top_gap": "顶面缺少化工砖",
+    "assemble.chemicaladdon.ring_gap": "壁层缺少化工砖",
+    "assemble.chemicaladdon.interior_blocked": "内部空间被占用",
+    "assemble.chemicaladdon.too_short": "壁层至少需要 1 层（总高 3）",
+    "assemble.chemicaladdon.partial_top": "顶面必须全封（9 块砖）或全开（0 块砖）",
+    "assemble.chemicaladdon.north_side": "北侧",
+    "assemble.chemicaladdon.south_side": "南侧",
+    "assemble.chemicaladdon.east_side": "东侧",
+    "assemble.chemicaladdon.west_side": "西侧",
+    "gui.chemicaladdon.hint": "状态请戴工程师护目镜查看",
+}
+
+EXTRA_LANG_EN = {
+    "itemGroup.chemicaladdon": "Chemical Addon",
+    "goggles.chemicaladdon.temperature": "Temperature: %s°C",
+    "goggles.chemicaladdon.heat.none": "No heat",
+    "goggles.chemicaladdon.heat.heated": "Heated",
+    "goggles.chemicaladdon.heat.superheated": "Superheated",
+    "goggles.chemicaladdon.contents": "Contents:",
+    "goggles.chemicaladdon.items": "Items:",
+    "goggles.chemicaladdon.progress": "Progress: %s%% (%s)",
+    "goggles.chemicaladdon.status": "Status:",
+    "status.chemicaladdon.not_assembled": "Not assembled",
+    "status.chemicaladdon.reacting": "Reacting",
+    "status.chemicaladdon.temperature": "Temperature not met",
+    "status.chemicaladdon.output_full": "Output full",
+    "status.chemicaladdon.no_recipe": "No matching recipe",
+    "assemble.chemicaladdon.ok": "§aReactor assembled! Right-click to open the panel",
+    "assemble.chemicaladdon.fail": "§cStructure incomplete (%s): %s",
+    "assemble.chemicaladdon.bottom_gap": "brick missing in the bottom layer",
+    "assemble.chemicaladdon.top_gap": "brick missing in the top layer",
+    "assemble.chemicaladdon.ring_gap": "brick missing in the wall",
+    "assemble.chemicaladdon.interior_blocked": "interior is blocked",
+    "assemble.chemicaladdon.too_short": "need at least 1 wall layer (height 3)",
+    "gui.chemicaladdon.hint": "Wear engineer goggles to see reactor state",
+}
 
 
 def gen_lang():
-    zh = {"itemGroup.chemicaladdon": "化学附属"}
-    en = {"itemGroup.chemicaladdon": "Chemical Addon"}
+    zh = dict(EXTRA_LANG_ZH)
+    en = dict(EXTRA_LANG_EN)
     for sid, cn, en_name, _, _, _, _, _ in FLUIDS:
         zh[f"fluid.chemicaladdon.{sid}"] = cn
         en[f"fluid.chemicaladdon.{sid}"] = en_name

@@ -10,9 +10,10 @@
 | M0 | 工程接入 + 61 物种 + 组合系统骨架 | ✅ 完成 |
 | M1 | 釜体模板 + 反应引擎 + 首条产线（硫磺→稀硫酸） | ✅ 完成 |
 | M2 | 过滤机 + 沉淀池 + 釜高度参数化 | ✅ 完成 |
+| M2.5 | 釜可玩性改造：世界内交互基调落地（护目镜 HUD/诊断/槽位 GUI/成型反馈） | ✅ 完成 |
 | M3+ | 电解/索尔维/高压/零排放 | ⏳ 未开始 |
 
-**自动化测试**：`./gradlew runGameTestServer` → **7/7 通过**。
+**自动化测试**：`./gradlew runGameTestServer` → **9/9 通过**。
 
 ## 已完成明细
 
@@ -35,6 +36,19 @@
 - **过滤机**（单方块）：`chemicaladdon:filtering` RecipeType + 共享 FilteringLogic（输入罐→滤液罐+滤饼 item）
 - **沉淀池**（池式模板实例）：3×3 开放池，1/4 速慢速沉降
 - 配方：重碱浆/石膏浆 → 水 + 滤饼
+
+### M2.5 · 反应釜可玩性改造（世界内交互优先，GUI 弱化）
+
+- **设计基调落地**：交互哲学写入 AGENTS.md（世界内交互优先、GUI 弱化，生态证据见 plans/00-ecosystem-recon.md §7：Create 本体 ~40 GUI 类全为配置/物品用途、createaddition 0 GUI、TFMG 仅 2 配置 GUI、New Age/Broken Bad/Estrogen 0 GUI）
+- **护目镜 HUD**：釜实现 `IHaveGoggleInformation`——戴护目镜看控制器显示：温度+热级（无/加热/超级加热）、诊断状态、多流体内容、物品、反应进度（Create 标准通道）
+- **诊断状态**：`ReactorStatus` 枚举——未成型/反应中/温度不满足/输出已满/无匹配配方（每 10 tick 自动判定，原因可诊断）
+- **成型反馈**：`tryAssemble()` 返回结构化结果（面+问题类型+坐标），失败 chat 报具体缺砖位置；成功音效+粒子
+- **GUI 取消（彻底）**：釜无任何 GUI——物品渲染进釜内（Create Basin 模式：环形悬浮+旋转+堆叠散落，控制器 Renderer 实现），存取走漏斗/管道；右键改为世界内 chat 诊断；ReactorMenu/Screen/AllMenuTypes 删除
+- **釜升级 SmartBlockEntity**（Create 基类：行为系统、自动序列化 write/read、CachedRenderBB）——后续仪表/ValueSettings 直接挂 behaviour
+- **开口/闭口变体**：成型时顶面全封=闭口、全空=开口（内部物品从上方可见）、半封=报错；控制器 blockstate `open` 属性+纹理变体（开口金边）
+- **修复真 bug**：釜容量不持久化（高釜重进世界回退 16 桶）→ tankCapacity 入 NBT
+- 测试 7/7 → **11/11**（新增：容量序列化往返、诊断状态 NO_RECIPE/TEMPERATURE、开口成型、半封顶拒绝）
+- 环境：`~/.gradle/gradle.properties`（用户级，不进 git）覆盖 Linux JDK 路径 + 代理 192.168.5.138:7777；build.gradle 补 maven.minecraftforge.net 仓库（ForgeAutoRenamingTool）
 
 ### 质量与工具
 - **GameTest 7/7**：成型/拒错/硫磺燃烧（含加热）/SO₂ 吸收/过滤/能力暴露/砖代理
@@ -60,11 +74,12 @@
 
 ## 待办 / 下一步
 
-1. **客户端实机验证**（用户）：Jade 在 dev 客户端是否可用、GUI 显示、砖代理手感、quickPlay 自动进档
-2. **M3**：电解槽（FE）、吸收塔（塔式实例）、换热器、压缩机——氯碱 + 硫酸厂
-3. **M4 旗舰**：索尔维制碱闭环（吸收塔氨盐水 → 碳化 → 煅烧 → 氨回收）
-4. **基础设施**：流体桶（S08）、GUI 美化、datagen 接入（配方/模型 provider）、Jade 集成（流体显示/温度/进度 tooltip）、JEI 配方展示
-5. **已知限制**：沉淀池/过滤机无 GUI；方块纹理为程序生成色块；压力/相态/催化未实现（计划 M3+）
+1. **客户端实机验证**（用户）：护目镜 HUD 显示、釜内物品渲染（开口釜）、成型失败提示、开口/闭口切换、quickPlay 自动进档
+2. **贴面仪表**：S02 温度计（Gauge 模式：贴面连接釜、温度/热级/红石阈值输出）——釜状态世界内化的下一步
+3. **M3**：电解槽（FE）、吸收塔（塔式实例）、换热器、压缩机——氯碱 + 硫酸厂
+4. **M4 旗舰**：索尔维制碱闭环（吸收塔氨盐水 → 碳化 → 煅烧 → 氨回收）
+5. **基础设施**：流体桶（S08）、GUI 美化、datagen 接入（配方/模型 provider）、Jade 集成（流体显示/温度/进度 tooltip）、JEI 配方展示
+6. **已知限制**：沉淀池/过滤机无 GUI；方块纹理为程序生成色块；砖无连接纹理（多变体方案待做）；底面尺寸固定 3×3（参数化待做）；压力/相态/催化未实现（计划 M3+）
 
 ## 常用命令
 

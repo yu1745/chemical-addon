@@ -89,6 +89,7 @@ minecraft {
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 repositories {
+    maven { url = "https://maven.minecraftforge.net" } // ForgeGradle tooling (ForgeAutoRenamingTool etc.)
     maven { url = "https://maven.createmod.net" } // Create, Ponder, Flywheel
     maven { url = "https://maven.tterrag.com" } // Registrate
     maven { url = "https://maven.blamejared.com/" } // JEI

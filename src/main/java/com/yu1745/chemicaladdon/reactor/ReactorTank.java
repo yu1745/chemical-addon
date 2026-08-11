@@ -134,6 +134,11 @@ public class ReactorTank implements IFluidHandler {
 		fluids.removeIf(f -> f.getAmount() <= 0);
 	}
 
+	/** Empties the tank entirely (e.g. after contents were spilled into the world). */
+	public void clear() {
+		fluids.clear();
+	}
+
 	public CompoundTag serializeNBT() {
 		CompoundTag tag = new CompoundTag();
 		ListTag list = new ListTag();

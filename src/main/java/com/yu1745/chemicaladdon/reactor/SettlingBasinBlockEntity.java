@@ -52,6 +52,11 @@ public class SettlingBasinBlockEntity extends BlockEntity {
 
 	private boolean assembled = false;
 	private int tickCounter = 0;
+	// progressive fluid spill after structural breakage
+	private final java.util.List<net.minecraftforge.fluids.FluidStack> pendingSpill = new java.util.ArrayList<>();
+	@Nullable
+	private BlockPos spillLeakPos = null;
+	private int spillTimer = 0;
 
 	public SettlingBasinBlockEntity(BlockPos pos, BlockState state) {
 		super(AllBlockEntities.SETTLING_BASIN.get(), pos, state);
@@ -66,6 +71,12 @@ public class SettlingBasinBlockEntity extends BlockEntity {
 		}
 		if (++tickCounter % FilteringLogic.TICK_INTERVAL == 0) {
 			logic.tick(level, tank, tank, items, worldPosition, 0.25f);
+		}
+		// one source block trickles out of the breach every few ticks
+		if (!pendingSpill.isEmpty()) {
+			if (++spillTimer % 5 == 0) {
+				SpillLogic.tryPlaceOne(level, spillLeakPos != null ? spillLeakPos : worldPosition, pendingSpill);
+			}
 		}
 	}
 
@@ -130,9 +141,17 @@ public class SettlingBasinBlockEntity extends BlockEntity {
 		}
 	}
 
-	public void invalidateStructure() {
+	public void invalidateStructure(@Nullable BlockPos leakPos) {
 		if (assembled) {
 			assembled = false;
+			// contents become physical again: items drop, fluids pour out of the breach
+			BlockPos breach = leakPos != null ? leakPos : worldPosition;
+			SpillLogic.spillItems(level, breach, items);
+			pendingSpill.clear();
+			pendingSpill.addAll(SpillLogic.queueFluids(tank)); // sub-bucket remainder lost by design
+			spillLeakPos = breach;
+			spillTimer = 4;
+			SpillLogic.tryPlaceOne(level, breach, pendingSpill);
 			// clear master pointers on nearby bricks so they stop proxying
 			bindBricks(null);
 			setChanged();
