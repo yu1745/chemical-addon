@@ -1,6 +1,6 @@
 # AGENTS.md - chemical-addon（Create 化学附属）
 
-本仓库是 **Create Forge 6.0.8 的无机化工附属**（Forge 1.20.1，Java 17），设计计划书在 `plans/`（主索引 `plans/README.md`，平台决策 `plans/00-platform-decision.md`，生态盘点 `plans/00-ecosystem-recon.md`）。
+本仓库是 **Create Forge 6.0.8 的无机化工附属**（Forge 1.20.1，Java 17），设计计划书在 `plans/`（主索引 `plans/README.md`，平台决策 `plans/00-platform-decision.md`，生态盘点 `plans/00-ecosystem-recon.md`），**开发进度在 `docs/progress.md`**（M0–M2 完成，7/7 GameTest 通过；改代码前先看它了解现状）。
 
 ## 核心架构（改动前必读 plans/03-substance-model.md）
 
