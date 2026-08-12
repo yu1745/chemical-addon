@@ -1,4 +1,4 @@
-// 1.20.1	2026-08-12T11:19:55.5606327	Registrate Provider for chemicaladdon [Recipes, Advancements, Loot Tables, Tags (blocks), Tags (items), Tags (fluids), Tags (entity_types), Blockstates, Item models, Lang (en_us/en_ud)]
+// 1.20.1	2026-08-12T13:50:13.843419	Registrate Provider for chemicaladdon [Recipes, Advancements, Loot Tables, Tags (blocks), Tags (items), Tags (fluids), Tags (entity_types), Blockstates, Item models, Lang (en_us/en_ud)]
 404f8d84274018255af4e6938f419a71dbabebf5 assets/chemicaladdon/blockstates/air.json
 5398f4a42a9384736e88ebf696b792477ed35819 assets/chemicaladdon/blockstates/ammonia.json
 8f6d43532e2dfcacc31dfbca3c1200cc134a43bd assets/chemicaladdon/blockstates/ammoniated_brine.json
@@ -13,7 +13,7 @@ c6dd1155fdaaac759eb5e6519c2e8bd6469591cf assets/chemicaladdon/blockstates/calciu
 d066bf91e072da1c0a7362b4f35e0d927f98f5e9 assets/chemicaladdon/blockstates/carbon_dioxide.json
 8f57aa7538c29274ce2cadab07e57429bafc24b9 assets/chemicaladdon/blockstates/carbon_monoxide.json
 0c4df8706ea662db8097753745e3ec5f22eecfad assets/chemicaladdon/blockstates/caustic_soda_solution.json
-d0f0e0700b6d36db28f8d833de5be96ea777818c assets/chemicaladdon/blockstates/chemical_brick.json
+6a30adbad9e68f7677d282518b731b4496da3761 assets/chemicaladdon/blockstates/chemical_brick.json
 c78087a08dcfeed3baa7368d0d18877df3420b2a assets/chemicaladdon/blockstates/chlorine.json
 e19031f9df42f836b94b9f0c99f59927611f11ac assets/chemicaladdon/blockstates/concentrated_hydrochloric_acid.json
 f94d086a6ba0ea10d824383276ca803cf352137f assets/chemicaladdon/blockstates/concentrated_nitric_acid.json
@@ -57,7 +57,6 @@ ff00c7a0c8ee04cb4382ab712e1b99860727c683 assets/chemicaladdon/models/block/ammon
 2c3d0d026a5fbc723fc88baabdb31a5156e3f71a assets/chemicaladdon/models/block/carbon_dioxide.json
 560b919ca6fcb543e64569250d2092856af21d0f assets/chemicaladdon/models/block/carbon_monoxide.json
 96573925dbd041a58ed10451dbb8b17a9121cba8 assets/chemicaladdon/models/block/caustic_soda_solution.json
-0b131fd5bb3115ab0e4ebf136ae6f0084b75916a assets/chemicaladdon/models/block/chemical_brick.json
 fcc5a6bf85300659c3a186341530d0fd38b4e0dc assets/chemicaladdon/models/block/chlorine.json
 4815b14300224bf225dc000106df3aeef5df2d00 assets/chemicaladdon/models/block/concentrated_hydrochloric_acid.json
 91c52b8a8ef810f1c3c98f1f08b4a117df02ad9d assets/chemicaladdon/models/block/concentrated_nitric_acid.json
@@ -105,7 +104,7 @@ d5dc07fad156af0b149da3569ab9536d05b00ab8 assets/chemicaladdon/models/item/calciu
 32a4ecdb1471cead4e7907754fca50d7043707d5 assets/chemicaladdon/models/item/carbon_dioxide_bucket.json
 56eeedda699da6dac69f4ec490e1a74fd42fb55b assets/chemicaladdon/models/item/carbon_monoxide_bucket.json
 03bded0122b4d4a28a403fdf6ad9ebe64d7f8b11 assets/chemicaladdon/models/item/caustic_soda_solution_bucket.json
-19d4e9da50d90757718056b9bc7c0fe582d35164 assets/chemicaladdon/models/item/chemical_brick.json
+b279c0922e6b89780fb9615195926f6200534a77 assets/chemicaladdon/models/item/chemical_brick.json
 0a7503f11289552228a8e3d6c47d78af234db88b assets/chemicaladdon/models/item/chlorine_bucket.json
 2770088702772f61d0dfd36534a77853dcb1be56 assets/chemicaladdon/models/item/concentrated_hydrochloric_acid_bucket.json
 3c0d4ac0d7d82bf1889772e13387d9dea7448abe assets/chemicaladdon/models/item/concentrated_nitric_acid_bucket.json

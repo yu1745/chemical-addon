@@ -1,3 +1,3 @@
 {
-  "parent": "chemicaladdon:block/chemical_brick"
+  "parent": "chemicaladdon:block/chemical_brick/block_single_window"
 }

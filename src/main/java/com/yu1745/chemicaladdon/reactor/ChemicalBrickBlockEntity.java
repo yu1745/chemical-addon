@@ -5,6 +5,7 @@ import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.common.capabilities.Capability;
@@ -34,9 +35,30 @@ public class ChemicalBrickBlockEntity extends BlockEntity {
 		setChanged();
 	}
 
+	/** Position of the master controller this brick belongs to, or null. */
+	@Nullable
+	public BlockPos getMasterPos() {
+		return masterPos;
+	}
+
+	/**
+	 * True when both brick block entities belong to the same assembled master —
+	 * the connectivity check used by the CTM shell model (two bricks connect
+	 * their textures only when they are part of the same multiblock).
+	 */
+	public static boolean isConnected(net.minecraft.world.level.BlockGetter level, BlockPos pos, BlockPos other) {
+		BlockEntity a = level.getBlockEntity(pos);
+		BlockEntity b = level.getBlockEntity(other);
+		if (!(a instanceof ChemicalBrickBlockEntity brickA) || !(b instanceof ChemicalBrickBlockEntity brickB)) {
+			return false;
+		}
+		BlockPos masterA = brickA.masterPos;
+		return masterA != null && masterA.equals(brickB.masterPos);
+	}
+
 	/** Returns the master controller BE if still valid (assembled), else null. */
 	@Nullable
-	private BlockEntity getValidMaster() {
+	public BlockEntity getValidMaster() {
 		if (masterPos == null || level == null) {
 			return null;
 		}

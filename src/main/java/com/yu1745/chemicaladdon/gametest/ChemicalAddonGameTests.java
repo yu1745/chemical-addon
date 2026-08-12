@@ -3,6 +3,7 @@ package com.yu1745.chemicaladdon.gametest;
 import com.simibubi.create.content.processing.burner.BlazeBurnerBlock;
 import com.simibubi.create.content.processing.burner.BlazeBurnerBlockEntity;
 import com.yu1745.chemicaladdon.ChemicalAddon;
+import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlock;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlock;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlockEntity;
@@ -49,6 +50,45 @@ public class ChemicalAddonGameTests {
 		ReactorControllerBlockEntity be = reactor(helper);
 		helper.assertTrue(be.isAssembled(), "reactor should be assembled after valid structure");
 		helper.assertTrue(be.getTank().getTankCapacity(0) >= 16000, "capacity should scale with height");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void reactorAssemblesLargeCube(GameTestHelper helper) {
+		// 5x5x5 shell (n=5): interior 3x3x3, controller on the north wall middle (2,2,0)
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		for (int x = 0; x <= 4; x++) {
+			for (int z = 0; z <= 4; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick); // bottom
+				helper.setBlock(new BlockPos(x, 5, z), brick); // top (sealed)
+			}
+		}
+		for (int y = 2; y <= 4; y++) {
+			for (int x = 0; x <= 4; x++) {
+				for (int z = 0; z <= 4; z++) {
+					boolean wall = x == 0 || x == 4 || z == 0 || z == 4;
+					if (wall && !(y == 2 && x == 2 && z == 0)) {
+						helper.setBlock(new BlockPos(x, y, z), brick);
+					}
+				}
+			}
+		}
+		helper.setBlock(new BlockPos(2, 2, 0), controller);
+		ReactorControllerBlockEntity be = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 0));
+		helper.assertTrue(be.tryAssemble().ok(), "5x5x5 cube should assemble");
+		helper.assertTrue(be.getSize() == 5, "shell size should be 5 (got " + be.getSize() + ")");
+		helper.assertTrue(be.getHeight() == 3, "interior height should be 3");
+		helper.assertTrue(be.getTank().getTankCapacity(0) == 16000 * 27,
+			"capacity should be 27 interior blocks * 16000 (got " + be.getTank().getTankCapacity(0) + ")");
+		// shell model states written on assembly: a middle wall brick is neither top nor bottom
+		BlockState midWall = helper.getBlockState(new BlockPos(2, 3, 4)); // south wall centre, middle ring layer
+		helper.assertTrue(midWall.is(AllBlocks.CHEMICAL_BRICK.get())
+				&& !midWall.getValue(ChemicalBrickBlock.TOP) && !midWall.getValue(ChemicalBrickBlock.BOTTOM),
+			"middle wall brick should be a middle wall variant");
+		// the window centre of each face is a WINDOW brick (visible fluid)
+		helper.assertTrue(midWall.getValue(ChemicalBrickBlock.SHAPE) == ChemicalBrickBlock.Shape.WINDOW,
+			"face-centre brick should be windowed");
 		helper.succeed();
 	}
 

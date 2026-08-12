@@ -27,13 +27,9 @@ import net.minecraftforge.fluids.FluidStack;
  * Renders the vessel interior: the fluid surface (a semi-transparent "pot of
  * soup" — liquids layered upward from the floor, gases hanging from the top)
  * and the item buffer floating ON the surface, half-submerged with a gentle
- * bobbing. This is the in-world replacement for the removed item-slot GUI and
- * the visual half of the physical<->data spill/absorb loop.
- *
- * Fluid rendering reuses Create's catnip FluidRenderHelper
- * ({@code ForgeCatnipServices.FLUID_RENDERER.renderFluidBox}) — the same call
- * Create's own FluidTank/Basin renderers use. The fluid surface is animated by
- * a client-side LerpedFloat on the block entity chasing the synced fill state.
+ * bobbing. Handles any n x n x n shell size (interior (n-2)^3). Fluid rendering
+ * reuses Create's catnip FluidRenderHelper, animated by a client-side LerpedFloat
+ * chasing the synced fill state.
  */
 public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorControllerBlockEntity> {
 
@@ -50,24 +46,39 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 		if (inward == null || !reactor.isAssembled()) {
 			return; // not assembled (or client hasn't received the structure yet)
 		}
+		int size = reactor.getSize();
 		int height = reactor.getHeight();
+
+		// interior footprint in controller-local coordinates (the (n-2)^2 hollow core)
+		Direction side = inward.getAxis() == Direction.Axis.X ? Direction.NORTH : Direction.EAST;
+		int half = (size - 1) / 2;
+		int sMin = -half + 1;
+		int sMax = -half + size - 2;
+		Vec3 c1 = new Vec3(side.getStepX() * sMin + inward.getStepX(), 0,
+			side.getStepZ() * sMin + inward.getStepZ());
+		Vec3 c2 = new Vec3(side.getStepX() * sMax + inward.getStepX() * (size - 2), 0,
+			side.getStepZ() * sMax + inward.getStepZ() * (size - 2));
+		float x1 = (float) Math.min(c1.x, c2.x);
+		float x2 = (float) Math.max(c1.x, c2.x) + 1;
+		float z1 = (float) Math.min(c1.z, c2.z);
+		float z2 = (float) Math.max(c1.z, c2.z) + 1;
+		float cx = (x1 + x2) / 2f;
+		float cz = (z1 + z2) / 2f;
 
 		// light is sampled at the vessel interior (the controller block sits in
 		// the wall and is nearly unlit — contents must use the light of the spot
 		// they actually occupy: open vessels get full skylight, sealed ones go dark)
-		BlockPos centerPos = reactor.getBlockPos().offset(inward.getStepX(), height / 2, inward.getStepZ());
+		BlockPos centerPos = reactor.getBlockPos().offset((int) cx, height / 2, (int) cz);
 		light = LightTexture.pack(reactor.getLevel().getBrightness(LightLayer.BLOCK, centerPos),
 			reactor.getLevel().getBrightness(LightLayer.SKY, centerPos));
 
 		float renderTime = AnimationTickHolder.getRenderTime(reactor.getLevel());
 
 		// --- fluid pass: layered soup surface rising from the interior floor ---
-		// all coordinates below are in the controller block's local space; the
-		// interior air column spans local y in [0, height], x/z one block inward
 		float levelHeight = reactor.getRenderedLevel(partialTicks) * height;
 		float liquidSurface = 0;
 		if (levelHeight > 1 / 1024f) {
-			liquidSurface = renderFluid(reactor, inward, levelHeight, ms, buffer, light);
+			liquidSurface = renderFluid(reactor, x1, z1, x2, z2, levelHeight, ms, buffer, light);
 		}
 
 		// --- item pass: float on the fluid surface, half-submerged, bobbing ---
@@ -81,19 +92,20 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 			return;
 		}
 
-		// item ring center sits on the liquid surface (below any gas layer);
+		// item ring centre sits on the liquid surface (below any gas layer);
 		// with no fluid, items rest near the floor
 		float surfaceY = Math.max(liquidSurface, 0.125f);
 
 		ms.pushPose();
-		ms.translate(0.5 + inward.getStepX(), surfaceY - 0.1f, 0.5 + inward.getStepZ());
+		ms.translate(cx, surfaceY - 0.1f, cz);
 
 		// slow whole-ring rotation (driven by render time, no BE tick needed)
 		float angle = (renderTime * 4) % 360;
 		ms.mulPose(Axis.YP.rotationDegrees(angle));
 
 		RandomSource r = RandomSource.create(reactor.getBlockPos().hashCode());
-		Vec3 baseVector = itemCount == 1 ? new Vec3(0, 0, 0) : new Vec3(0.25, 0, 0);
+		float ringRadius = (size - 2) * 0.3f; // scales with the interior footprint
+		Vec3 baseVector = itemCount == 1 ? new Vec3(0, 0, 0) : new Vec3(ringRadius, 0, 0);
 		float anglePartition = 360f / itemCount;
 		int remaining = itemCount;
 		boolean floating = reactor.getFillState() > 0;
@@ -137,19 +149,19 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 	 * the level (the lighter-than-air layer of the "soup"). Returns the top of the
 	 * liquid (non-gas) region — the surface items float on.
 	 */
-	private float renderFluid(ReactorControllerBlockEntity reactor, Direction inward, float levelHeight,
-		PoseStack ms, MultiBufferSource buffer, int light) {
+	private float renderFluid(ReactorControllerBlockEntity reactor, float x1, float z1, float x2, float z2,
+		float levelHeight, PoseStack ms, MultiBufferSource buffer, int light) {
 		List<FluidStack> fluids = reactor.getTank().getFluids();
 		int total = reactor.getTank().getTotalAmount();
 		if (fluids.isEmpty() || total <= 0) {
 			return 0;
 		}
 
-		// interior is a single column: inset 1/32 from the brick walls
-		float x1 = inward.getStepX() + 1 / 32f;
-		float x2 = inward.getStepX() + 1 - 1 / 32f;
-		float z1 = inward.getStepZ() + 1 / 32f;
-		float z2 = inward.getStepZ() + 1 - 1 / 32f;
+		// inset 1/32 from the shell walls
+		float ix1 = x1 + 1 / 32f;
+		float ix2 = x2 - 1 / 32f;
+		float iz1 = z1 + 1 / 32f;
+		float iz2 = z2 - 1 / 32f;
 
 		int liquidAmount = 0;
 		for (FluidStack f : fluids) {
@@ -166,7 +178,7 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 				continue;
 			}
 			float h = levelHeight * f.getAmount() / total;
-			renderBox(f, x1, y, z1, x2, y + h, z2, ms, buffer, light);
+			renderBox(f, ix1, y, iz1, ix2, y + h, iz2, ms, buffer, light);
 			y += h;
 		}
 		// gases: hang from the level top downward
@@ -176,7 +188,7 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 				continue;
 			}
 			float h = levelHeight * f.getAmount() / total;
-			renderBox(f, x1, gasTop - h, z1, x2, gasTop, z2, ms, buffer, light);
+			renderBox(f, ix1, gasTop - h, iz1, ix2, gasTop, iz2, ms, buffer, light);
 			gasTop -= h;
 		}
 		return liquidHeight;
@@ -194,8 +206,8 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 
 	@Override
 	public boolean shouldRenderOffScreen(ReactorControllerBlockEntity reactor) {
-		// the interior (fluid + items) can extend up to MAX_HEIGHT blocks from the
-		// controller block, beyond the default per-block render culling
+		// the interior (fluid + items) can extend up to 7 blocks from the controller
+		// block, beyond the default per-block render culling
 		return true;
 	}
 }
