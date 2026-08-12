@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "chemicaladdon:block/carbon_monoxide"
+    }
+  }
+}

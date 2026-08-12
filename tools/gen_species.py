@@ -5,10 +5,17 @@ Chemical Addon species/resource generator (M0).
 Single source of truth for the 38 fluid species + 18 solid species from
 plans/08-substance-catalog.md. Generates:
   - fluid textures   (assets/chemicaladdon/textures/fluid/<id>_still.png + _flow.png)
-  - item textures    (assets/chemicaladdon/textures/item/<id>.png)
-  - item models      (assets/chemicaladdon/models/item/<id>.json)
-  - lang             (zh_cn.json / en_us.json)
+  - item textures    (assets/chemicaladdon/textures/item/<id>.png, <id>_bucket.png)
+  - block textures   (assets/chemicaladdon/textures/block/*.png)
+  - atlas            (assets/minecraft/atlases/blocks.json — stitches fluid sprites
+                      into the block atlas; Registrate datagen does NOT emit this)
+  - lang             (zh_cn.json fully; lang/default/extra.json = English EXTRA keys
+                      fed into Registrate datagen's lang provider — see ChemicalDataGen)
   - Java sources     (registry/AllFluids.java, registry/AllItems.java)
+
+Model JSONs (blockstates / block models / item models / en_us lang) are produced
+by Registrate datagen instead: ./gradlew runData writes them to
+src/generated/resources. This file no longer writes those.
 
 Re-run: python3 tools/gen_species.py   (regenerates everything deterministically)
 """
@@ -140,6 +147,47 @@ def make_item_texture(rgb):
         rows.append(row)
     return rows
 
+
+def make_bucket_texture(rgb):
+    """16x16 fluid-bucket item sprite: dark pail frame + light rim + bail handle,
+    filled with the species colour. Transparent background. Matches the vanilla
+    `<fluid>_bucket.png` convention that the generated bucket item model references.
+
+    Required because Create's `standardFluid()` auto-registers a block + bucket via
+    Registrate, but only emits their model JSON during datagen (which this project
+    does not run for assets). See AGENTS.md and Create's own `honey_bucket` asset.
+    """
+    r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
+    dark = (78, 78, 88, 255)       # pail frame / handle
+    light = (190, 190, 200, 255)   # rim highlight
+    fluid = (r, g, b, 255)
+    palette = {"#": dark, "=": light, "o": fluid}
+    tmpl = [
+        "................",
+        "....########....",  # bail handle (top bar)
+        "....#......#....",  # handle legs
+        "...==========...",  # rim
+        "...#oooooooo#...",  # body: frame + fluid fill
+        "...#oooooooo#...",
+        "...#oooooooo#...",
+        "...#oooooooo#...",
+        "...#oooooooo#...",
+        "...#oooooooo#...",
+        "....#oooooo#....",  # taper toward base
+        "....#oooooo#....",
+        "....#oooooo#....",
+        "....########....",  # bottom
+        "................",
+        "................",
+    ]
+    rows = []
+    for line in tmpl:
+        row = []
+        for ch in line:
+            row += [0, 0, 0, 0] if ch == "." else list(palette[ch])
+        rows.append(row)
+    return rows
+
 # ---------------------------------------------------------------- generators
 def gen_textures():
     for sid, _, _, color, _, _, _, gas in FLUIDS:
@@ -151,14 +199,31 @@ def gen_textures():
     os.makedirs(d, exist_ok=True)
     for sid, _, _, color in SOLIDS:
         write_png(os.path.join(d, f"{sid}.png"), make_item_texture(color))
+    # fluid bucket item sprites (one per species, matching <fluid>_bucket item models)
+    for sid, _, _, color, *_ in FLUIDS:
+        write_png(os.path.join(d, f"{sid}_bucket.png"), make_bucket_texture(color))
 
-def gen_item_models():
-    d = os.path.join(ASSETS, "models/item")
+def gen_atlas():
+    """Register every fluid still/flow texture as a sprite source for the block
+    atlas. In 1.20.1 the block atlas (minecraft:blocks) is composed from sprite
+    sources in assets/minecraft/atlases/blocks.json — block-model texture refs
+    alone do NOT get fluid textures stitched, so without this the in-world fluid
+    renders as the missing-texture sprite (purple/black). Forge's fluid renderer
+    resolves still/flow sprites via getTextureAtlas(LOCATION_BLOCKS).apply(...),
+    which returns the missing sprite for any unstitched texture.
+
+    Registrate datagen does NOT emit this file; Create and createaddition both
+    hand-author their assets/minecraft/atlases/blocks.json for the same reason."""
+    d = os.path.join(ROOT, "src/main/resources/assets/minecraft/atlases")
     os.makedirs(d, exist_ok=True)
-    for sid, _, _, _ in SOLIDS:
-        with open(os.path.join(d, f"{sid}.json"), "w", encoding="utf-8") as f:
-            f.write('{\n  "parent": "minecraft:item/generated",\n  "textures": {\n'
-                    f'    "layer0": "chemicaladdon:item/{sid}"\n  }}\n}}\n')
+    import json as _json
+    sources = []
+    for sid, *_ in FLUIDS:
+        sources.append({"type": "single", "resource": f"chemicaladdon:fluid/{sid}_still"})
+        sources.append({"type": "single", "resource": f"chemicaladdon:fluid/{sid}_flow"})
+    with open(os.path.join(d, "blocks.json"), "w", encoding="utf-8") as f:
+        _json.dump({"sources": sources}, f, indent=2)
+        f.write("\n")
 
 def make_brick_texture(rgb):
     """Brick pattern: 8x8 brick rows with dark mortar lines."""
@@ -277,22 +342,29 @@ EXTRA_LANG_EN = {
 
 
 def gen_lang():
+    # zh_cn stays fully py-generated (single source of truth, survives regeneration).
     zh = dict(EXTRA_LANG_ZH)
-    en = dict(EXTRA_LANG_EN)
-    for sid, cn, en_name, _, _, _, _, _ in FLUIDS:
+    for sid, cn, _, _, _, _, _, _ in FLUIDS:
         zh[f"fluid.chemicaladdon.{sid}"] = cn
-        en[f"fluid.chemicaladdon.{sid}"] = en_name
-    for sid, cn, en_name, _ in SOLIDS:
+        zh[f"item.chemicaladdon.{sid}_bucket"] = cn + "桶"
+    for sid, cn, _, _ in SOLIDS:
         zh[f"item.chemicaladdon.{sid}"] = cn
-        en[f"item.chemicaladdon.{sid}"] = en_name
-    for sid, cn, en_name, _ in BLOCKS:
+    for sid, cn, _, _ in BLOCKS:
         zh[f"block.chemicaladdon.{sid}"] = cn
-        en[f"block.chemicaladdon.{sid}"] = en_name
     import json as _json
     with open(os.path.join(ASSETS, "lang/zh_cn.json"), "w", encoding="utf-8") as f:
         _json.dump(zh, f, ensure_ascii=False, indent=2)
-    with open(os.path.join(ASSETS, "lang/en_us.json"), "w", encoding="utf-8") as f:
-        _json.dump(en, f, ensure_ascii=False, indent=2)
+
+    # en_us is owned by Registrate datagen (generated -> src/generated/resources).
+    # The English EXTRA keys (goggles/status/assemble/gui/itemGroup) have no
+    # `.lang()` call anywhere, so they are exported here and fed into datagen's
+    # lang provider via ChemicalDataGen (Create's lang/default/ pattern).
+    # NOTE: en_us must NOT exist in src/main/resources or it would collide with
+    # the datagen output on the runtime classpath.
+    default_dir = os.path.join(ASSETS, "lang/default")
+    os.makedirs(default_dir, exist_ok=True)
+    with open(os.path.join(default_dir, "extra.json"), "w", encoding="utf-8") as f:
+        _json.dump(EXTRA_LANG_EN, f, ensure_ascii=False, indent=2)
 
 def fluid_entry(sid, en_name, density, viscosity, temp, gas):
     return ("\n\tpublic static final FluidEntry<ForgeFlowingFluid.Flowing> "
@@ -302,6 +374,11 @@ def fluid_entry(sid, en_name, density, viscosity, temp, gas):
             f"\t\t.properties(b -> b.density({density})\n"
             f"\t\t\t.viscosity({viscosity})\n"
             f"\t\t\t.temperature({temp}))\n"
+            "\t\t.source(ForgeFlowingFluid.Source::new)\n"
+            "\t\t.block()\n"
+            f"\t\t.lang(\"{en_name}\")\n"
+            "\t\t.build()\n"
+            f"\t\t.bucket().lang(\"{en_name} Bucket\").build()\n"
             "\t\t.register();")
 
 def gen_fluids_java():
@@ -344,9 +421,9 @@ def gen_items_java():
 
 if __name__ == "__main__":
     gen_textures()
-    gen_item_models()
+    gen_atlas()
     gen_block_textures()
     gen_lang()
     gen_fluids_java()
     gen_items_java()
-    print(f"OK: {len(FLUIDS)} fluids, {len(SOLIDS)} solids, {len(BLOCKS)} blocks -> textures/models/lang/Java generated")
+    print(f"OK: {len(FLUIDS)} fluids, {len(SOLIDS)} solids, {len(BLOCKS)} blocks -> textures/atlas/lang/Java generated")

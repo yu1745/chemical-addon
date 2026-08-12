@@ -38,6 +38,9 @@ public class ChemicalAddon {
 		AllBlocks.register();
 		REGISTRATE.registerEventListeners(modBus);
 
+		// datagen: extra English lang keys (after Registrate's own listener)
+		modBus.addListener(net.minecraftforge.eventbus.api.EventPriority.LOWEST, ChemicalDataGen::gatherData);
+
 		// client: block entity renderers (runs after registries are populated)
 		modBus.addListener((FMLClientSetupEvent event) -> ChemicalAddonClient.init());
 

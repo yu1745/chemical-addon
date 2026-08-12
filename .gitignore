@@ -5,3 +5,4 @@ eclipse/
 bin/
 .idea/
 *.iml
+.zcode/

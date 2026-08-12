@@ -76,6 +76,10 @@ minecraft {
             workingDirectory project.file('run')
             property 'forge.logging.markers', 'REGISTRIES'
             property 'forge.logging.console.level', 'debug'
+            // Create's mixins need refmap remapping in dev runs (same as client/server/gameTestServer)
+            arg '-mixin.config=create.mixins.json'
+            property "mixin.env.remapRefMap", "true"
+            property "mixin.env.refMapRemappingFile", "${projectDir}/build/createSrgToMcp/output.srg"
             args '--mod', 'chemicaladdon', '--all', '--output', file('src/generated/resources/'), '--existing', file('src/main/resources/')
             mods {
                 chemicaladdon {

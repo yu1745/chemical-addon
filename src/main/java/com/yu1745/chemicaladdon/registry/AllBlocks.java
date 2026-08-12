@@ -18,24 +18,36 @@ public class AllBlocks {
 	public static final BlockEntry<ChemicalBrickBlock> CHEMICAL_BRICK =
 		REGISTRATE.block("chemical_brick", ChemicalBrickBlock::new)
 			.properties(p -> p.mapColor(MapColor.STONE).strength(2.0f, 6.0f))
+			.lang("Chemical Brick")
+			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
+				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
 			.simpleItem()
 			.register();
 
 	public static final BlockEntry<ReactorControllerBlock> REACTOR_CONTROLLER =
 		REGISTRATE.block("reactor_controller", ReactorControllerBlock::new)
 			.properties(p -> p.mapColor(MapColor.METAL).strength(3.0f, 6.0f))
+			.lang("Reactor Controller")
+			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
+				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
 			.simpleItem()
 			.register();
 
 	public static final BlockEntry<FilterPressBlock> FILTER_PRESS =
 		REGISTRATE.block("filter_press", FilterPressBlock::new)
 			.properties(p -> p.mapColor(MapColor.METAL).strength(3.0f, 6.0f))
+			.lang("Filter Press")
+			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
+				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
 			.simpleItem()
 			.register();
 
 	public static final BlockEntry<SettlingBasinBlock> SETTLING_BASIN =
 		REGISTRATE.block("settling_basin", SettlingBasinBlock::new)
 			.properties(p -> p.mapColor(MapColor.METAL).strength(3.0f, 6.0f))
+			.lang("Settling Basin")
+			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
+				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
 			.simpleItem()
 			.register();
 
