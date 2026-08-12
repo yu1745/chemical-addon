@@ -150,8 +150,13 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		}
 		int height = getHeight();
 		BlockPos core = worldPosition.offset(inward.getStepX(), 0, inward.getStepZ());
+		// absorb area = interior column + the open rim and one block above it:
+		// a bucket click from inside the vessel (or from below the rim) places
+		// the source on the far side of the clicked block, i.e. at y = height or
+		// height+1 of the column — those must be in range or poured fluids land
+		// outside the polled area and are never absorbed
 		var area = new net.minecraft.world.phys.AABB(core.getX(), core.getY(), core.getZ(),
-			core.getX() + 1, core.getY() + height, core.getZ() + 1);
+			core.getX() + 1, core.getY() + height + 2, core.getZ() + 1);
 
 		// items thrown in through the open top
 		boolean absorbed = false;
@@ -173,7 +178,7 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		}
 
 		// fluids poured in (source blocks only; flowing fluid is left to drain)
-		for (int y = 0; y < height; y++) {
+		for (int y = 0; y <= height + 1; y++) {
 			BlockPos p = core.offset(0, y, 0);
 			BlockState bs = level.getBlockState(p);
 			if (bs.isAir()) {
@@ -183,7 +188,8 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 			if (fs.isEmpty() || !fs.isSource()) {
 				continue;
 			}
-			if (tank.fill(new FluidStack(fs.getType(), 1000), IFluidHandler.FluidAction.EXECUTE) == 1000) {
+			int filled = tank.fill(new FluidStack(fs.getType(), 1000), IFluidHandler.FluidAction.EXECUTE);
+			if (filled == 1000) {
 				level.setBlock(p, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
 				absorbed = true;
 			}

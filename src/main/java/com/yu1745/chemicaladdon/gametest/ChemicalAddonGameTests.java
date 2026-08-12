@@ -149,6 +149,59 @@ public class ChemicalAddonGameTests {
 			.thenSucceed();
 	}
 
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 40)
+	public static void openVesselAbsorbsFluidAtEveryPourSpot(GameTestHelper helper) {
+		// open-topped vessel, height 3 (one wall layer): interior core at rel (2,2,2)
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick);
+			}
+		}
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				if (x == 2 && z == 2) {
+					continue;
+				}
+				BlockPos p = new BlockPos(x, 2, z);
+				helper.setBlock(p, x == 2 && z == 1 ? AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState() : brick);
+			}
+		}
+		helper.setBlock(new BlockPos(2, 2, 2), Blocks.AIR.defaultBlockState());
+		ReactorControllerBlockEntity be = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 1));
+		helper.assertTrue(be.tryAssemble().ok() && be.isOpen(), "open vessel should assemble");
+
+		// a bucket click can land the source at the core, the open rim, or one
+		// block above the rim — all must be absorbed (rel coords; setBlock absorbs).
+		// One serial sequence: setBlock + absorb + assert + drain, per spot.
+		BlockPos spot1 = new BlockPos(2, 2, 2); // interior core
+		BlockPos spot2 = new BlockPos(2, 3, 2); // open rim
+		BlockPos spot3 = new BlockPos(2, 4, 2); // one above the rim
+		helper.startSequence()
+			.thenExecute(() -> helper.setBlock(spot1,
+				AllFluids.WATER.get().getSource().defaultFluidState().createLegacyBlock()))
+			.thenIdle(3)
+			.thenExecute(() -> assertAbsorbed(helper, be, spot1))
+			.thenExecute(() -> be.getTank().drain(Integer.MAX_VALUE, FluidAction.EXECUTE))
+			.thenExecute(() -> helper.setBlock(spot2,
+				AllFluids.WATER.get().getSource().defaultFluidState().createLegacyBlock()))
+			.thenIdle(3)
+			.thenExecute(() -> assertAbsorbed(helper, be, spot2))
+			.thenExecute(() -> be.getTank().drain(Integer.MAX_VALUE, FluidAction.EXECUTE))
+			.thenExecute(() -> helper.setBlock(spot3,
+				AllFluids.WATER.get().getSource().defaultFluidState().createLegacyBlock()))
+			.thenIdle(3)
+			.thenExecute(() -> assertAbsorbed(helper, be, spot3))
+			.thenSucceed();
+	}
+
+	private static void assertAbsorbed(GameTestHelper helper, ReactorControllerBlockEntity be, BlockPos spot) {
+		helper.assertTrue(hasFluid(be, AllFluids.WATER.get().getSource(), 900),
+			"water poured at " + spot + " should be absorbed into the tank");
+		helper.assertTrue(helper.getBlockState(spot).isAir(),
+			"fluid block at " + spot + " should be consumed");
+	}
+
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void brokenVesselSpillsContents(GameTestHelper helper) {
 		buildReactor(helper);
