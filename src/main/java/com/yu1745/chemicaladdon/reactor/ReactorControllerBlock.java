@@ -87,9 +87,8 @@ public class ReactorControllerBlock extends Block implements EntityBlock {
 	@Nullable
 	@Override
 	public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> type) {
-		if (level.isClientSide) {
-			return null;
-		}
+		// tick on both sides: the server runs the reaction/spill engine, the client
+		// chases the fluid-surface animation (renderedLevel). The BE tick() branches on side.
 		return (lvl, pos, st, be) -> {
 			if (be instanceof ReactorControllerBlockEntity controller) {
 				controller.tick();

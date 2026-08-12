@@ -17,6 +17,7 @@ import com.yu1745.chemicaladdon.recipe.ChemicalReactionRecipe;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
 import com.yu1745.chemicaladdon.registry.AllBlocks;
 
+import net.createmod.catnip.animation.LerpedFloat;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -112,6 +113,9 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 	@Nullable
 	private Direction inward = null; // direction from the controller into the vessel (for item rendering)
 
+	/** Client-side fluid surface animation (chases the real fill state). */
+	private final LerpedFloat renderedLevel = LerpedFloat.linear().startWithValue(0);
+
 	@Override
 	public void addBehaviours(List<BlockEntityBehaviour> behaviours) {
 		// no behaviours yet (gauges/ValueSettings will register here in later milestones)
@@ -124,7 +128,13 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 	@Override
 	public void tick() {
 		super.tick();
-		if (level == null || level.isClientSide) {
+		if (level == null) {
+			return;
+		}
+		if (level.isClientSide) {
+			// chase the fluid surface toward the synced fill state (FluidTank-style easing)
+			renderedLevel.chase(getFillState(), 0.5, LerpedFloat.Chaser.EXP);
+			renderedLevel.tickChaser();
 			return;
 		}
 		tickCounter++;
@@ -649,6 +659,16 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 
 	public int getHeight() {
 		return tank.getTankCapacity(0) / TANK_CAPACITY;
+	}
+
+	/** Tank fill fraction (0..1); capacity is height-scaled, so this maps onto the interior height. */
+	public float getFillState() {
+		return (float) tank.getTotalAmount() / tank.getTankCapacity(0);
+	}
+
+	/** Animated fluid surface fraction, interpolated for smooth rendering (client only). */
+	public float getRenderedLevel(float partialTicks) {
+		return renderedLevel.getValue(partialTicks);
 	}
 
 	public int getTemperature() {
