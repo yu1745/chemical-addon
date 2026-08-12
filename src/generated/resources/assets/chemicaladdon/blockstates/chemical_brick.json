@@ -1,28 +1,7 @@
 {
   "variants": {
-    "bottom=false,shape=plain,top=false": {
-      "model": "chemicaladdon:block/chemical_brick/block_middle"
-    },
-    "bottom=false,shape=plain,top=true": {
-      "model": "chemicaladdon:block/chemical_brick/block_top"
-    },
-    "bottom=false,shape=window,top=false": {
-      "model": "chemicaladdon:block/chemical_brick/block_middle_window"
-    },
-    "bottom=false,shape=window,top=true": {
-      "model": "chemicaladdon:block/chemical_brick/block_top_window"
-    },
-    "bottom=true,shape=plain,top=false": {
-      "model": "chemicaladdon:block/chemical_brick/block_bottom"
-    },
-    "bottom=true,shape=plain,top=true": {
-      "model": "chemicaladdon:block/chemical_brick/block_single"
-    },
-    "bottom=true,shape=window,top=false": {
-      "model": "chemicaladdon:block/chemical_brick/block_bottom_window"
-    },
-    "bottom=true,shape=window,top=true": {
-      "model": "chemicaladdon:block/chemical_brick/block_single_window"
+    "": {
+      "model": "chemicaladdon:block/chemical_brick"
     }
   }
 }

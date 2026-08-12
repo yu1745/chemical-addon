@@ -1,0 +1,7 @@
+{
+  "replace": false,
+  "values": [
+    "chemicaladdon:chemical_brick",
+    "chemicaladdon:chemical_glass"
+  ]
+}

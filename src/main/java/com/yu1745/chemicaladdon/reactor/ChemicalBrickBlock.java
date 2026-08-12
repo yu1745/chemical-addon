@@ -1,60 +1,30 @@
 package com.yu1745.chemicaladdon.reactor;
 
-import java.util.Locale;
-
 import javax.annotation.Nullable;
 
 import net.minecraft.core.BlockPos;
-import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockBehaviour.Properties;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.StateDefinition;
-import net.minecraft.world.level.block.state.properties.BooleanProperty;
-import net.minecraft.world.level.block.state.properties.EnumProperty;
 
 /**
- * Structural block of the reaction vessel / settling basin shell. Has a light
- * BE that proxies fluid/item capabilities to the assembled master (Create
- * FluidTank pattern). When broken, any nearby controller is notified so the
- * structure de-assembles.
- *
- * The block uses Create's FluidTank position-aware model scheme: TOP/BOTTOM
- * (which plate layer this brick is in) and SHAPE (windowed or plain wall)
- * are written by the master when the multiblock forms, so the shell shows the
- * matching hollow-wall model variant (top/middle/bottom/single) and its
- * connected-texture windows adapt as the vessel grows.
+ * Opaque structural block of the vessel shell. Part of the "vessel wall" series
+ * (with {@link ChemicalGlassBlock}): the multiblock validates the shell by the
+ * {@code chemicaladdon:vessel_walls} block tag, so transparency is decided by
+ * which material the player builds with — brick is solid, glass is see-through
+ * (Tinkers seared-series pattern). Has a light BE that proxies fluid/item
+ * capabilities to the assembled master; when broken, nearby controllers are
+ * notified so the structure de-assembles.
  */
 public class ChemicalBrickBlock extends Block implements EntityBlock {
 
 	private static final int SEARCH_RADIUS = 7; // n up to 7 -> corner brick ~5.2 blocks from controller
 
-	public static final BooleanProperty TOP = BooleanProperty.create("top");
-	public static final BooleanProperty BOTTOM = BooleanProperty.create("bottom");
-	public static final EnumProperty<Shape> SHAPE = EnumProperty.create("shape", Shape.class);
-
-	/** Wall window layout of a single brick (mirrors Create's FluidTankBlock.Shape). */
-	public enum Shape implements StringRepresentable {
-		PLAIN, WINDOW;
-
-		@Override
-		public String getSerializedName() {
-			return name().toLowerCase(Locale.ROOT);
-		}
-	}
-
 	public ChemicalBrickBlock(Properties properties) {
 		super(properties);
-		registerDefaultState(defaultBlockState().setValue(TOP, true).setValue(BOTTOM, true).setValue(SHAPE, Shape.WINDOW));
-	}
-
-	@Override
-	protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
-		super.createBlockStateDefinition(builder);
-		builder.add(TOP, BOTTOM, SHAPE);
 	}
 
 	@Nullable
@@ -87,19 +57,24 @@ public class ChemicalBrickBlock extends Block implements EntityBlock {
 
 	@Override
 	public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
-		if (!state.is(newState.getBlock())) {
-			for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {
-				for (int dy = -SEARCH_RADIUS; dy <= SEARCH_RADIUS; dy++) {
-					for (int dz = -SEARCH_RADIUS; dz <= SEARCH_RADIUS; dz++) {
-						BlockEntity be = level.getBlockEntity(pos.offset(dx, dy, dz));
-						if (be instanceof ReactorControllerBlockEntity controller) {
-							controller.invalidateStructure(pos);
-						}
-						if (be instanceof SettlingBasinBlockEntity basin) {
-							basin.invalidateStructure(pos);
-						}
+		// A structural brick carries masterPos == its controller; a stray brick
+		// (placed next to, but not part of, an assembled vessel) has masterPos ==
+		// null. Only tear down the vessel this brick actually belonged to — a
+		// stray brick must NOT invalidate a neighbouring reactor (Create
+		// FluidTank-style: the broken block notifies its own master, no radius scan).
+		// The BE is still alive here (super.onRemove removes it below).
+		if (!state.is(newState.getBlock()) && !level.isClientSide) {
+			if (level.getBlockEntity(pos) instanceof ChemicalBrickBlockEntity brick) {
+				BlockPos masterPos = brick.getMasterPos();
+				if (masterPos != null) {
+					BlockEntity be = level.getBlockEntity(masterPos);
+					if (be instanceof ReactorControllerBlockEntity controller) {
+						controller.invalidateStructure(pos);
+					} else if (be instanceof SettlingBasinBlockEntity basin) {
+						basin.invalidateStructure(pos);
 					}
 				}
+				// masterPos == null → stray/unbound brick: no-op
 			}
 		}
 		super.onRemove(state, level, pos, newState, isMoving);

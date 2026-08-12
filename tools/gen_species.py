@@ -109,9 +109,11 @@ def write_png(path, rgba_rows):
     def chunk(tag, data):
         c = tag + data
         return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c) & 0xffffffff)
+    w = len(rgba_rows[0]) // 4
+    h = len(rgba_rows)
     raw = b"".join(b"\x00" + bytes(row) for row in rgba_rows)
     png = (b"\x89PNG\r\n\x1a\n"
-           + chunk(b"IHDR", struct.pack(">IIBBBBB", 16, 16, 8, 6, 0, 0, 0))
+           + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
            + chunk(b"IDAT", zlib.compress(raw))
            + chunk(b"IEND", b""))
     with open(path, "wb") as f:
@@ -120,18 +122,110 @@ def write_png(path, rgba_rows):
 def hex_rgba(rgb, alpha):
     return ((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, alpha)
 
-def make_fluid_texture(rgb, gas):
-    """16x16 vertical gradient; gases get a lighter, more transparent look."""
-    alpha = 140 if gas else 220
-    rows = []
-    r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
-    for y in range(16):
-        f = 1.0 - 0.18 * (y / 15.0)  # slightly darker at bottom
-        rr, gg, bb = int(r * f), int(g * f), int(b * f)
-        if gas and (y + 4) % 7 == 0:  # faint banding to suggest gas
-            rr, gg, bb = min(255, int(rr * 1.15)), min(255, int(gg * 1.15)), min(255, int(bb * 1.15))
-        rows.append([rr, gg, bb, alpha] * 16)
-    return rows
+def read_indexed_png(path):
+    """Decode a paletted PNG (with optional tRNS alpha) into RGBA rows. Used to
+    load the grayscale fluid base sprite (Create's potion texture)."""
+    with open(path, "rb") as f:
+        data = f.read()
+    assert data[:8] == b"\x89PNG\r\n\x1a\n", "not a PNG"
+    i = 8
+    w = h = bd = ct = None
+    plte = None
+    trns = b""
+    idat = b""
+    while i < len(data):
+        ln = struct.unpack(">I", data[i:i+4])[0]
+        tag = data[i+4:i+8]
+        body = data[i+8:i+8+ln]
+        if tag == b"IHDR":
+            w, h, bd, ct = struct.unpack(">IIBB", body[:10])
+        elif tag == b"PLTE":
+            plte = body
+        elif tag == b"tRNS":
+            trns = body
+        elif tag == b"IDAT":
+            idat += body
+        i += 12 + ln
+    assert ct == 3 and plte is not None, "expected indexed (palette) PNG"
+    raw = zlib.decompress(idat)
+    stride = (w * bd + 7) // 8
+    pos = 0
+    prev = bytearray(stride)
+    scanlines = []
+    for _ in range(h):
+        ft = raw[pos]; pos += 1
+        line = bytearray(raw[pos:pos+stride]); pos += stride
+        out = bytearray(stride)
+        for x in range(stride):
+            a = out[x-1] if x >= 1 else 0
+            b = prev[x]
+            c = prev[x-1] if x >= 1 else 0
+            if ft == 0:
+                v = line[x]
+            elif ft == 1:
+                v = (line[x] + a) & 255
+            elif ft == 2:
+                v = (line[x] + b) & 255
+            elif ft == 3:
+                v = (line[x] + ((a + b) >> 1)) & 255
+            else:
+                p = a + b - c
+                pa, pb, pc = abs(p-a), abs(p-b), abs(p-c)
+                pr = a if (pa <= pb and pa <= pc) else (b if pb <= pc else c)
+                v = (line[x] + pr) & 255
+            out[x] = v
+        prev = out
+        scanlines.append(out)
+    mask = (1 << bd) - 1
+    rgba_rows = []
+    for scan in scanlines:
+        row = []
+        for x in range(w):
+            if bd < 8:
+                bit = x * bd
+                idx = (scan[bit // 8] >> (8 - bd - (bit % 8))) & mask
+            else:
+                idx = scan[x]
+            row += [plte[idx*3], plte[idx*3+1], plte[idx*3+2],
+                    trns[idx] if idx < len(trns) else 255]
+        rgba_rows.append(row)
+    return w, h, rgba_rows
+
+
+_FLUID_BASES = {}
+def load_fluid_base(which):
+    """Load the desaturated fluid base sprite (still/flow) shipped under tools/.
+    This is Create's potion sprite — already neutral grey (R==G==B==luminance),
+    seamlessly tileable, 32-frame animated — used as the neutral base we tint per
+    species instead of hand-drawing gradients (which produced seam bands when
+    stacked)."""
+    if which not in _FLUID_BASES:
+        _FLUID_BASES[which] = read_indexed_png(
+            os.path.join(ROOT, "tools", f"fluid_base_{which}.png"))
+    return _FLUID_BASES[which]
+
+
+def tint_fluid(base, rgb, gas):
+    """Multiply-tint the grayscale base by the species colour, preserving the
+    base's luminance structure (waves/highlights/animation) and edge alpha. This
+    is the same multiply blend Create applies at runtime to potion fluids, baked
+    into the sprite so each species renders self-contained. Gases are made more
+    translucent so they read as diffuse rather than liquid."""
+    w, h, rows = base
+    tr = (rgb >> 16) & 0xFF
+    tg = (rgb >> 8) & 0xFF
+    tb = rgb & 0xFF
+    alpha_scale = 0.6 if gas else 1.0
+    out = []
+    for row in rows:
+        new = []
+        for x in range(w):
+            i = x * 4
+            lum = row[i]  # base is pure gray: R==G==B
+            new += [lum * tr // 255, lum * tg // 255, lum * tb // 255,
+                    int(row[i+3] * alpha_scale)]
+        out.append(new)
+    return out
 
 def make_item_texture(rgb):
     r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
@@ -190,11 +284,20 @@ def make_bucket_texture(rgb):
 
 # ---------------------------------------------------------------- generators
 def gen_textures():
+    still_base = load_fluid_base("still")
+    flow_base = load_fluid_base("flow")
+    d = os.path.join(ASSETS, "textures/fluid")
+    os.makedirs(d, exist_ok=True)
+    anim_mcmeta = '{"animation": {"frametime": 1}}\n'
     for sid, _, _, color, _, _, _, gas in FLUIDS:
-        d = os.path.join(ASSETS, "textures/fluid")
-        os.makedirs(d, exist_ok=True)
-        write_png(os.path.join(d, f"{sid}_still.png"), make_fluid_texture(color, gas))
-        write_png(os.path.join(d, f"{sid}_flow.png"), make_fluid_texture(color, gas))
+        write_png(os.path.join(d, f"{sid}_still.png"), tint_fluid(still_base, color, gas))
+        write_png(os.path.join(d, f"{sid}_flow.png"), tint_fluid(flow_base, color, gas))
+        # animation metadata: base sprite is a vertical sheet of 32 frames (16x512
+        # still / 32x1024 flow); without this Minecraft would render the whole
+        # strip as one tall image. Mirrors Create's potion_still.png.mcmeta.
+        for kind in ("still", "flow"):
+            with open(os.path.join(d, f"{sid}_{kind}.png.mcmeta"), "w", encoding="utf-8") as f:
+                f.write(anim_mcmeta)
     d = os.path.join(ASSETS, "textures/item")
     os.makedirs(d, exist_ok=True)
     for sid, _, _, color in SOLIDS:

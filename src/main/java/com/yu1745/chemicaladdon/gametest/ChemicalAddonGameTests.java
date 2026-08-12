@@ -49,7 +49,7 @@ public class ChemicalAddonGameTests {
 		buildReactor(helper);
 		ReactorControllerBlockEntity be = reactor(helper);
 		helper.assertTrue(be.isAssembled(), "reactor should be assembled after valid structure");
-		helper.assertTrue(be.getTank().getTankCapacity(0) >= 16000, "capacity should scale with height");
+		helper.assertTrue(be.getTank().getTankCapacity(0) >= 1000, "capacity should scale with height");
 		helper.succeed();
 	}
 
@@ -79,16 +79,105 @@ public class ChemicalAddonGameTests {
 		helper.assertTrue(be.tryAssemble().ok(), "5x5x5 cube should assemble");
 		helper.assertTrue(be.getSize() == 5, "shell size should be 5 (got " + be.getSize() + ")");
 		helper.assertTrue(be.getHeight() == 3, "interior height should be 3");
-		helper.assertTrue(be.getTank().getTankCapacity(0) == 16000 * 27,
-			"capacity should be 27 interior blocks * 16000 (got " + be.getTank().getTankCapacity(0) + ")");
-		// shell model states written on assembly: a middle wall brick is neither top nor bottom
-		BlockState midWall = helper.getBlockState(new BlockPos(2, 3, 4)); // south wall centre, middle ring layer
-		helper.assertTrue(midWall.is(AllBlocks.CHEMICAL_BRICK.get())
-				&& !midWall.getValue(ChemicalBrickBlock.TOP) && !midWall.getValue(ChemicalBrickBlock.BOTTOM),
-			"middle wall brick should be a middle wall variant");
-		// the window centre of each face is a WINDOW brick (visible fluid)
-		helper.assertTrue(midWall.getValue(ChemicalBrickBlock.SHAPE) == ChemicalBrickBlock.Shape.WINDOW,
-			"face-centre brick should be windowed");
+		helper.assertTrue(be.getTank().getTankCapacity(0) == 1000 * 27,
+			"capacity should be 27 interior blocks * 1000 (got " + be.getTank().getTankCapacity(0) + ")");
+		// every shell block belongs to the vessel_walls tag (brick + glass series)
+		helper.assertTrue(helper.getBlockState(new BlockPos(2, 3, 4)).is(ChemicalAddon.VESSEL_WALLS),
+			"shell block should be in the vessel_walls tag");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void reactorAssemblesWithGlassWall(GameTestHelper helper) {
+		// Tinkers-style: the shell can be any block in the vessel_walls series —
+		// build one face out of transparent chemical_glass, still assembles
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState glass = AllBlocks.CHEMICAL_GLASS.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick);
+				helper.setBlock(new BlockPos(x, 3, z), brick);
+			}
+		}
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				if (x == 2 && z == 2) {
+					continue; // interior
+				}
+				// south face (z=3) is glass, rest brick; controller on north wall middle
+				helper.setBlock(new BlockPos(x, 2, z),
+					x == 2 && z == 1 ? controller : z == 3 ? glass : brick);
+			}
+		}
+		helper.setBlock(new BlockPos(2, 2, 2), Blocks.AIR.defaultBlockState());
+		ReactorControllerBlockEntity be = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 1));
+		helper.assertTrue(be.tryAssemble().ok(), "shell with a glass wall should assemble");
+		helper.assertTrue(be.isAssembled(), "glass-walled reactor should be assembled");
+		// glass bricks are proxied to the controller too (capability via master)
+		BlockEntity glassBe = helper.getBlockEntity(new BlockPos(1, 2, 3));
+		helper.assertTrue(glassBe != null, "glass block should have a proxy BE");
+		LazyOptional<IFluidHandler> cap = glassBe.getCapability(ForgeCapabilities.FLUID_HANDLER);
+		helper.assertTrue(cap.isPresent(), "glass wall must proxy FLUID_HANDLER to the controller");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void reactorAssemblesCuboidShell(GameTestHelper helper) {
+		// 5x5x3 cuboid (W=5, H=3): interior 3x3x1 — Tinkers smeltery style, not a cube
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		for (int x = 0; x <= 4; x++) {
+			for (int z = 0; z <= 4; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick); // bottom
+				helper.setBlock(new BlockPos(x, 3, z), brick); // top (sealed)
+			}
+		}
+		for (int x = 0; x <= 4; x++) {
+			for (int z = 0; z <= 4; z++) {
+				boolean wall = x == 0 || x == 4 || z == 0 || z == 4;
+				if (wall && !(x == 2 && z == 0)) {
+					helper.setBlock(new BlockPos(x, 2, z), brick);
+				}
+			}
+		}
+		helper.setBlock(new BlockPos(2, 2, 0), controller);
+		ReactorControllerBlockEntity be = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 0));
+		helper.assertTrue(be.tryAssemble().ok(), "5x5x3 cuboid should assemble");
+		helper.assertTrue(be.getSize() == 5, "footprint W should be 5 (got " + be.getSize() + ")");
+		helper.assertTrue(be.getHeight() == 1, "interior height should be 1 (got " + be.getHeight() + ")");
+		helper.assertTrue(be.getTank().getTankCapacity(0) == 1000 * 9,
+			"capacity should be 3x3x1 interior * 1000 (got " + be.getTank().getTankCapacity(0) + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void reactorAssemblesWithControllerOnMiddleRing(GameTestHelper helper) {
+		// user-style build: solid 5x5 floor, 4 open ring layers (3x3 hollow core),
+		// no roof; the controller replaces a wall brick on the 2nd ring layer
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		for (int x = 0; x <= 4; x++) {
+			for (int z = 0; z <= 4; z++) {
+				helper.setBlock(new BlockPos(x, 0, z), brick); // solid floor
+			}
+		}
+		for (int y = 1; y <= 4; y++) {
+			for (int x = 0; x <= 4; x++) {
+				for (int z = 0; z <= 4; z++) {
+					boolean wall = x == 0 || x == 4 || z == 0 || z == 4;
+					if (wall && !(y == 2 && x == 2 && z == 0)) {
+						helper.setBlock(new BlockPos(x, y, z), brick);
+					}
+				}
+			}
+		}
+		helper.setBlock(new BlockPos(2, 2, 0), AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState());
+		ReactorControllerBlockEntity be = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 0));
+		helper.assertTrue(be.tryAssemble().ok(), "controller on a middle ring layer should assemble");
+		helper.assertTrue(be.isAssembled(), "should be assembled");
+		helper.assertTrue(be.getSize() == 5 && be.getHeight() == 4,
+			"5x5 floor + 4 rings should give size 5 height 4 (got " + be.getSize() + "x" + be.getHeight() + ")");
+		helper.assertTrue(be.isOpen(), "no roof -> open-topped");
 		helper.succeed();
 	}
 
@@ -294,11 +383,77 @@ public class ChemicalAddonGameTests {
 	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void strayBrickDoesNotBreakReactor(GameTestHelper helper) {
+		// A stray chemical brick touching — but not part of — an assembled reactor
+		// shell must not tear the structure down when placed and then removed.
+		// Regression: previously onRemove scanned a radius and invalidated every
+		// nearby controller, spilling a vessel the brick never belonged to.
+		buildReactor(helper);
+		ReactorControllerBlockEntity be = reactor(helper);
+		be.getTank().fill(new FluidStack(AllFluids.WATER.get().getSource(), 1000), FluidAction.EXECUTE);
+		helper.assertTrue(be.isAssembled() && be.getTank().getTotalAmount() == 1000,
+			"baseline: assembled reactor holding 1000 mB");
+
+		// stray brick at x=0: outside the 3x3x3 shell (x=1..3) but adjacent to the wall
+		BlockPos stray = new BlockPos(0, 2, 2);
+		helper.setBlock(stray, AllBlocks.CHEMICAL_BRICK.get().defaultBlockState());
+		helper.assertTrue(be.isAssembled(), "placing a stray brick must not disassemble the reactor");
+		helper.assertTrue(be.getTank().getTotalAmount() == 1000, "placing a stray brick must not spill contents");
+
+		// breaking the stray brick must be a complete no-op for the vessel
+		helper.setBlock(stray, Blocks.AIR.defaultBlockState());
+		helper.assertTrue(be.isAssembled(), "breaking a stray brick must not disassemble the reactor");
+		helper.assertTrue(be.getTank().getTotalAmount() == 1000,
+			"breaking a stray brick must not spill any fluid");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void reactorAssemblesOverFluid(GameTestHelper helper) {
+		// Build a 3x3x3 shell leaving the controller slot as a brick, pre-fill the
+		// interior with water, THEN swap the controller in (closing the shell last).
+		// Regression: the interior check used isAir(), so a fluid inside rejected
+		// assembly with INTERIOR_BLOCKED; the water must be absorbed into the tank.
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		// floor + ceiling
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick);
+				helper.setBlock(new BlockPos(x, 3, z), brick);
+			}
+		}
+		// middle ring walls (controller slot at (2,2,1) kept as brick for now)
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				if (x == 2 && z == 2) continue; // interior
+				helper.setBlock(new BlockPos(x, 2, z), brick);
+			}
+		}
+		// pre-fill the interior with water
+		helper.setBlock(new BlockPos(2, 2, 2), Blocks.WATER.defaultBlockState());
+		helper.assertTrue(!helper.getBlockState(new BlockPos(2, 2, 2)).isAir(),
+			"baseline: water is sitting in the interior");
+
+		// close the shell last by swapping the controller in
+		helper.setBlock(new BlockPos(2, 2, 1), AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState());
+		ReactorControllerBlockEntity be = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 1));
+		helper.assertTrue(be.tryAssemble().ok(), "reactor must assemble even with fluid in the interior");
+		helper.assertTrue(be.isAssembled(), "should be assembled");
+		// the pre-existing water must have been absorbed into the tank
+		helper.assertTrue(helper.getBlockState(new BlockPos(2, 2, 2)).isAir(),
+			"interior water must be cleared on assembly");
+		helper.assertTrue(be.getTank().getTotalAmount() == 1000,
+			"interior water (1 source = 1000 mB) must be absorbed into the tank (got total="
+				+ be.getTank().getTotalAmount() + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void capacitySurvivesSerialization(GameTestHelper helper) {
 		buildReactor(helper);
 		ReactorControllerBlockEntity be = reactor(helper);
 		int capacity = be.getTank().getTankCapacity(0);
-		helper.assertTrue(capacity >= 16000, "assembled tank capacity should be height-scaled");
+		helper.assertTrue(capacity >= 1000, "assembled tank capacity should be height-scaled");
 		// save -> fresh instance -> load: capacity must survive the round trip
 		net.minecraft.nbt.CompoundTag tag = be.saveWithFullMetadata();
 		ReactorControllerBlockEntity copy = new ReactorControllerBlockEntity(be.getBlockPos(),
@@ -361,13 +516,15 @@ public class ChemicalAddonGameTests {
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 40)
 	public static void reactorBurnsSulfur(GameTestHelper helper) {
-		buildReactor(helper);
-		ReactorControllerBlockEntity be = reactor(helper);
+		// 5×5×5 (27 buckets) so the recipe inputs/outputs fit — a minimal 3×3×3
+		// holds only 1 bucket at 1 bucket/interior-block and cannot run reactions.
+		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
 		// KINDLED blaze burner below the vessel's bottom layer; mark it creative
-		// so its BE never cools it (simulates a permanently fuelled burner)
+		// so its BE never cools it (simulates a permanently fuelled burner).
+		// Controller is at (2,2,0); the floor is at y=1; the burner sits at controller.below(2) = (2,0,0).
 		BlockState burner = com.simibubi.create.AllBlocks.BLAZE_BURNER.get().defaultBlockState()
 			.setValue(BlazeBurnerBlock.HEAT_LEVEL, BlazeBurnerBlock.HeatLevel.KINDLED);
-		BlockPos burnerPos = new BlockPos(2, 0, 1);
+		BlockPos burnerPos = new BlockPos(2, 0, 0);
 		helper.setBlock(burnerPos, burner);
 		if (helper.getBlockEntity(burnerPos) instanceof BlazeBurnerBlockEntity burnerBe) {
 			burnerBe.isCreative = true;
@@ -385,8 +542,9 @@ public class ChemicalAddonGameTests {
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 40)
 	public static void reactorAbsorbsSulfurDioxide(GameTestHelper helper) {
-		buildReactor(helper);
-		ReactorControllerBlockEntity be = reactor(helper);
+		// 5×5×5 (27 buckets): SO2(1000) + water(1000) inputs need room beyond the
+		// minimal 3×3×3's single-bucket capacity.
+		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
 		be.getTank().fill(new FluidStack(AllFluids.SULFUR_DIOXIDE.get().getSource(), 1000), FluidAction.EXECUTE);
 		be.getTank().fill(new FluidStack(AllFluids.WATER.get().getSource(), 1000), FluidAction.EXECUTE);
 		helper.startSequence()
@@ -442,6 +600,33 @@ public class ChemicalAddonGameTests {
 
 	private static ReactorControllerBlockEntity reactor(GameTestHelper helper) {
 		return (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 1));
+	}
+
+	/** Builds a 5×5×5 sealed reactor (interior 3×3×3 = 27 blocks = 27 buckets) with
+	 *  the controller at (2,2,0) and assembles it. Used by tests that need more
+	 *  capacity than the minimal 3×3×3 (which holds only 1 bucket). */
+	private static ReactorControllerBlockEntity buildReactor5x5x5(GameTestHelper helper) {
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		for (int x = 0; x <= 4; x++) {
+			for (int z = 0; z <= 4; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick); // floor
+				helper.setBlock(new BlockPos(x, 5, z), brick); // sealed ceiling
+			}
+		}
+		for (int y = 2; y <= 4; y++) {
+			for (int x = 0; x <= 4; x++) {
+				for (int z = 0; z <= 4; z++) {
+					if ((x == 0 || x == 4 || z == 0 || z == 4) && !(y == 2 && x == 2 && z == 0)) {
+						helper.setBlock(new BlockPos(x, y, z), brick); // ring walls
+					}
+				}
+			}
+		}
+		helper.setBlock(new BlockPos(2, 2, 0), controller);
+		ReactorControllerBlockEntity be = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 0));
+		helper.assertTrue(be.tryAssemble().ok(), "5x5x5 reactor should assemble");
+		return be;
 	}
 
 	private static boolean hasFluid(ReactorControllerBlockEntity be, net.minecraft.world.level.material.Fluid fluid, int minAmount) {

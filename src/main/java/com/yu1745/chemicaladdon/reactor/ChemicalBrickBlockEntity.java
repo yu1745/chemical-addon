@@ -35,25 +35,16 @@ public class ChemicalBrickBlockEntity extends BlockEntity {
 		setChanged();
 	}
 
-	/** Position of the master controller this brick belongs to, or null. */
+	/**
+	 * The master this brick was last bound to (or {@code null} if it is a stray /
+	 * unbound brick). Unlike {@link #getValidMaster()} this returns the position
+	 * even after the master disassembles — used by {@code ChemicalBrickBlock.onRemove}
+	 * to decide whether a breaking brick is a structural part (notify its master)
+	 * or a stray (no-op, must not tear down a neighbouring vessel).
+	 */
 	@Nullable
 	public BlockPos getMasterPos() {
 		return masterPos;
-	}
-
-	/**
-	 * True when both brick block entities belong to the same assembled master —
-	 * the connectivity check used by the CTM shell model (two bricks connect
-	 * their textures only when they are part of the same multiblock).
-	 */
-	public static boolean isConnected(net.minecraft.world.level.BlockGetter level, BlockPos pos, BlockPos other) {
-		BlockEntity a = level.getBlockEntity(pos);
-		BlockEntity b = level.getBlockEntity(other);
-		if (!(a instanceof ChemicalBrickBlockEntity brickA) || !(b instanceof ChemicalBrickBlockEntity brickB)) {
-			return false;
-		}
-		BlockPos masterA = brickA.masterPos;
-		return masterA != null && masterA.equals(brickB.masterPos);
 	}
 
 	/** Returns the master controller BE if still valid (assembled), else null. */

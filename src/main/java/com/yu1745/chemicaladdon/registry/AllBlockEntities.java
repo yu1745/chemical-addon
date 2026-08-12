@@ -19,7 +19,8 @@ public class AllBlockEntities {
 
 	public static final RegistryObject<BlockEntityType<ChemicalBrickBlockEntity>> CHEMICAL_BRICK =
 		REGISTER.register("chemical_brick",
-			() -> BlockEntityType.Builder.of(ChemicalBrickBlockEntity::new, AllBlocks.CHEMICAL_BRICK.get())
+			() -> BlockEntityType.Builder.of(ChemicalBrickBlockEntity::new,
+				AllBlocks.CHEMICAL_BRICK.get(), AllBlocks.CHEMICAL_GLASS.get())
 				.build(null));
 
 	public static final RegistryObject<BlockEntityType<ReactorControllerBlockEntity>> REACTOR_CONTROLLER =

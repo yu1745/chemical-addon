@@ -1,64 +1,49 @@
 package com.yu1745.chemicaladdon.registry;
 
 import com.simibubi.create.foundation.data.CreateRegistrate;
-import com.tterrag.registrate.providers.DataGenContext;
-import com.tterrag.registrate.providers.RegistrateBlockstateProvider;
 import com.tterrag.registrate.util.entry.BlockEntry;
 import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlock;
-import com.yu1745.chemicaladdon.reactor.ChemicalTankModel;
+import com.yu1745.chemicaladdon.reactor.ChemicalGlassBlock;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlock;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlock;
 import com.yu1745.chemicaladdon.reactor.SettlingBasinBlockEntity.SettlingBasinBlock;
 
 import net.minecraft.client.renderer.RenderType;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
-import net.minecraftforge.client.model.generators.ConfiguredModel;
 
 public class AllBlocks {
 
 	public static final CreateRegistrate REGISTRATE = ChemicalAddon.registrate();
 
 	/**
-	 * Shell block of the vessels. Mirrors Create's FluidTank registration: a
-	 * cutoutMipped hollow-wall model per (top/bottom/shape) variant, position-
-	 * aware CTM via ChemicalTankModel, and Create's tank sprite shifts — so the
-	 * shell is transparent (windows) and connects seamlessly as it grows. The
-	 * metal-grey tint is applied client-side (ChemicalAddonClient).
+	 * Opaque shell block of the vessels (Tinkers "seared bricks" of the series).
+	 * The multiblock validates any block in the {@code chemicaladdon:vessel_walls}
+	 * tag, so brick is solid and {@link #CHEMICAL_GLASS} is transparent — the
+	 * player chooses where the shell is see-through.
 	 */
 	public static final BlockEntry<ChemicalBrickBlock> CHEMICAL_BRICK =
 		REGISTRATE.block("chemical_brick", ChemicalBrickBlock::new)
-			.properties(p -> p.mapColor(MapColor.STONE).strength(2.0f, 6.0f)
-				.noOcclusion()
-				.isRedstoneConductor((a, b, c) -> true))
+			.properties(p -> p.mapColor(MapColor.STONE).strength(2.0f, 6.0f))
 			.lang("Chemical Brick")
-			.blockstate(AllBlocks::chemicalBrickState)
-			.onRegister(CreateRegistrate.blockModel(() -> ChemicalTankModel::standard))
-			.addLayer(() -> RenderType::cutoutMipped)
-			.item()
-			.model((c, p) -> p.withExistingParent(c.getName(), p.modLoc("block/chemical_brick/block_single_window")))
-			.build()
+			.simpleItem()
 			.register();
 
-	/** Blockstate variant table: top x bottom x shape -> wall model (Create FluidTank layout). */
-	private static void chemicalBrickState(DataGenContext<Block, ChemicalBrickBlock> ctx,
-		RegistrateBlockstateProvider prov) {
-		prov.getVariantBuilder(ctx.get()).forAllStates(state -> {
-			String variant = state.getValue(ChemicalBrickBlock.TOP)
-				? state.getValue(ChemicalBrickBlock.BOTTOM) ? "single" : "top"
-				: state.getValue(ChemicalBrickBlock.BOTTOM) ? "bottom" : "middle";
-			if (state.getValue(ChemicalBrickBlock.SHAPE) == ChemicalBrickBlock.Shape.WINDOW) {
-				variant += "_window";
-			}
-			// model files are named block_single/top/bottom/middle[_window].json
-			return ConfiguredModel.builder()
-				.modelFile(prov.models().getExistingFile(prov.modLoc("block/chemical_brick/block_" + variant)))
-				.build();
-		});
-	}
+	/** Transparent shell block ("seared glass"): same structural series, lets you watch the fluid. */
+	public static final BlockEntry<ChemicalGlassBlock> CHEMICAL_GLASS =
+		REGISTRATE.block("chemical_glass", ChemicalGlassBlock::new)
+			.properties(p -> p.mapColor(MapColor.NONE).strength(0.3f)
+				.noOcclusion()
+				.isRedstoneConductor((a, b, c) -> false)
+				.isSuffocating((a, b, c) -> false)
+				.isViewBlocking((a, b, c) -> false))
+			.lang("Chemical Glass")
+			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(),
+				prov.models().cubeAll(ctx.getName(), prov.models().mcLoc("block/glass"))))
+			.addLayer(() -> RenderType::cutoutMipped)
+			.simpleItem()
+			.register();
 
 	public static final BlockEntry<ReactorControllerBlock> REACTOR_CONTROLLER =
 		REGISTRATE.block("reactor_controller", ReactorControllerBlock::new)

@@ -25,6 +25,11 @@ public class ChemicalAddon {
 	public static final String MODID = "chemicaladdon";
 	public static final Logger LOGGER = LogUtils.getLogger();
 
+	/** Block tag of every block that can form a vessel shell (brick, glass, ... — Tinkers seared-series pattern). */
+	public static final net.minecraft.tags.TagKey<net.minecraft.world.level.block.Block> VESSEL_WALLS =
+		net.minecraft.tags.TagKey.create(net.minecraft.core.registries.Registries.BLOCK,
+			new net.minecraft.resources.ResourceLocation(MODID, "vessel_walls"));
+
 	private static final CreateRegistrate REGISTRATE = CreateRegistrate.create(MODID);
 
 	public ChemicalAddon() {

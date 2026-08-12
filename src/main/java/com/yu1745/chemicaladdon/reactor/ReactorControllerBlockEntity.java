@@ -12,6 +12,7 @@ import com.simibubi.create.content.processing.recipe.ProcessingOutput;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
 import com.simibubi.create.foundation.fluid.FluidIngredient;
+import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.recipe.AllRecipeTypes;
 import com.yu1745.chemicaladdon.recipe.ChemicalReactionRecipe;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
@@ -59,11 +60,11 @@ import net.minecraftforge.items.ItemStackHandler;
  */
 public class ReactorControllerBlockEntity extends SmartBlockEntity implements IHaveGoggleInformation {
 
-	public static final int TANK_CAPACITY = 16000; // mB per interior block (16 buckets)
+	public static final int TANK_CAPACITY = 1000; // mB per interior block (1 bucket — small enough that a few buckets visibly raise the surface)
 	public static final int AMBIENT_TEMP = 20;
 	public static final int ITEM_SLOTS = 4;
 	public static final int MAX_TEMP = 1000;
-	public static final int MIN_SIZE = 3; // shell edge length n (n x n x n cube)
+	public static final int MIN_SIZE = 3; // shell footprint W and height H both in [3, 7]
 	public static final int MAX_SIZE = 7;
 
 	private static final int HEAT_TICK = 20;
@@ -99,7 +100,8 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 
 	private boolean assembled = false;
 	private boolean open = false; // open-topped (interior visible) vs sealed
-	private int size = 0; // shell edge length n (0 = not assembled); interior is (n-2)^3
+	private int size = 0; // shell footprint W (W x W base, 0 = not assembled)
+	private int height = 0; // interior ring-layer count (shell height H-2); interior is (W-2)^2 x height
 	private int temperature = AMBIENT_TEMP;
 	// progressive fluid spill after structural breakage (one source per few ticks)
 	private final List<FluidStack> pendingSpill = new ArrayList<>();
@@ -457,16 +459,17 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 	 * Tank capacity scales with interior volume (16 buckets per interior layer).
 	 */
 	/**
-	 * Validates the hollow n x n x n brick shell (n = 3..7, the largest complete
-	 * cube wins) and returns a structured result: on failure, the face that
-	 * progressed furthest, the first broken spot on that face and its position.
-	 * The controller sits in the middle of one wall; the interior is (n-2)^3 air.
+	 * Validates the hollow W x W x H brick shell (W,H = 3..7, the largest complete
+	 * cuboid wins — Tinkers smeltery style) and returns a structured result: on
+	 * failure, the face that progressed furthest, the first broken spot on that
+	 * face and its position. The controller sits in the middle of one wall and may
+	 * be placed on ANY ring layer (the floor is k+1 layers below it); the interior
+	 * is (W-2)^2 x (H-2) air.
 	 */
 	public AssembleResult tryAssemble() {
 		if (level == null || level.isClientSide) {
 			return new AssembleResult(false, null, AssembleIssue.BOTTOM_GAP, null);
 		}
-		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
 
 		AssembleResult best = null;
 		int bestProgress = -1;
@@ -474,111 +477,134 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		for (Direction inward : new Direction[] { Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST }) {
 			Direction side = inward.getAxis() == Direction.Axis.X ? Direction.NORTH : Direction.EAST;
 
-			// try the largest cube first: the biggest complete n x n x n shell wins
-			for (int n = MAX_SIZE; n >= MIN_SIZE; n--) {
-				int half = (n - 1) / 2;
+			// try the largest shell first: widest W first, then tallest H
+			for (int w = MAX_SIZE; w >= MIN_SIZE; w--) {
+				int half = (w - 1) / 2;
 				int sStart = -half;
-				int sEnd = sStart + n - 1;
+				int sEnd = sStart + w - 1;
+				for (int h = MAX_SIZE; h >= MIN_SIZE; h--) {
+					int rings = h - 2; // ring layers between floor and ceiling
 
-				boolean ok = true;
-				int progress = 0;
-				AssembleIssue firstIssue = null;
-				BlockPos firstIssuePos = null;
+					// the controller may sit on ANY ring layer (Tinkers-style): k = its
+					// layer counting up from the floor, so the floor is k+1 below it
+					for (int k = 0; k < rings; k++) {
+						int bottomY = -k - 1;
+						int ringY0 = -k;
+						int ringY1 = rings - 1 - k;
+						int topY = rings - k;
 
-				// bottom layer (y=-1): full n x n of bricks
-				for (int s = sStart; s <= sEnd && ok; s++) {
-					for (int d = 0; d <= n - 1 && ok; d++) {
-						BlockPos p = cell(s, d, -1, side, inward);
-						if (!level.getBlockState(p).is(brick.getBlock())) {
-							ok = false;
-							firstIssue = AssembleIssue.BOTTOM_GAP;
-							firstIssuePos = p;
-						}
-					}
-				}
-				if (ok) {
-					progress++;
-				}
+						boolean ok = true;
+						int progress = 0;
+						AssembleIssue firstIssue = null;
+						BlockPos firstIssuePos = null;
 
-				// ring layers y=0..n-3: the shell wall (s at either end, d=0/n-1) must be
-				// brick and the interior must be hollow; (s=0,d=0,y=0) is the controller
-				int rings = n - 2;
-				for (int y = 0; y < rings && ok; y++) {
-					boolean layerIsRing = true;
-					for (int s = sStart; s <= sEnd && layerIsRing; s++) {
-						for (int d = 0; d <= n - 1 && layerIsRing; d++) {
-							if (y == 0 && s == 0 && d == 0) {
-								continue; // the controller itself
-							}
-							BlockPos p = cell(s, d, y, side, inward);
-							boolean wall = s == sStart || s == sEnd || d == 0 || d == n - 1;
-							if (!wall) {
-								if (!level.getBlockState(p).isAir()) {
-									layerIsRing = false; // interior must be hollow
-									firstIssue = AssembleIssue.INTERIOR_BLOCKED;
+						// bottom layer: full w x w of shell blocks
+						for (int s = sStart; s <= sEnd && ok; s++) {
+							for (int d = 0; d <= w - 1 && ok; d++) {
+								BlockPos p = cell(s, d, bottomY, side, inward);
+								if (!level.getBlockState(p).is(ChemicalAddon.VESSEL_WALLS)) {
+									ok = false;
+									firstIssue = AssembleIssue.BOTTOM_GAP;
 									firstIssuePos = p;
 								}
-							} else if (!level.getBlockState(p).is(brick.getBlock())) {
-								layerIsRing = false;
-								firstIssue = AssembleIssue.RING_GAP;
-								firstIssuePos = p;
 							}
 						}
-					}
-					if (layerIsRing) {
-						progress++;
-					} else {
-						ok = false;
-					}
-				}
+						if (ok) {
+							progress++;
+						}
 
-				// top layer at y = n-2: fully sealed (n*n bricks) or fully open
-				boolean topOpen = false;
-				if (ok) {
-					int topBricks = 0;
-					for (int s = sStart; s <= sEnd && ok; s++) {
-						for (int d = 0; d <= n - 1 && ok; d++) {
-							BlockPos p = cell(s, d, n - 2, side, inward);
-							if (level.getBlockState(p).is(brick.getBlock())) {
-								topBricks++;
-							} else if (firstIssue == null) {
-								firstIssue = AssembleIssue.PARTIAL_TOP;
-								firstIssuePos = p;
+						// ring layers ringY0..ringY1: the shell wall (s at either end, d=0/w-1)
+						// must be a vessel block and the interior hollow; (y=0,s=0,d=0) is
+						// the controller on its own layer
+						for (int y = ringY0; y <= ringY1 && ok; y++) {
+							boolean layerIsRing = true;
+							for (int s = sStart; s <= sEnd && layerIsRing; s++) {
+								for (int d = 0; d <= w - 1 && layerIsRing; d++) {
+									if (y == 0 && s == 0 && d == 0) {
+										continue; // the controller itself
+									}
+								BlockPos p = cell(s, d, y, side, inward);
+								boolean wall = s == sStart || s == sEnd || d == 0 || d == w - 1;
+								if (!wall) {
+									BlockState interior = level.getBlockState(p);
+									// interior must be hollow: only air or fluid blocks are allowed.
+									// A fluid already sitting inside (e.g. water poured before sealing)
+									// must NOT block assembly — it is absorbed into the tank below.
+									if (!interior.isAir() && interior.getFluidState().isEmpty()) {
+										layerIsRing = false; // a solid block occupies the interior
+										firstIssue = AssembleIssue.INTERIOR_BLOCKED;
+										firstIssuePos = p;
+									}
+								} else if (!level.getBlockState(p).is(ChemicalAddon.VESSEL_WALLS)) {
+										layerIsRing = false;
+										firstIssue = AssembleIssue.RING_GAP;
+										firstIssuePos = p;
+									}
+								}
+							}
+							if (layerIsRing) {
+								progress++;
+							} else {
+								ok = false;
 							}
 						}
-					}
-					if (topBricks == 0) {
-						topOpen = true;
-					} else if (topBricks != n * n) {
-						ok = false; // partially sealed top
-					}
-					if (ok) {
-						progress++;
-					}
-				}
 
-				if (ok) {
-					assembled = true;
-					this.inward = inward;
-					this.open = topOpen;
-					this.size = n;
-					setStatus(ReactorStatus.REACTING);
-					tank.setCapacity(TANK_CAPACITY * (n - 2) * (n - 2) * (n - 2)); // per interior block
-					bindBricks(worldPosition, inward, side, n);
-					// update the controller block state so the open/sealed variant shows
-					BlockState state = level.getBlockState(worldPosition);
-					if (state.hasProperty(ReactorControllerBlock.OPEN)
-						&& state.getValue(ReactorControllerBlock.OPEN) != topOpen) {
-						level.setBlock(worldPosition, state.setValue(ReactorControllerBlock.OPEN, topOpen), 3);
+						// top layer: fully sealed (w*w blocks) or fully open
+						boolean topOpen = false;
+						if (ok) {
+							int topBricks = 0;
+							for (int s = sStart; s <= sEnd && ok; s++) {
+								for (int d = 0; d <= w - 1 && ok; d++) {
+									BlockPos p = cell(s, d, topY, side, inward);
+									if (level.getBlockState(p).is(ChemicalAddon.VESSEL_WALLS)) {
+										topBricks++;
+									} else if (firstIssue == null) {
+										firstIssue = AssembleIssue.PARTIAL_TOP;
+										firstIssuePos = p;
+									}
+								}
+							}
+							if (topBricks == 0) {
+								topOpen = true;
+							} else if (topBricks != w * w) {
+								ok = false; // partially sealed top
+							}
+							if (ok) {
+								progress++;
+							}
+						}
+
+						if (ok) {
+							assembled = true;
+							this.inward = inward;
+							this.open = topOpen;
+							this.size = w;
+							this.height = rings;
+							setStatus(ReactorStatus.REACTING);
+							tank.setCapacity(TANK_CAPACITY * (w - 2) * (w - 2) * rings); // per interior block
+							bindBricks(worldPosition, inward, side, w, rings);
+							// absorb any fluid already sitting in the interior (e.g. water poured
+							// before the last brick closed the shell) into the tank — source blocks
+							// become tank contents, flowing fluids simply evaporate. Without this a
+							// sealed vessel would trap fluid invisibly inside (absorbFromWorld only
+							// runs while the top is open).
+							absorbInteriorOnAssemble(side, inward, w, sStart, sEnd, ringY0, ringY1);
+							// update the controller block state so the open/sealed variant shows
+							BlockState state = level.getBlockState(worldPosition);
+							if (state.hasProperty(ReactorControllerBlock.OPEN)
+								&& state.getValue(ReactorControllerBlock.OPEN) != topOpen) {
+								level.setBlock(worldPosition, state.setValue(ReactorControllerBlock.OPEN, topOpen), 3);
+							}
+							setChanged();
+							sync();
+							return AssembleResult.success();
+						}
+						// keep the failure diagnostic that progressed furthest
+						if (progress > bestProgress) {
+							bestProgress = progress;
+							best = new AssembleResult(false, inward, firstIssue, firstIssuePos);
+						}
 					}
-					setChanged();
-					sync();
-					return AssembleResult.success();
-				}
-				// keep the failure diagnostic that progressed furthest
-				if (progress > bestProgress) {
-					bestProgress = progress;
-					best = new AssembleResult(false, inward, firstIssue, firstIssuePos);
 				}
 			}
 		}
@@ -592,26 +618,29 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 	}
 
 	/**
-	 * Binds every structural brick of this vessel to the controller and writes
-	 * its shell model state (TOP/BOTTOM layer flags + window SHAPE) so the brick
-	 * shows the right FluidTank-style wall variant.
+	 * Binds every structural shell block (any block in the vessel_walls tag —
+	 * brick, glass, ...) to this controller so it proxies capabilities and can
+	 * report breakage.
 	 */
-	private void bindBricks(BlockPos masterPos, Direction inward, Direction side, int size) {
+	/**
+	 * Binds every structural shell block (any block in the vessel_walls tag —
+	 * brick, glass, ...) to this controller so it proxies capabilities and can
+	 * report breakage.
+	 */
+	private void bindBricks(BlockPos masterPos, Direction inward, Direction side, int w, int rings) {
 		if (level == null) {
 			return;
 		}
-		int half = (size - 1) / 2;
+		int half = (w - 1) / 2;
 		int sStart = -half;
-		int sEnd = sStart + size - 1;
+		int sEnd = sStart + w - 1;
 		for (int s = sStart; s <= sEnd; s++) {
-			for (int d = 0; d <= size - 1; d++) {
+			for (int d = 0; d <= w - 1; d++) {
 				if (s == 0 && d == 0) {
 					continue; // the controller itself
 				}
-				for (int y = -1; y <= size - 2; y++) {
-					BlockPos p = cell(s, d, y, side, inward);
-					bindBrick(p, masterPos);
-					setBrickState(p, y, s, d, size, sStart, sEnd);
+				for (int y = -1; y <= rings; y++) {
+					bindBrick(cell(s, d, y, side, inward), masterPos);
 				}
 			}
 		}
@@ -626,38 +655,42 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		}
 	}
 
-	/** Writes the top/bottom/shape flags for the shell model variant of one brick. */
-	private void setBrickState(BlockPos pos, int y, int s, int d, int size, int sStart, int sEnd) {
+	/**
+	 * Absorbs fluid already sitting in the interior into the tank, called once on
+	 * successful assembly. Source blocks become tank contents (1000 mB each, the
+	 * same rule as {@link #absorbFromWorld}); flowing (spreading) fluids carry no
+	 * volume and are simply cleared to air so they don't linger invisibly inside a
+	 * sealed shell. Runs for both open and sealed vessels.
+	 */
+	private void absorbInteriorOnAssemble(Direction side, Direction inward, int w,
+		int sStart, int sEnd, int ringY0, int ringY1) {
 		if (level == null) {
 			return;
 		}
-		BlockState state = level.getBlockState(pos);
-		if (!state.is(AllBlocks.CHEMICAL_BRICK.get())) {
-			return; // open top / interior air
+		for (int y = ringY0; y <= ringY1; y++) {
+			for (int s = sStart + 1; s <= sEnd - 1; s++) { // interior columns (skip the two wall columns)
+				for (int d = 1; d <= w - 2; d++) {          // interior depth  (skip the two wall layers)
+					BlockPos p = cell(s, d, y, side, inward);
+					BlockState bs = level.getBlockState(p);
+					if (bs.isAir()) {
+						continue;
+					}
+					net.minecraft.world.level.material.FluidState fs = bs.getFluidState();
+					if (fs.isEmpty()) {
+						continue; // a solid block wouldn't have passed validation; defensive skip
+					}
+					if (fs.isSource()) {
+						int filled = tank.fill(new FluidStack(fs.getType(), 1000), IFluidHandler.FluidAction.EXECUTE);
+						if (filled == 1000) {
+							level.setBlock(p, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+						}
+					} else {
+						// flowing fluid: no volume to absorb, just clear it
+						level.setBlock(p, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+					}
+				}
+			}
 		}
-		BlockState newState = state.setValue(ChemicalBrickBlock.TOP, y == size - 2)
-			.setValue(ChemicalBrickBlock.BOTTOM, y == -1)
-			.setValue(ChemicalBrickBlock.SHAPE, windowShape(s, d, size, sStart, sEnd));
-		if (!newState.equals(state)) {
-			level.setBlock(pos, newState, 3);
-		}
-	}
-
-	/**
-	 * Window layout on the shell (Create FluidTank strategy, generalized to any
-	 * n): exactly the centre brick of each of the four faces is windowed, the
-	 * rest plain — so every side has a window to see the interior fluid.
-	 */
-	private static ChemicalBrickBlock.Shape windowShape(int s, int d, int size, int sStart, int sEnd) {
-		boolean wall = s == sStart || s == sEnd || d == 0 || d == size - 1;
-		if (!wall) {
-			return ChemicalBrickBlock.Shape.PLAIN; // interior is air, never set on it
-		}
-		int sOff = s - sStart; // 0..size-1 along the wall
-		int mid = (size - 1) / 2;
-		boolean centre = (sOff == mid && (d == 0 || d == size - 1))
-			|| (d == mid && (s == sStart || s == sEnd));
-		return centre ? ChemicalBrickBlock.Shape.WINDOW : ChemicalBrickBlock.Shape.PLAIN;
 	}
 
 	public void invalidateStructure(@Nullable BlockPos leakPos) {
@@ -665,6 +698,7 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 			assembled = false;
 			int oldSize = size;
 			size = 0;
+			height = 0;
 			setStatus(ReactorStatus.NOT_ASSEMBLED);
 			setProgress(0, null);
 			// contents become physical again: items drop, fluids pour out of the breach
@@ -675,22 +709,14 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 			spillLeakPos = breach;
 			spillTimer = 4; // first source appears almost immediately
 			SpillLogic.tryPlaceOne(level, breach, pendingSpill);
-			// clear master pointers and reset brick shell state within reach
+			// clear master pointers on nearby shell blocks so they stop proxying
 			if (level != null) {
 				int r = oldSize + 1;
 				for (int dx = -r; dx <= r; dx++) {
 					for (int dy = -r; dy <= r; dy++) {
 						for (int dz = -r; dz <= r; dz++) {
-							BlockPos p = worldPosition.offset(dx, dy, dz);
-							if (level.getBlockEntity(p) instanceof ChemicalBrickBlockEntity brick) {
+							if (level.getBlockEntity(worldPosition.offset(dx, dy, dz)) instanceof ChemicalBrickBlockEntity brick) {
 								brick.setMaster(null);
-								BlockState state = level.getBlockState(p);
-								if (state.hasProperty(ChemicalBrickBlock.TOP)) {
-									// single-block tank look (top + bottom + window) when free
-									level.setBlock(p, state.setValue(ChemicalBrickBlock.TOP, true)
-										.setValue(ChemicalBrickBlock.BOTTOM, true)
-										.setValue(ChemicalBrickBlock.SHAPE, ChemicalBrickBlock.Shape.WINDOW), 3);
-								}
 							}
 						}
 					}
@@ -703,6 +729,50 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 
 	public boolean isAssembled() {
 		return assembled;
+	}
+
+	/**
+	 * The interior (fluid surface + floating items) renders up to 7 blocks away
+	 * from the controller block. Without an expanded render bounding box, MC's
+	 * frustum cull tests only the controller's own 1×1×1 cell — so the moment the
+	 * controller leaves the viewport (even with the fluid surface still on
+	 * screen) the whole BE is culled and the contents vanish. Cover the entire
+	 * shell footprint (Create FluidTank pattern, FluidTankBlockEntity:372).
+	 */
+	@Override
+	protected net.minecraft.world.phys.AABB createRenderBoundingBox() {
+		if (!assembled || size < MIN_SIZE || inward == null) {
+			return super.createRenderBoundingBox();
+		}
+		// controller sits at the wall centre (s=0, d=0, k-th ring). The shell
+		// spans s ∈ [-(half), +half] along the wall axis, d ∈ [0, size-1] inward,
+		// and the controller can be on any ring layer k ∈ [0, rings-1] — so y may
+		// extend up to (height+1) below and above the controller. Cover the worst
+		// case in every axis; frustum tests are cheap.
+		Direction side = inward.getAxis() == Direction.Axis.X ? Direction.NORTH : Direction.EAST;
+		int half = (size - 1) / 2;
+		int reach = size - 1; // 0..size-1 blocks of shell in the inward/±side directions
+		int dy = height + 1;  // floor below / ceiling above the controller's layer
+		int minX = worldPosition.getX() - half;
+		int maxX = worldPosition.getX() + half;
+		int minZ = worldPosition.getZ() - half;
+		int maxZ = worldPosition.getZ() + half;
+		if (side.getAxis() == Direction.Axis.X) {
+			minX = worldPosition.getX() - half;
+			maxX = worldPosition.getX() + half;
+			minZ = worldPosition.getZ();
+			maxZ = worldPosition.getZ() + reach * inward.getStepZ();
+			if (inward.getStepZ() < 0) { minZ = worldPosition.getZ() + reach * inward.getStepZ(); maxZ = worldPosition.getZ(); }
+		} else {
+			minX = worldPosition.getX();
+			maxX = worldPosition.getX() + reach * inward.getStepX();
+			if (inward.getStepX() < 0) { minX = worldPosition.getX() + reach * inward.getStepX(); maxX = worldPosition.getX(); }
+			minZ = worldPosition.getZ() - half;
+			maxZ = worldPosition.getZ() + half;
+		}
+		int minY = worldPosition.getY() - dy;
+		int maxY = worldPosition.getY() + dy;
+		return new net.minecraft.world.phys.AABB(minX, minY, minZ, maxX + 1, maxY + 1, maxZ + 1);
 	}
 
 	public ReactorStatus getStatus() {
@@ -720,19 +790,26 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		return open;
 	}
 
-	/** Shell edge length n of the assembled cube (0 when not assembled). */
+	/** Shell footprint W of the assembled cuboid (W x W base; 0 when not assembled). */
 	public int getSize() {
 		return size;
 	}
 
-	/** Interior height in blocks: (n-2) ring layers. */
+	/** Interior height in blocks (ring-layer count, H-2). */
 	public int getHeight() {
-		return Math.max(size - 2, 0);
+		return Math.max(height, 0);
 	}
 
-	/** Tank fill fraction (0..1); capacity is height-scaled, so this maps onto the interior height. */
+	/** Tank fill fraction (0..1); capacity is height-scaled, so this maps onto the interior height.
+	 *  Clamped: an older save may hold more fluid than the current (smaller) capacity, and an
+	 *  over-1 fraction would render the surface above the vessel rim. */
 	public float getFillState() {
-		return (float) tank.getTotalAmount() / tank.getTankCapacity(0);
+		int cap = tank.getTankCapacity(0);
+		if (cap <= 0) {
+			return 0;
+		}
+		float f = (float) tank.getTotalAmount() / cap;
+		return Math.max(0, Math.min(1, f));
 	}
 
 	/** Animated fluid surface fraction, interpolated for smooth rendering (client only). */
@@ -789,6 +866,7 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		tag.put("tank", tank.serializeNBT());
 		tag.putInt("tankCapacity", tank.getTankCapacity(0)); // survive reloads (volume-scaled)
 		tag.putInt("size", size);
+		tag.putInt("height", height);
 		tag.put("items", items.serializeNBT());
 		tag.putFloat("progress", progress);
 		if (activeRecipe != null) {
@@ -798,6 +876,9 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		if (inward != null) {
 			tag.putString("inward", inward.getSerializedName());
 		}
+		// status drives the goggles HUD (addToGoggleTooltip reads it client-side);
+		// it must be in the sync tag or the client BE keeps its default NOT_ASSEMBLED forever
+		tag.putString("status", status.name());
 	}
 
 	@Override
@@ -816,11 +897,29 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 			int cap = tag.getInt("tankCapacity");
 			size = cap > 0 ? (int) Math.round(Math.cbrt(cap / (double) TANK_CAPACITY)) + 2 : 0;
 		}
+		// legacy saves had no height (cube shells): height = size - 2
+		height = tag.contains("height") ? tag.getInt("height") : (size > 0 ? size - 2 : 0);
 		items.deserializeNBT(tag.getCompound("items"));
 		progress = tag.getFloat("progress");
 		activeRecipe = tag.contains("activeRecipe") ? ResourceLocation.tryParse(tag.getString("activeRecipe")) : null;
 		inward = tag.contains("inward") ? Direction.byName(tag.getString("inward")) : null;
 		open = tag.getBoolean("open");
+		// mirror of write(): restore status so the client HUD shows the real server value
+		if (tag.contains("status")) {
+			try {
+				status = ReactorStatus.valueOf(tag.getString("status"));
+			} catch (IllegalArgumentException ignored) {
+				status = ReactorStatus.NOT_ASSEMBLED; // unknown enum (e.g. older/newer data pack) — safe default
+			}
+		} else {
+			status = ReactorStatus.NOT_ASSEMBLED;
+		}
+		// a sync packet may have changed structure geometry (size/height/inward/
+		// assembled) — drop the cached render bounding box so createRenderBoundingBox
+		// recomputes it against the new dimensions (Create FluidTank pattern).
+		if (clientPacket && level != null && level.isClientSide) {
+			invalidateRenderBoundingBox();
+		}
 	}
 
 	// ------------------------------------------------------------- goggles HUD
