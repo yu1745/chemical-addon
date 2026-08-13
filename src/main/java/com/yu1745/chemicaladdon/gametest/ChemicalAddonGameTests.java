@@ -5,6 +5,7 @@ import com.simibubi.create.content.processing.burner.BlazeBurnerBlockEntity;
 import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.fluid.FluidColors;
 import com.yu1745.chemicaladdon.fluid.Mixture;
+import com.yu1745.chemicaladdon.fluid.Temperature;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlock;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlock;
@@ -12,6 +13,7 @@ import com.yu1745.chemicaladdon.reactor.ReactorControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ReactorTank;
 import com.yu1745.chemicaladdon.reactor.SpillLogic;
 import com.yu1745.chemicaladdon.registry.AllBlocks;
+import com.yu1745.chemicaladdon.registry.AllContainers;
 import com.yu1745.chemicaladdon.registry.AllFluids;
 import com.yu1745.chemicaladdon.registry.AllItems;
 
@@ -35,6 +37,7 @@ import net.minecraftforge.fluids.capability.IFluidHandler.FluidAction;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.common.util.LazyOptional;
 import net.minecraftforge.fluids.capability.IFluidHandler;
+import net.minecraftforge.fluids.capability.IFluidHandlerItem;
 import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
 import net.minecraftforge.fml.common.Mod.EventBusSubscriber.Bus;
 import net.minecraftforge.gametest.GameTestHolder;
@@ -576,6 +579,141 @@ public class ChemicalAddonGameTests {
 					"MixDegree should rise over time (was " + initial + ", now " + now + ")");
 			})
 			.thenSucceed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void mixtureMixDegreeIsAmountWeighted(GameTestHelper helper) {
+		// adding fresh (un-homogenised) pure fluid to a fully blended mixture drags
+		// MixDegree down in proportion to how much was added: 1000 mB @ 1.0 + 100 mB
+		// fresh -> 1000 / 1100 ≈ 0.909. Uses the 27-bucket shell so the extra 100 mB
+		// actually fits past the initial 1000 mB.
+		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
+		ReactorTank tank = be.getTank();
+		tank.fill(new FluidStack(AllFluids.WATER.get().getSource(), 400), FluidAction.EXECUTE);
+		tank.fill(new FluidStack(AllFluids.BRINE.get().getSource(), 600), FluidAction.EXECUTE);
+		tank.collapseIfNeeded();
+		Mixture.setMixDegree(tank.getFluids().get(0), 1.0f); // fully homogenised
+
+		tank.fill(new FluidStack(AllFluids.WATER.get().getSource(), 100), FluidAction.EXECUTE);
+		tank.collapseIfNeeded();
+		FluidStack mix = tank.getFluids().get(0);
+		float md = Mixture.getMixDegree(mix);
+		helper.assertTrue(Math.abs(md - 1000f / 1100f) < 0.001f,
+			"MixDegree should be amount-weighted ≈ 0.909 (got " + md + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void mixtureMixDegreeSurvivesTransfer(GameTestHelper helper) {
+		// a pump-style proportional drain must carry the mixture's full transport
+		// identity (Ratios + Color + MixDegree) intact into the next tank, so a
+		// pipeline of reactors never loses what the fluid is made of or how mixed it is
+		buildReactor(helper);
+		ReactorControllerBlockEntity be = reactor(helper);
+		ReactorTank tank = be.getTank();
+		tank.fill(new FluidStack(AllFluids.WATER.get().getSource(), 400), FluidAction.EXECUTE);
+		tank.fill(new FluidStack(AllFluids.BRINE.get().getSource(), 600), FluidAction.EXECUTE);
+		tank.collapseIfNeeded();
+		Mixture.setMixDegree(tank.getFluids().get(0), 0.6f); // partially homogenised batch
+
+		FluidStack drained = tank.drain(300, FluidAction.EXECUTE);
+		helper.assertTrue(Mixture.isMixture(drained), "drained sample should be a mixture");
+		helper.assertTrue(drained.getAmount() == 300,
+			"drained sample should be 300 mB (got " + drained.getAmount() + ")");
+		helper.assertTrue(Mixture.getMixDegree(drained) == 0.6f,
+			"MixDegree must be preserved (frozen) through the drain (got " + Mixture.getMixDegree(drained) + ")");
+
+		// land it in a fresh tank (the receiving reactor) and check the identity is intact
+		ReactorTank dest = new ReactorTank(10000, () -> {});
+		dest.fill(drained.copy(), FluidAction.EXECUTE);
+		dest.collapseIfNeeded();
+		FluidStack received = dest.getFluids().get(0);
+		helper.assertTrue(received.isFluidEqual(drained),
+			"transport identity (Ratios + Color + MixDegree) must survive the transfer");
+		helper.assertTrue(Mixture.getMixDegree(received) == 0.6f,
+			"MixDegree must arrive intact (got " + Mixture.getMixDegree(received) + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void mixtureDrainFreezesHomogenisation(GameTestHelper helper) {
+		// any drain — including Create's 1 mB SIMULATE probe — flags the tank so the
+		// controller freezes MixDegree while fluid is being pumped out; the flag is
+		// single-shot and consumed by the homogenisation tick
+		buildReactor(helper);
+		ReactorControllerBlockEntity be = reactor(helper);
+		ReactorTank tank = be.getTank();
+		tank.fill(new FluidStack(AllFluids.WATER.get().getSource(), 400), FluidAction.EXECUTE);
+		tank.fill(new FluidStack(AllFluids.BRINE.get().getSource(), 600), FluidAction.EXECUTE);
+		tank.collapseIfNeeded();
+
+		helper.assertTrue(!tank.consumeDrainedFlag(), "flag starts clear");
+		tank.drain(1, FluidAction.SIMULATE);
+		helper.assertTrue(tank.consumeDrainedFlag(), "a SIMULATE probe must set the freeze flag");
+		helper.assertTrue(!tank.consumeDrainedFlag(), "the flag must be single-shot");
+
+		tank.drain(250, FluidAction.EXECUTE);
+		helper.assertTrue(tank.consumeDrainedFlag(), "an EXECUTE drain must set the freeze flag");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void temperatureBlendsOnMerge(GameTestHelper helper) {
+		// pouring 40 °C and 20 °C water into the same vessel blends to the
+		// amount-weighted average: (40×1000 + 20×1000) / 2000 = 30 °C
+		ReactorTank tank = new ReactorTank(10000, () -> {});
+		FluidStack hot = new FluidStack(AllFluids.WATER.get().getSource(), 1000);
+		Temperature.set(hot, 40);
+		FluidStack cold = new FluidStack(AllFluids.WATER.get().getSource(), 1000);
+		Temperature.set(cold, 20);
+
+		tank.fill(hot, FluidAction.EXECUTE);
+		tank.fill(cold, FluidAction.EXECUTE);
+		helper.assertTrue(tank.getFluids().size() == 1, "same-species fluids should stack into one entry");
+		helper.assertTrue(tank.getTotalAmount() == 2000, "amounts should sum (got " + tank.getTotalAmount() + ")");
+		helper.assertTrue(Temperature.get(tank.getFluids().get(0)) == 30,
+			"temperature should blend to 30 °C (got " + Temperature.get(tank.getFluids().get(0)) + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void temperatureSurvivesTransfer(GameTestHelper helper) {
+		// a pump-style drain carries the fluid's temperature (frozen) so the next
+		// vessel can continue heating/cooling from where the last one left off
+		ReactorTank src = new ReactorTank(10000, () -> {});
+		FluidStack hot = new FluidStack(AllFluids.WATER.get().getSource(), 1000);
+		Temperature.set(hot, 40);
+		src.fill(hot, FluidAction.EXECUTE);
+
+		FluidStack drained = src.drain(500, FluidAction.EXECUTE);
+		helper.assertTrue(Temperature.get(drained) == 40,
+			"drained sample must carry its temperature (frozen) (got " + Temperature.get(drained) + ")");
+
+		ReactorTank dest = new ReactorTank(10000, () -> {});
+		dest.fill(drained.copy(), FluidAction.EXECUTE);
+		helper.assertTrue(Temperature.get(dest.getFluids().get(0)) == 40,
+			"temperature must survive the transfer into another vessel");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vialPreservesFluidNbt(GameTestHelper helper) {
+		// the sample vial's FluidHandlerItemStack must round-trip the whole FluidStack
+		// (temperature + mixture NBT), unlike a standard BucketItem which is tag-less
+		ItemStack vial = AllContainers.FLUID_VIAL.asStack();
+		IFluidHandlerItem vialHandler = vial.getCapability(ForgeCapabilities.FLUID_HANDLER_ITEM).orElse(null);
+		helper.assertTrue(vialHandler != null, "vial must expose FLUID_HANDLER_ITEM");
+
+		FluidStack hot = new FluidStack(AllFluids.WATER.get().getSource(), 1000);
+		Temperature.set(hot, 40);
+		int filled = vialHandler.fill(hot, FluidAction.EXECUTE);
+		helper.assertTrue(filled == 1000, "vial should fill 1000 mB (got " + filled + ")");
+
+		FluidStack back = vialHandler.getFluidInTank(0);
+		helper.assertTrue(back.getFluid() == AllFluids.WATER.get().getSource(), "vial should hold water");
+		helper.assertTrue(Temperature.get(back) == 40,
+			"temperature must survive the vial round-trip (got " + Temperature.get(back) + ")");
+		helper.succeed();
 	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)

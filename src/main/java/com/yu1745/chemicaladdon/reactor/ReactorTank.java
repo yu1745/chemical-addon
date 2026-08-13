@@ -7,6 +7,7 @@ import java.util.Map;
 
 import com.simibubi.create.foundation.fluid.FluidIngredient;
 import com.yu1745.chemicaladdon.fluid.Mixture;
+import com.yu1745.chemicaladdon.fluid.Temperature;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -43,6 +44,11 @@ public class ReactorTank implements IFluidHandler {
 	private int capacity;
 	private final Runnable onChanged;
 	private final List<FluidStack> fluids = new ArrayList<>();
+	/** Set by every drain (including Create's 1 mB SIMULATE probe) since the last
+	 *  homogenisation tick. The controller consumes it to freeze MixDegree while the
+	 *  mixture is being pumped out, keeping the transport tag stable for Create's
+	 *  probe-then-transfer {@code isFluidEqual} matching. */
+	private boolean drainedSinceLastMixTick = false;
 
 	public ReactorTank(int capacity, Runnable onChanged) {
 		this.capacity = capacity;
@@ -62,6 +68,13 @@ public class ReactorTank implements IFluidHandler {
 
 	public void setCapacity(int capacity) {
 		this.capacity = capacity;
+	}
+
+	/** Consumes (and returns) the "drained since last homogenisation tick" flag. */
+	public boolean consumeDrainedFlag() {
+		boolean drained = drainedSinceLastMixTick;
+		drainedSinceLastMixTick = false;
+		return drained;
 	}
 
 	public List<FluidStack> getFluids() {
@@ -115,9 +128,12 @@ public class ReactorTank implements IFluidHandler {
 					onChanged.run();
 					return amount;
 				}
-				// same pure fluid: stack it
+				// same pure fluid: stack it and blend the temperature (amount-weighted)
 				if (!incomingMix && !Mixture.isMixture(f) && f.getFluid() == fluid) {
+					int blended = Temperature.merge(Temperature.get(f), f.getAmount(),
+						Temperature.get(resource), amount);
 					f.grow(amount);
+					Temperature.set(f, blended);
 					onChanged.run();
 					return amount;
 				}
@@ -133,6 +149,7 @@ public class ReactorTank implements IFluidHandler {
 
 	@Override
 	public FluidStack drain(FluidStack resource, FluidAction action) {
+		drainedSinceLastMixTick = true;
 		if (resource.isEmpty()) {
 			return FluidStack.EMPTY;
 		}
@@ -178,6 +195,7 @@ public class ReactorTank implements IFluidHandler {
 
 	@Override
 	public FluidStack drain(int maxDrain, FluidAction action) {
+		drainedSinceLastMixTick = true;
 		if (fluids.isEmpty() || maxDrain <= 0) {
 			return FluidStack.EMPTY;
 		}
@@ -260,12 +278,12 @@ public class ReactorTank implements IFluidHandler {
 		}
 
 		Map<ResourceLocation, Integer> merged = new LinkedHashMap<>();
-		boolean hadMixture = false;
-		float priorMixDegree = 0f;
+		double weightedMix = 0; // Σ (MixDegree × amount); pure fluids contribute 0
+		long weightedTemp = 0; // Σ (temperature × amount), °C·mB
 		for (FluidStack stack : fluids) {
+			weightedTemp += (long) Temperature.get(stack) * stack.getAmount();
 			if (Mixture.isMixture(stack)) {
-				hadMixture = true;
-				priorMixDegree = Mixture.getMixDegree(stack);
+				weightedMix += Mixture.getMixDegree(stack) * (double) stack.getAmount();
 				for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveAmounts(stack).entrySet()) {
 					merged.merge(e.getKey(), e.getValue(), Integer::sum);
 				}
@@ -286,7 +304,10 @@ public class ReactorTank implements IFluidHandler {
 				total += v;
 			}
 			target = Mixture.create(Mixture.reduce(merged), total);
-			Mixture.setMixDegree(target, hadMixture ? priorMixDegree : 0f);
+			// amount-weighted homogenisation: freshly added pure fluid (MixDegree 0)
+			// drags the blend back down in proportion to how much of it was added
+			Mixture.setMixDegree(target, total > 0 ? (float) (weightedMix / total) : 0f);
+			Temperature.set(target, Temperature.fromWeightedSum(weightedTemp, total));
 		} else if (distinct == 1) {
 			Map.Entry<ResourceLocation, Integer> only = merged.entrySet().iterator().next();
 			Fluid pf = ForgeRegistries.FLUIDS.getValue(only.getKey());
@@ -294,6 +315,7 @@ public class ReactorTank implements IFluidHandler {
 				return;
 			}
 			target = new FluidStack(pf, only.getValue());
+			Temperature.set(target, Temperature.fromWeightedSum(weightedTemp, only.getValue()));
 		} else {
 			target = null; // every entry was corrupt
 		}
@@ -311,8 +333,10 @@ public class ReactorTank implements IFluidHandler {
 			Mixture.deriveAmounts(mixture).entrySet().iterator().next();
 		Fluid pf = ForgeRegistries.FLUIDS.getValue(only.getKey());
 		if (pf != null && pf != Fluids.EMPTY) {
+			FluidStack pure = new FluidStack(pf, only.getValue());
+			Temperature.set(pure, Temperature.get(mixture));
 			fluids.clear();
-			fluids.add(new FluidStack(pf, only.getValue()));
+			fluids.add(pure);
 			onChanged.run();
 		}
 	}

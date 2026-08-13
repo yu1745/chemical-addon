@@ -51,7 +51,6 @@ import net.minecraftforge.fluids.FluidStack;
  *   Ratios: { "chemicaladdon:water": 5, "chemicaladdon:ammonia": 3, ... }  // GCD-reduced parts
  *   Color:  &lt;int ARGB&gt;          // cached blend of the ratio, recomputed when Ratios change
  *   MixDegree:  &lt;float 0..1&gt;     // homogenisation progress (0 = just mixed, 1 = blended)
- *   Temperature:&lt;int °C&gt;         // reserved for pipe transport (Phase 3); unused in-vessel
  * </pre>
  */
 public final class Mixture {
@@ -59,7 +58,6 @@ public final class Mixture {
 	public static final String KEY_RATIOS = "Ratios";
 	public static final String KEY_COLOR = "Color";
 	public static final String KEY_MIX_DEGREE = "MixDegree";
-	public static final String KEY_TEMPERATURE = "Temperature";
 
 	private Mixture() {}
 
@@ -212,15 +210,6 @@ public final class Mixture {
 
 	public static void setMixDegree(FluidStack stack, float degree) {
 		stack.getOrCreateTag().putFloat(KEY_MIX_DEGREE, Math.max(0f, Math.min(1f, degree)));
-	}
-
-	public static int getTemperature(FluidStack stack) {
-		CompoundTag tag = stack.getTag();
-		return tag != null && tag.contains(KEY_TEMPERATURE) ? tag.getInt(KEY_TEMPERATURE) : 20;
-	}
-
-	public static void setTemperature(FluidStack stack, int temperature) {
-		stack.getOrCreateTag().putInt(KEY_TEMPERATURE, temperature);
 	}
 
 	/** Build a new mixture FluidStack from a ratio map and a total mB. */

@@ -15,6 +15,7 @@ import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour
 import com.simibubi.create.foundation.fluid.FluidIngredient;
 import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.fluid.Mixture;
+import com.yu1745.chemicaladdon.fluid.Temperature;
 import com.yu1745.chemicaladdon.recipe.AllRecipeTypes;
 import com.yu1745.chemicaladdon.recipe.ChemicalReactionRecipe;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
@@ -110,7 +111,6 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 	private boolean open = false; // open-topped (interior visible) vs sealed
 	private int size = 0; // shell footprint W (W x W base, 0 = not assembled)
 	private int height = 0; // interior ring-layer count (shell height H-2); interior is (W-2)^2 x height
-	private int temperature = AMBIENT_TEMP;
 	// progressive fluid spill after structural breakage (one source per few ticks)
 	private final List<FluidStack> pendingSpill = new ArrayList<>();
 	@Nullable
@@ -149,7 +149,10 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 			return;
 		}
 		tickCounter++;
-		if (tickCounter % HEAT_TICK == 0) {
+		// freeze ambient drift (heating + homogenisation) while the tank is being
+		// pumped out, so the transport tag stays stable for Create's isFluidEqual
+		boolean frozen = tank.consumeDrainedFlag();
+		if (tickCounter % HEAT_TICK == 0 && !frozen) {
 			updateHeat();
 		}
 		if (tickCounter % REACTION_TICK == 0) {
@@ -160,7 +163,7 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		// settle multi-fluid contents into a single mixture (or degrade to pure);
 		// runs after absorb/fill so coexisting species collapse same-tick
 		tank.collapseIfNeeded();
-		if (tickCounter % MIX_TICK == 0) {
+		if (tickCounter % MIX_TICK == 0 && !frozen) {
 			tickMixture();
 		}
 	}
@@ -289,8 +292,20 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 			case SEETHING -> 900;
 			default -> AMBIENT_TEMP;
 		};
-		temperature += (target - temperature) / 10;
-		sync();
+		// the vessel's contents carry the temperature; relax the settled stack
+		// toward the burner's target (or back to ambient when unheated)
+		List<FluidStack> fluids = tank.getFluids();
+		if (fluids.size() != 1) {
+			return; // empty, or transiently multi-entry before collapse
+		}
+		FluidStack stack = fluids.get(0);
+		int current = Temperature.get(stack);
+		int next = current + (target - current) / 10;
+		if (next != current) {
+			Temperature.set(stack, next);
+			setChanged();
+			sync();
+		}
 	}
 
 	private void tickReaction() {
@@ -353,6 +368,7 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 
 	private boolean matches(ChemicalReactionRecipe recipe) {
 		// heat condition vs current temperature
+		int temperature = getTemperature();
 		HeatCondition heat = recipe.getRequiredHeat();
 		if (heat == HeatCondition.HEATED && temperature < 400) {
 			return false;
@@ -425,6 +441,9 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 	}
 
 	private void completeRecipe(ChemicalReactionRecipe recipe) {
+		// capture the vessel's temperature before consuming inputs, so the products
+		// inherit it (they form in the hot/cold vessel, not at ambient)
+		int vesselTemp = getTemperature();
 		// consume item inputs (1 per ingredient)
 		for (Ingredient ingredient : recipe.getIngredients()) {
 			for (int i = 0; i < items.getSlots(); i++) {
@@ -454,13 +473,19 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 				Containers.dropItemStack(level, worldPosition.getX(), worldPosition.getY(), worldPosition.getZ(), remainder);
 			}
 		}
-		// fluid outputs
+		// fluid outputs (inherit the vessel temperature)
 		for (FluidStack out : recipe.getFluidResults()) {
+			Temperature.set(out, vesselTemp);
 			tank.fill(out.copy(), IFluidHandler.FluidAction.EXECUTE);
 		}
 		// heat effect (exothermic raises temperature)
 		if (recipe.getDeltaHeat() != 0) {
-			temperature = Math.max(AMBIENT_TEMP, Math.min(MAX_TEMP, temperature + recipe.getDeltaHeat()));
+			tank.collapseIfNeeded();
+			if (!tank.getFluids().isEmpty()) {
+				FluidStack stack = tank.getFluids().get(0);
+				int t = Math.max(AMBIENT_TEMP, Math.min(MAX_TEMP, Temperature.get(stack) + recipe.getDeltaHeat()));
+				Temperature.set(stack, t);
+			}
 		}
 	}
 
@@ -856,8 +881,12 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		return renderedLevel.getValue(partialTicks);
 	}
 
+	/** The vessel's temperature = the settled contents' temperature (°C); ambient when empty. */
 	public int getTemperature() {
-		return temperature;
+		if (tank.getFluids().isEmpty()) {
+			return AMBIENT_TEMP;
+		}
+		return Temperature.get(tank.getFluids().get(0));
 	}
 
 	public ReactorTank getTank() {
@@ -901,7 +930,6 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 	protected void write(CompoundTag tag, boolean clientPacket) {
 		super.write(tag, clientPacket);
 		tag.putBoolean("assembled", assembled);
-		tag.putInt("temperature", temperature);
 		tag.put("tank", tank.serializeNBT());
 		tag.putInt("tankCapacity", tank.getTankCapacity(0)); // survive reloads (volume-scaled)
 		tag.putInt("size", size);
@@ -924,7 +952,6 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 	protected void read(CompoundTag tag, boolean clientPacket) {
 		super.read(tag, clientPacket);
 		assembled = tag.getBoolean("assembled");
-		temperature = tag.getInt("temperature");
 		tank.deserializeNBT(tag.getCompound("tank"));
 		if (tag.contains("tankCapacity")) {
 			tank.setCapacity(tag.getInt("tankCapacity"));
@@ -970,6 +997,7 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 			.append(Component.translatable("block.chemicaladdon.reactor_controller")));
 
 		// temperature + heat tier
+		int temperature = getTemperature();
 		ChatFormatting heatColor = temperature >= 800 ? ChatFormatting.RED
 			: temperature >= 400 ? ChatFormatting.GOLD : ChatFormatting.GRAY;
 		tooltip.add(Component.literal(spacing).append(Component.translatable("goggles.chemicaladdon.temperature", temperature))
@@ -1054,6 +1082,7 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 	}
 
 	private String heatTierKey() {
+		int temperature = getTemperature();
 		if (temperature >= 800) {
 			return "goggles.chemicaladdon.heat.superheated";
 		}

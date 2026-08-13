@@ -6,6 +6,7 @@ import com.yu1745.chemicaladdon.composition.SpeciesManager;
 import com.yu1745.chemicaladdon.recipe.AllRecipeTypes;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
 import com.yu1745.chemicaladdon.registry.AllBlocks;
+import com.yu1745.chemicaladdon.registry.AllContainers;
 import com.yu1745.chemicaladdon.registry.AllCreativeModeTabs;
 import com.yu1745.chemicaladdon.registry.AllFluids;
 import com.yu1745.chemicaladdon.registry.AllItems;
@@ -41,6 +42,7 @@ public class ChemicalAddon {
 		AllFluids.register();
 		AllItems.register();
 		AllBlocks.register();
+		AllContainers.register();
 		REGISTRATE.registerEventListeners(modBus);
 
 		// datagen: extra English lang keys (after Registrate's own listener)

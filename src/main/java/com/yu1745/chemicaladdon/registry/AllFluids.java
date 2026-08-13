@@ -21,7 +21,7 @@ public class AllFluids {
 		.block()
 		.lang("Air")
 		.build()
-		.bucket().lang("Air Bucket").build()
+		.bucket().lang("Air Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> HYDROGEN = REGISTRATE.standardFluid("hydrogen",
@@ -34,7 +34,7 @@ public class AllFluids {
 		.block()
 		.lang("Hydrogen")
 		.build()
-		.bucket().lang("Hydrogen Bucket").build()
+		.bucket().lang("Hydrogen Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> OXYGEN = REGISTRATE.standardFluid("oxygen",
@@ -47,7 +47,7 @@ public class AllFluids {
 		.block()
 		.lang("Oxygen")
 		.build()
-		.bucket().lang("Oxygen Bucket").build()
+		.bucket().lang("Oxygen Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> NITROGEN = REGISTRATE.standardFluid("nitrogen",
@@ -60,7 +60,7 @@ public class AllFluids {
 		.block()
 		.lang("Nitrogen")
 		.build()
-		.bucket().lang("Nitrogen Bucket").build()
+		.bucket().lang("Nitrogen Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> CHLORINE = REGISTRATE.standardFluid("chlorine",
@@ -73,7 +73,7 @@ public class AllFluids {
 		.block()
 		.lang("Chlorine")
 		.build()
-		.bucket().lang("Chlorine Bucket").build()
+		.bucket().lang("Chlorine Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> CARBON_DIOXIDE = REGISTRATE.standardFluid("carbon_dioxide",
@@ -86,7 +86,7 @@ public class AllFluids {
 		.block()
 		.lang("Carbon Dioxide")
 		.build()
-		.bucket().lang("Carbon Dioxide Bucket").build()
+		.bucket().lang("Carbon Dioxide Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> CARBON_MONOXIDE = REGISTRATE.standardFluid("carbon_monoxide",
@@ -99,7 +99,7 @@ public class AllFluids {
 		.block()
 		.lang("Carbon Monoxide")
 		.build()
-		.bucket().lang("Carbon Monoxide Bucket").build()
+		.bucket().lang("Carbon Monoxide Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> SULFUR_DIOXIDE = REGISTRATE.standardFluid("sulfur_dioxide",
@@ -112,7 +112,7 @@ public class AllFluids {
 		.block()
 		.lang("Sulfur Dioxide")
 		.build()
-		.bucket().lang("Sulfur Dioxide Bucket").build()
+		.bucket().lang("Sulfur Dioxide Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> SULFUR_TRIOXIDE = REGISTRATE.standardFluid("sulfur_trioxide",
@@ -125,7 +125,7 @@ public class AllFluids {
 		.block()
 		.lang("Sulfur Trioxide")
 		.build()
-		.bucket().lang("Sulfur Trioxide Bucket").build()
+		.bucket().lang("Sulfur Trioxide Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> NITRIC_OXIDE = REGISTRATE.standardFluid("nitric_oxide",
@@ -138,7 +138,7 @@ public class AllFluids {
 		.block()
 		.lang("Nitric Oxide")
 		.build()
-		.bucket().lang("Nitric Oxide Bucket").build()
+		.bucket().lang("Nitric Oxide Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> NITROGEN_DIOXIDE = REGISTRATE.standardFluid("nitrogen_dioxide",
@@ -151,7 +151,7 @@ public class AllFluids {
 		.block()
 		.lang("Nitrogen Dioxide")
 		.build()
-		.bucket().lang("Nitrogen Dioxide Bucket").build()
+		.bucket().lang("Nitrogen Dioxide Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> AMMONIA = REGISTRATE.standardFluid("ammonia",
@@ -164,7 +164,7 @@ public class AllFluids {
 		.block()
 		.lang("Ammonia")
 		.build()
-		.bucket().lang("Ammonia Bucket").build()
+		.bucket().lang("Ammonia Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> HYDROGEN_CHLORIDE = REGISTRATE.standardFluid("hydrogen_chloride",
@@ -177,7 +177,7 @@ public class AllFluids {
 		.block()
 		.lang("Hydrogen Chloride")
 		.build()
-		.bucket().lang("Hydrogen Chloride Bucket").build()
+		.bucket().lang("Hydrogen Chloride Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> WATER = REGISTRATE.standardFluid("water",
@@ -190,7 +190,7 @@ public class AllFluids {
 		.block()
 		.lang("Water")
 		.build()
-		.bucket().lang("Water Bucket").build()
+		.bucket().lang("Water Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> BRINE = REGISTRATE.standardFluid("brine",
@@ -203,7 +203,7 @@ public class AllFluids {
 		.block()
 		.lang("Saturated Brine")
 		.build()
-		.bucket().lang("Saturated Brine Bucket").build()
+		.bucket().lang("Saturated Brine Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> AMMONIATED_BRINE = REGISTRATE.standardFluid("ammoniated_brine",
@@ -216,7 +216,7 @@ public class AllFluids {
 		.block()
 		.lang("Ammoniated Brine")
 		.build()
-		.bucket().lang("Ammoniated Brine Bucket").build()
+		.bucket().lang("Ammoniated Brine Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> DILUTE_HYDROCHLORIC_ACID = REGISTRATE.standardFluid("dilute_hydrochloric_acid",
@@ -229,7 +229,7 @@ public class AllFluids {
 		.block()
 		.lang("Dilute Hydrochloric Acid")
 		.build()
-		.bucket().lang("Dilute Hydrochloric Acid Bucket").build()
+		.bucket().lang("Dilute Hydrochloric Acid Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> CONCENTRATED_HYDROCHLORIC_ACID = REGISTRATE.standardFluid("concentrated_hydrochloric_acid",
@@ -242,7 +242,7 @@ public class AllFluids {
 		.block()
 		.lang("Concentrated Hydrochloric Acid")
 		.build()
-		.bucket().lang("Concentrated Hydrochloric Acid Bucket").build()
+		.bucket().lang("Concentrated Hydrochloric Acid Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> DILUTE_SULFURIC_ACID = REGISTRATE.standardFluid("dilute_sulfuric_acid",
@@ -255,7 +255,7 @@ public class AllFluids {
 		.block()
 		.lang("Dilute Sulfuric Acid")
 		.build()
-		.bucket().lang("Dilute Sulfuric Acid Bucket").build()
+		.bucket().lang("Dilute Sulfuric Acid Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> CONCENTRATED_SULFURIC_ACID = REGISTRATE.standardFluid("concentrated_sulfuric_acid",
@@ -268,7 +268,7 @@ public class AllFluids {
 		.block()
 		.lang("Concentrated Sulfuric Acid")
 		.build()
-		.bucket().lang("Concentrated Sulfuric Acid Bucket").build()
+		.bucket().lang("Concentrated Sulfuric Acid Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> OLEUM = REGISTRATE.standardFluid("oleum",
@@ -281,7 +281,7 @@ public class AllFluids {
 		.block()
 		.lang("Oleum")
 		.build()
-		.bucket().lang("Oleum Bucket").build()
+		.bucket().lang("Oleum Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> DILUTE_NITRIC_ACID = REGISTRATE.standardFluid("dilute_nitric_acid",
@@ -294,7 +294,7 @@ public class AllFluids {
 		.block()
 		.lang("Dilute Nitric Acid")
 		.build()
-		.bucket().lang("Dilute Nitric Acid Bucket").build()
+		.bucket().lang("Dilute Nitric Acid Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> CONCENTRATED_NITRIC_ACID = REGISTRATE.standardFluid("concentrated_nitric_acid",
@@ -307,7 +307,7 @@ public class AllFluids {
 		.block()
 		.lang("Concentrated Nitric Acid")
 		.build()
-		.bucket().lang("Concentrated Nitric Acid Bucket").build()
+		.bucket().lang("Concentrated Nitric Acid Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> CAUSTIC_SODA_SOLUTION = REGISTRATE.standardFluid("caustic_soda_solution",
@@ -320,7 +320,7 @@ public class AllFluids {
 		.block()
 		.lang("Caustic Soda Solution")
 		.build()
-		.bucket().lang("Caustic Soda Solution Bucket").build()
+		.bucket().lang("Caustic Soda Solution Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> SODA_ASH_SOLUTION = REGISTRATE.standardFluid("soda_ash_solution",
@@ -333,7 +333,7 @@ public class AllFluids {
 		.block()
 		.lang("Soda Ash Solution")
 		.build()
-		.bucket().lang("Soda Ash Solution Bucket").build()
+		.bucket().lang("Soda Ash Solution Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> AMMONIUM_CHLORIDE_SOLUTION = REGISTRATE.standardFluid("ammonium_chloride_solution",
@@ -346,7 +346,7 @@ public class AllFluids {
 		.block()
 		.lang("Ammonium Chloride Solution")
 		.build()
-		.bucket().lang("Ammonium Chloride Solution Bucket").build()
+		.bucket().lang("Ammonium Chloride Solution Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> CALCIUM_CHLORIDE_SOLUTION = REGISTRATE.standardFluid("calcium_chloride_solution",
@@ -359,7 +359,7 @@ public class AllFluids {
 		.block()
 		.lang("Calcium Chloride Solution")
 		.build()
-		.bucket().lang("Calcium Chloride Solution Bucket").build()
+		.bucket().lang("Calcium Chloride Solution Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> AMMONIA_WATER = REGISTRATE.standardFluid("ammonia_water",
@@ -372,7 +372,7 @@ public class AllFluids {
 		.block()
 		.lang("Ammonia Water")
 		.build()
-		.bucket().lang("Ammonia Water Bucket").build()
+		.bucket().lang("Ammonia Water Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> MILK_OF_LIME = REGISTRATE.standardFluid("milk_of_lime",
@@ -385,7 +385,7 @@ public class AllFluids {
 		.block()
 		.lang("Milk of Lime")
 		.build()
-		.bucket().lang("Milk of Lime Bucket").build()
+		.bucket().lang("Milk of Lime Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> BLEACH_SOLUTION = REGISTRATE.standardFluid("bleach_solution",
@@ -398,7 +398,7 @@ public class AllFluids {
 		.block()
 		.lang("Bleach Solution")
 		.build()
-		.bucket().lang("Bleach Solution Bucket").build()
+		.bucket().lang("Bleach Solution Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> PHOSPHORIC_ACID = REGISTRATE.standardFluid("phosphoric_acid",
@@ -411,7 +411,7 @@ public class AllFluids {
 		.block()
 		.lang("Phosphoric Acid")
 		.build()
-		.bucket().lang("Phosphoric Acid Bucket").build()
+		.bucket().lang("Phosphoric Acid Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> AMMONIUM_SULFATE_SOLUTION = REGISTRATE.standardFluid("ammonium_sulfate_solution",
@@ -424,7 +424,7 @@ public class AllFluids {
 		.block()
 		.lang("Ammonium Sulfate Solution")
 		.build()
-		.bucket().lang("Ammonium Sulfate Solution Bucket").build()
+		.bucket().lang("Ammonium Sulfate Solution Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> AMMONIUM_NITRATE_SOLUTION = REGISTRATE.standardFluid("ammonium_nitrate_solution",
@@ -437,7 +437,7 @@ public class AllFluids {
 		.block()
 		.lang("Ammonium Nitrate Solution")
 		.build()
-		.bucket().lang("Ammonium Nitrate Solution Bucket").build()
+		.bucket().lang("Ammonium Nitrate Solution Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> SODIUM_ALUMINATE_SOLUTION = REGISTRATE.standardFluid("sodium_aluminate_solution",
@@ -450,7 +450,7 @@ public class AllFluids {
 		.block()
 		.lang("Sodium Aluminate Solution")
 		.build()
-		.bucket().lang("Sodium Aluminate Solution Bucket").build()
+		.bucket().lang("Sodium Aluminate Solution Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> SODIUM_BICARBONATE_SLURRY = REGISTRATE.standardFluid("sodium_bicarbonate_slurry",
@@ -463,7 +463,7 @@ public class AllFluids {
 		.block()
 		.lang("Sodium Bicarbonate Slurry")
 		.build()
-		.bucket().lang("Sodium Bicarbonate Slurry Bucket").build()
+		.bucket().lang("Sodium Bicarbonate Slurry Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> GYPSUM_SLURRY = REGISTRATE.standardFluid("gypsum_slurry",
@@ -476,7 +476,7 @@ public class AllFluids {
 		.block()
 		.lang("Gypsum Slurry")
 		.build()
-		.bucket().lang("Gypsum Slurry Bucket").build()
+		.bucket().lang("Gypsum Slurry Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> CALCIUM_SULFITE_SLURRY = REGISTRATE.standardFluid("calcium_sulfite_slurry",
@@ -489,7 +489,7 @@ public class AllFluids {
 		.block()
 		.lang("Calcium Sulfite Slurry")
 		.build()
-		.bucket().lang("Calcium Sulfite Slurry Bucket").build()
+		.bucket().lang("Calcium Sulfite Slurry Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> THERMAL_OIL = REGISTRATE.standardFluid("thermal_oil",
@@ -502,7 +502,7 @@ public class AllFluids {
 		.block()
 		.lang("Thermal Oil")
 		.build()
-		.bucket().lang("Thermal Oil Bucket").build()
+		.bucket().lang("Thermal Oil Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static final FluidEntry<ForgeFlowingFluid.Flowing> MIXTURE = REGISTRATE.standardFluid("mixture",

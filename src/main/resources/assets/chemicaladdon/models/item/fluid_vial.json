@@ -1,0 +1,9 @@
+{
+  "parent": "forge:item/default",
+  "loader": "forge:fluid_container",
+  "textures": {
+    "base": "chemicaladdon:item/fluid_vial",
+    "fluid": "chemicaladdon:item/fluid_vial_mask"
+  },
+  "fluid": "minecraft:empty"
+}

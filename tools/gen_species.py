@@ -242,43 +242,39 @@ def make_item_texture(rgb):
     return rows
 
 
-def make_bucket_texture(rgb):
-    """16x16 fluid-bucket item sprite: dark pail frame + light rim + bail handle,
-    filled with the species colour. Transparent background. Matches the vanilla
-    `<fluid>_bucket.png` convention that the generated bucket item model references.
-
-    Required because Create's `standardFluid()` auto-registers a block + bucket via
-    Registrate, but only emits their model JSON during datagen (which this project
-    does not run for assets). See AGENTS.md and Create's own `honey_bucket` asset.
-    """
-    r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
-    dark = (78, 78, 88, 255)       # pail frame / handle
-    light = (190, 190, 200, 255)   # rim highlight
-    fluid = (r, g, b, 255)
-    palette = {"#": dark, "=": light, "o": fluid}
-    tmpl = [
-        "................",
-        "....########....",  # bail handle (top bar)
-        "....#......#....",  # handle legs
-        "...==========...",  # rim
-        "...#oooooooo#...",  # body: frame + fluid fill
-        "...#oooooooo#...",
-        "...#oooooooo#...",
-        "...#oooooooo#...",
-        "...#oooooooo#...",
-        "...#oooooooo#...",
-        "....#oooooo#....",  # taper toward base
-        "....#oooooo#....",
-        "....#oooooo#....",
-        "....########....",  # bottom
-        "................",
-        "................",
-    ]
+def make_vial_texture():
+    """16x16 glass sample-vial base: a translucent beaker outline (rim + walls +
+    floor), transparent interior where the fluid tint shows through. Paired with
+    make_vial_mask_texture() for the DynamicFluidContainerModel."""
+    glass = (170, 185, 205, 210)  # semi-transparent glass
     rows = []
-    for line in tmpl:
+    for y in range(16):
         row = []
-        for ch in line:
-            row += [0, 0, 0, 0] if ch == "." else list(palette[ch])
+        for x in range(16):
+            if y == 3 and 2 <= x <= 13:                    # rim (top bar)
+                row += [glass[0], glass[1], glass[2], 255]
+            elif y == 14 and 2 <= x <= 13:                 # floor
+                row += [glass[0], glass[1], glass[2], 255]
+            elif 4 <= y <= 13 and (x == 2 or x == 13):     # walls
+                row += [glass[0], glass[1], glass[2], 255]
+            else:
+                row += [0, 0, 0, 0]                        # transparent interior
+        rows.append(row)
+    return rows
+
+
+def make_vial_mask_texture():
+    """16x16 fluid-region mask: opaque where the liquid fills the vial body,
+    transparent elsewhere. The DynamicFluidContainerModel bakes this region with
+    the fluid's tinted still sprite."""
+    rows = []
+    for y in range(16):
+        row = []
+        for x in range(16):
+            if 4 <= y <= 13 and 3 <= x <= 12:
+                row += [255, 255, 255, 255]                # opaque mask
+            else:
+                row += [0, 0, 0, 0]
         rows.append(row)
     return rows
 
@@ -310,9 +306,10 @@ def gen_textures():
     os.makedirs(d, exist_ok=True)
     for sid, _, _, color in SOLIDS:
         write_png(os.path.join(d, f"{sid}.png"), make_item_texture(color))
-    # fluid bucket item sprites (one per species, matching <fluid>_bucket item models)
-    for sid, _, _, color, *_ in FLUIDS:
-        write_png(os.path.join(d, f"{sid}_bucket.png"), make_bucket_texture(color))
+    # the generic sample vial (hand-written item, not a species): glass base +
+    # fluid mask for the DynamicFluidContainerModel
+    write_png(os.path.join(d, "fluid_vial.png"), make_vial_texture())
+    write_png(os.path.join(d, "fluid_vial_mask.png"), make_vial_mask_texture())
 
 def gen_atlas():
     """Register every fluid still/flow texture as a sprite source for the block
@@ -338,6 +335,30 @@ def gen_atlas():
     with open(os.path.join(d, "blocks.json"), "w", encoding="utf-8") as f:
         _json.dump({"sources": sources}, f, indent=2)
         f.write("\n")
+
+
+def gen_bucket_models():
+    """Write the per-species bucket item models as forge:fluid_container
+    (DynamicFluidContainerModel). The fluid is rendered from the still sprite +
+    per-stack tint, so no hand-drawn <fluid>_bucket.png is needed — just vanilla's
+    empty-bucket base + Forge's bucket_fluid mask. The .bucket() registration is
+    told to skip its default item/generated model (see fluid_entry)."""
+    d = os.path.join(ASSETS, "models/item")
+    os.makedirs(d, exist_ok=True)
+    import json as _json
+    for sid, *_ in FLUIDS:
+        model = {
+            "parent": "forge:item/default",
+            "loader": "forge:fluid_container",
+            "textures": {
+                "base": "minecraft:item/bucket",
+                "fluid": "forge:item/mask/bucket_fluid"
+            },
+            "fluid": f"chemicaladdon:{sid}"
+        }
+        with open(os.path.join(d, f"{sid}_bucket.json"), "w", encoding="utf-8") as f:
+            _json.dump(model, f, indent=2)
+            f.write("\n")
 
 def make_brick_texture(rgb):
     """Brick pattern: 8x8 brick rows with dark mortar lines."""
@@ -401,6 +422,7 @@ def gen_block_textures():
 # These survive regeneration; edit them here, never in the generated json.
 EXTRA_LANG_ZH = {
     "itemGroup.chemicaladdon": "化学附属",
+    "item.chemicaladdon.fluid_vial": "样品瓶",
     "goggles.chemicaladdon.temperature": "温度：%s°C",
     "goggles.chemicaladdon.heat.none": "无热级",
     "goggles.chemicaladdon.heat.heated": "加热",
@@ -492,7 +514,7 @@ def fluid_entry(sid, en_name, density, viscosity, temp, gas):
             "\t\t.block()\n"
             f"\t\t.lang(\"{en_name}\")\n"
             "\t\t.build()\n"
-            f"\t\t.bucket().lang(\"{en_name} Bucket\").build()\n"
+            f"\t\t.bucket().lang(\"{en_name} Bucket\").model((ctx, prov) -> {{}}).build()\n"
             "\t\t.register();")
 
 def gen_fluids_java():
@@ -578,6 +600,7 @@ def gen_items_java():
 if __name__ == "__main__":
     gen_textures()
     gen_atlas()
+    gen_bucket_models()
     gen_block_textures()
     gen_lang()
     gen_fluids_java()

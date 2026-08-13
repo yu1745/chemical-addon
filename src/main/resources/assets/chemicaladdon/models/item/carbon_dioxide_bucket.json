@@ -1,0 +1,9 @@
+{
+  "parent": "forge:item/default",
+  "loader": "forge:fluid_container",
+  "textures": {
+    "base": "minecraft:item/bucket",
+    "fluid": "forge:item/mask/bucket_fluid"
+  },
+  "fluid": "chemicaladdon:carbon_dioxide"
+}

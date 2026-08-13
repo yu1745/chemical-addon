@@ -1,5 +1,6 @@
 {
   "itemGroup.chemicaladdon": "化学附属",
+  "item.chemicaladdon.fluid_vial": "样品瓶",
   "goggles.chemicaladdon.temperature": "温度：%s°C",
   "goggles.chemicaladdon.heat.none": "无热级",
   "goggles.chemicaladdon.heat.heated": "加热",

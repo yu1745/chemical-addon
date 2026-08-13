@@ -2,8 +2,16 @@ package com.yu1745.chemicaladdon;
 
 import com.yu1745.chemicaladdon.reactor.ReactorControllerRenderer;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
+import com.yu1745.chemicaladdon.registry.AllContainers;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderers;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.material.Fluid;
+import net.minecraftforge.client.model.DynamicFluidContainerModel;
+import net.minecraftforge.registries.ForgeRegistries;
 
 /** Client-only initialisation. */
 public class ChemicalAddonClient {
@@ -11,5 +19,20 @@ public class ChemicalAddonClient {
 	public static void init() {
 		// render the vessel's item buffer + fluid surface inside the hollow interior
 		BlockEntityRenderers.register(AllBlockEntities.REACTOR_CONTROLLER.get(), ReactorControllerRenderer::new);
+
+		// per-stack fluid tint for every DynamicFluidContainerModel item: the sample
+		// vial (any fluid with NBT) and every species bucket (still sprite + tint).
+		DynamicFluidContainerModel.Colors fluidTint = new DynamicFluidContainerModel.Colors();
+		Minecraft.getInstance().getItemColors().register(fluidTint, AllContainers.FLUID_VIAL.get());
+		for (Fluid fluid : ForgeRegistries.FLUIDS) {
+			ResourceLocation id = ForgeRegistries.FLUIDS.getKey(fluid);
+			if (id == null || !ChemicalAddon.MODID.equals(id.getNamespace())) {
+				continue;
+			}
+			Item bucket = fluid.getBucket();
+			if (bucket != Items.AIR) {
+				Minecraft.getInstance().getItemColors().register(fluidTint, bucket);
+			}
+		}
 	}
 }
