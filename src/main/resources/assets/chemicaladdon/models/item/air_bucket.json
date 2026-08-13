@@ -5,5 +5,6 @@
     "base": "minecraft:item/bucket",
     "fluid": "forge:item/mask/bucket_fluid"
   },
-  "fluid": "chemicaladdon:air"
+  "fluid": "chemicaladdon:air",
+  "flip_gas": true
 }

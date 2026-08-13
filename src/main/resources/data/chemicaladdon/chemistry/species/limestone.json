@@ -1,0 +1,9 @@
+{
+  "formula": "CaCO3",
+  "phase": "SOLID",
+  "ksp": 1.0e-8,
+  "ions": [
+    { "ion": "Ca", "charge": 2, "count": 1 },
+    { "ion": "CO3", "charge": -2, "count": 1 }
+  ]
+}

@@ -76,6 +76,10 @@ public class AllItems {
 		REGISTRATE.item("calcium_chloride", Item::new)
 			.lang("Calcium Chloride")
 			.register();
+	public static final ItemEntry<Item> CALCIUM_SULFITE =
+		REGISTRATE.item("calcium_sulfite", Item::new)
+			.lang("Calcium Sulfite")
+			.register();
 	public static final ItemEntry<Item> FILTER_CAKE =
 		REGISTRATE.item("filter_cake", Item::new)
 			.lang("Filter Cake")

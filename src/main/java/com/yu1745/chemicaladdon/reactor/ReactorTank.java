@@ -4,15 +4,22 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import com.simibubi.create.foundation.fluid.FluidIngredient;
+import com.yu1745.chemicaladdon.composition.Solution;
+import com.yu1745.chemicaladdon.composition.Species;
+import com.yu1745.chemicaladdon.composition.SpeciesManager;
 import com.yu1745.chemicaladdon.fluid.Mixture;
+import com.yu1745.chemicaladdon.fluid.Miscibility;
 import com.yu1745.chemicaladdon.fluid.Temperature;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.material.FlowingFluid;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.Fluids;
@@ -44,11 +51,6 @@ public class ReactorTank implements IFluidHandler {
 	private int capacity;
 	private final Runnable onChanged;
 	private final List<FluidStack> fluids = new ArrayList<>();
-	/** Set by every drain (including Create's 1 mB SIMULATE probe) since the last
-	 *  homogenisation tick. The controller consumes it to freeze MixDegree while the
-	 *  mixture is being pumped out, keeping the transport tag stable for Create's
-	 *  probe-then-transfer {@code isFluidEqual} matching. */
-	private boolean drainedSinceLastMixTick = false;
 
 	public ReactorTank(int capacity, Runnable onChanged) {
 		this.capacity = capacity;
@@ -68,13 +70,6 @@ public class ReactorTank implements IFluidHandler {
 
 	public void setCapacity(int capacity) {
 		this.capacity = capacity;
-	}
-
-	/** Consumes (and returns) the "drained since last homogenisation tick" flag. */
-	public boolean consumeDrainedFlag() {
-		boolean drained = drainedSinceLastMixTick;
-		drainedSinceLastMixTick = false;
-		return drained;
 	}
 
 	public List<FluidStack> getFluids() {
@@ -149,7 +144,6 @@ public class ReactorTank implements IFluidHandler {
 
 	@Override
 	public FluidStack drain(FluidStack resource, FluidAction action) {
-		drainedSinceLastMixTick = true;
 		if (resource.isEmpty()) {
 			return FluidStack.EMPTY;
 		}
@@ -195,11 +189,31 @@ public class ReactorTank implements IFluidHandler {
 
 	@Override
 	public FluidStack drain(int maxDrain, FluidAction action) {
-		drainedSinceLastMixTick = true;
+		return drainSorted(maxDrain, action, false);
+	}
+
+	/** D18.5: drain the LIGHTEST phase first (top port / decantation) — the reverse of {@link #drain(int, FluidAction)}. */
+	public FluidStack drainLightest(int maxDrain, FluidAction action) {
+		return drainSorted(maxDrain, action, true);
+	}
+
+	/**
+	 * Drain one phase, ordered by density. {@code lightest=false} takes the densest
+	 * phase first (bottom port: heavy sinks); {@code lightest=true} takes the
+	 * lightest first (top port: decant the floating layer). Gases (negative density)
+	 * are lightest, so they drain last from the bottom and first from the top.
+	 */
+	private FluidStack drainSorted(int maxDrain, FluidAction action, boolean lightest) {
 		if (fluids.isEmpty() || maxDrain <= 0) {
 			return FluidStack.EMPTY;
 		}
-		FluidStack first = fluids.get(0);
+		List<FluidStack> order = new ArrayList<>(fluids);
+		if (lightest) {
+			order.sort((a, b) -> Integer.compare(Miscibility.densityOf(a), Miscibility.densityOf(b)));
+		} else {
+			order.sort((a, b) -> Integer.compare(Miscibility.densityOf(b), Miscibility.densityOf(a)));
+		}
+		FluidStack first = order.get(0);
 		int amount = Math.min(first.getAmount(), maxDrain);
 		if (amount <= 0) {
 			return FluidStack.EMPTY;
@@ -219,6 +233,50 @@ public class ReactorTank implements IFluidHandler {
 			onChanged.run();
 		}
 		return out;
+	}
+
+	/**
+	 * An {@link IFluidHandler} view that drains the lightest phase first — the
+	 * vessel's "top port" for decantation (roof brick). Everything else delegates to
+	 * this tank unchanged; filling still re-separates on the next settle.
+	 */
+	public IFluidHandler lightPhase() {
+		return new IFluidHandler() {
+			@Override
+			public int getTanks() {
+				return ReactorTank.this.getTanks();
+			}
+
+			@Override
+			public FluidStack getFluidInTank(int tank) {
+				return ReactorTank.this.getFluidInTank(tank);
+			}
+
+			@Override
+			public int getTankCapacity(int tank) {
+				return ReactorTank.this.getTankCapacity(tank);
+			}
+
+			@Override
+			public boolean isFluidValid(int tank, FluidStack stack) {
+				return ReactorTank.this.isFluidValid(tank, stack);
+			}
+
+			@Override
+			public int fill(FluidStack resource, FluidAction action) {
+				return ReactorTank.this.fill(resource, action);
+			}
+
+			@Override
+			public FluidStack drain(FluidStack resource, FluidAction action) {
+				return ReactorTank.this.drain(resource, action);
+			}
+
+			@Override
+			public FluidStack drain(int maxDrain, FluidAction action) {
+				return ReactorTank.this.drainLightest(maxDrain, action);
+			}
+		};
 	}
 
 	/**
@@ -264,67 +322,103 @@ public class ReactorTank implements IFluidHandler {
 			if (fluids.size() == 1) {
 				FluidStack only = fluids.get(0);
 				if (Mixture.isMixture(only)) {
-					int comps = Mixture.getRatios(only).size();
+					int comps = Mixture.getMolecules(only).size() + Mixture.getIons(only).size()
+						+ Mixture.getSuspended(only).size();
 					if (comps == 0) {
 						fluids.clear(); // corrupt component-less mixture
 						onChanged.run();
-					} else if (comps == 1) {
+					} else if (Mixture.getIons(only).isEmpty() && Mixture.getSuspended(only).isEmpty()
+						&& Mixture.getMolecules(only).size() == 1) {
 						degradeSingleComponentMixture(only);
 					}
-					// comps >= 2: settled — leave the ratio tag alone
+					// otherwise: settled — leave the ratio tag alone
 				}
+				// a lone pure fluid is left as-is
 			}
 			return;
 		}
 
-		Map<ResourceLocation, Integer> merged = new LinkedHashMap<>();
-		double weightedMix = 0; // Σ (MixDegree × amount); pure fluids contribute 0
-		long weightedTemp = 0; // Σ (temperature × amount), °C·mB
+		// D18: settle by phase — gases stay separate phases; liquids merge only
+		// within their own miscibility group (cross-group liquids are immiscible).
+		List<FluidStack> gases = new ArrayList<>();
+		Map<String, List<FluidStack>> liquidGroups = new LinkedHashMap<>();
 		for (FluidStack stack : fluids) {
+			if (Miscibility.isGas(stack)) {
+				gases.add(stack);
+			} else {
+				liquidGroups.computeIfAbsent(Miscibility.groupOf(stack), k -> new ArrayList<>()).add(stack);
+			}
+		}
+
+		List<FluidStack> settled = new ArrayList<>();
+		for (List<FluidStack> members : liquidGroups.values()) {
+			FluidStack merged = mergeGroup(members);
+			if (!merged.isEmpty()) {
+				settled.add(merged);
+			}
+		}
+		// densest liquid first (it sinks); gases are the lightest phase, kept last
+		// (the renderer hangs them from the top)
+		settled.sort((a, b) -> Integer.compare(Miscibility.densityOf(b), Miscibility.densityOf(a)));
+		settled.addAll(gases);
+
+		fluids.clear();
+		fluids.addAll(settled);
+		onChanged.run();
+	}
+
+	/**
+	 * Merge one miscibility group's members into a single canonical stack: a pure
+	 * fluid when only one molecular species survives, otherwise a {@link Mixture}.
+	 * Returns {@link FluidStack#EMPTY} when every member was corrupt.
+	 */
+	private FluidStack mergeGroup(List<FluidStack> members) {
+		Map<ResourceLocation, Integer> molecules = new LinkedHashMap<>();
+		Map<String, Integer> ions = new LinkedHashMap<>();
+		Map<ResourceLocation, Integer> suspended = new LinkedHashMap<>();
+		long weightedTemp = 0; // Σ (temperature × amount), °C·mB
+		int total = 0;
+		for (FluidStack stack : members) {
+			total += stack.getAmount();
 			weightedTemp += (long) Temperature.get(stack) * stack.getAmount();
 			if (Mixture.isMixture(stack)) {
-				weightedMix += Mixture.getMixDegree(stack) * (double) stack.getAmount();
 				for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveAmounts(stack).entrySet()) {
-					merged.merge(e.getKey(), e.getValue(), Integer::sum);
+					molecules.merge(e.getKey(), e.getValue(), Integer::sum);
+				}
+				for (Map.Entry<String, Integer> e : Mixture.deriveIonAmounts(stack).entrySet()) {
+					ions.merge(e.getKey(), e.getValue(), Integer::sum);
+				}
+				for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveSuspendedAmounts(stack).entrySet()) {
+					suspended.merge(e.getKey(), e.getValue(), Integer::sum);
 				}
 			} else {
 				ResourceLocation id = ForgeRegistries.FLUIDS.getKey(sourceOf(stack.getFluid()));
 				if (id != null) {
-					merged.merge(id, stack.getAmount(), Integer::sum);
+					molecules.merge(id, stack.getAmount(), Integer::sum);
 				}
 			}
 		}
-		merged.values().removeIf(v -> v <= 0);
-		int distinct = merged.size();
+		molecules.values().removeIf(v -> v <= 0);
+		ions.values().removeIf(v -> v <= 0);
+		suspended.values().removeIf(v -> v <= 0);
 
+		if (molecules.isEmpty() && ions.isEmpty() && suspended.isEmpty()) {
+			return FluidStack.EMPTY; // every entry was corrupt
+		}
 		FluidStack target;
-		if (distinct >= 2) {
-			int total = 0;
-			for (int v : merged.values()) {
-				total += v;
-			}
-			target = Mixture.create(Mixture.reduce(merged), total);
-			// amount-weighted homogenisation: freshly added pure fluid (MixDegree 0)
-			// drags the blend back down in proportion to how much of it was added
-			Mixture.setMixDegree(target, total > 0 ? (float) (weightedMix / total) : 0f);
-			Temperature.set(target, Temperature.fromWeightedSum(weightedTemp, total));
-		} else if (distinct == 1) {
-			Map.Entry<ResourceLocation, Integer> only = merged.entrySet().iterator().next();
+		if (molecules.size() == 1 && ions.isEmpty() && suspended.isEmpty()) {
+			// a single pure molecular species → a pure fluid
+			Map.Entry<ResourceLocation, Integer> only = molecules.entrySet().iterator().next();
 			Fluid pf = ForgeRegistries.FLUIDS.getValue(only.getKey());
 			if (pf == null || pf == Fluids.EMPTY) {
-				return;
+				return FluidStack.EMPTY;
 			}
-			target = new FluidStack(pf, only.getValue());
-			Temperature.set(target, Temperature.fromWeightedSum(weightedTemp, only.getValue()));
+			target = new FluidStack(pf, total);
 		} else {
-			target = null; // every entry was corrupt
+			target = Mixture.create(molecules, ions, suspended, total);
 		}
-
-		fluids.clear();
-		if (target != null) {
-			fluids.add(target);
-		}
-		onChanged.run();
+		Temperature.set(target, Temperature.fromWeightedSum(weightedTemp, total));
+		return target;
 	}
 
 	/** Replace a single-component mixture with the equivalent pure fluid stack. */
@@ -417,10 +511,96 @@ public class ReactorTank implements IFluidHandler {
 					for (int v : amounts.values()) {
 						newTotal += v;
 					}
-					Mixture.setRatios(stack, Mixture.reduce(amounts));
+					Mixture.setMolecules(stack, Mixture.reduce(amounts));
 					stack.setAmount(newTotal);
 				}
 			}
+		}
+		if (action.execute()) {
+			removeEmpty();
+			onChanged.run();
+		}
+		return required - remaining;
+	}
+
+	/** mB of a solution species' solute ions (mole-equivalents) formable from the vessel's dissolved ions. */
+	public int countSolution(ResourceLocation speciesId) {
+		Species species = SpeciesManager.get(speciesId);
+		if (species == null || !species.isSolution()) {
+			return 0;
+		}
+		int total = 0;
+		for (FluidStack stack : fluids) {
+			if (Mixture.isMixture(stack)) {
+				total += species.equivalentIonMb(Mixture.deriveIonAmounts(stack));
+			}
+		}
+		return total;
+	}
+
+	/**
+	 * Continuous concentration of a solution species across the vessel's mixture
+	 * stacks: solute ion mB / water mB. 0 when there is no water (or no species).
+	 */
+	public double concentrationOf(ResourceLocation speciesId) {
+		Species species = SpeciesManager.get(speciesId);
+		if (species == null || !species.isSolution()) {
+			return 0;
+		}
+		int ionMb = 0;
+		int waterMb = 0;
+		for (FluidStack stack : fluids) {
+			if (Mixture.isMixture(stack)) {
+				ionMb += species.equivalentIonMb(Mixture.deriveIonAmounts(stack));
+				waterMb += Mixture.deriveAmounts(stack).getOrDefault(Solution.WATER, 0);
+			}
+		}
+		return waterMb > 0 ? (double) ionMb / waterMb : 0.0;
+	}
+
+	/**
+	 * Drain up to {@code required} mB of a solution species' solute ions (whole
+	 * formula units, so the ion multiset stays charge-neutral). Water is the
+	 * solvent and is <b>not</b> consumed — a reaction eats the solute, not the
+	 * water it is dissolved in.
+	 */
+	public int drainSolution(ResourceLocation speciesId, int required, FluidAction action) {
+		Species species = SpeciesManager.get(speciesId);
+		if (species == null || !species.isSolution() || required <= 0) {
+			return 0;
+		}
+		int remaining = required;
+		int ic = species.ionCount();
+		for (FluidStack stack : fluids) {
+			if (!Mixture.isMixture(stack) || remaining <= 0) {
+				continue;
+			}
+			Map<String, Integer> ionAmounts = Mixture.deriveIonAmounts(stack);
+			long formulaUnits = species.formulaUnits(ionAmounts);
+			if (formulaUnits <= 0 || formulaUnits == Long.MAX_VALUE) {
+				continue;
+			}
+			long need = (remaining + ic - 1L) / ic;
+			long take = Math.min(formulaUnits, need);
+			int takeMb = (int) (take * ic);
+			if (action.execute()) {
+				Map<ResourceLocation, Integer> mol = Mixture.deriveAmounts(stack);
+				for (Species.IonComponent c : species.ions()) {
+					ionAmounts.merge(c.ion().id(), (int) (-take * c.count()), Integer::sum);
+				}
+				ionAmounts.values().removeIf(v -> v <= 0);
+				mol.values().removeIf(v -> v <= 0);
+				int newTotal = stack.getAmount() - takeMb;
+				int idx = fluids.indexOf(stack);
+				if (newTotal <= 0 || (ionAmounts.isEmpty() && mol.isEmpty())) {
+					fluids.set(idx, FluidStack.EMPTY);
+				} else {
+					FluidStack replacement = Mixture.create(mol, ionAmounts, newTotal);
+					Temperature.set(replacement, Temperature.get(stack));
+					fluids.set(idx, replacement);
+				}
+			}
+			remaining -= takeMb;
 		}
 		if (action.execute()) {
 			removeEmpty();
@@ -436,6 +616,108 @@ public class ReactorTank implements IFluidHandler {
 	/** Empties the tank entirely (e.g. after contents were spilled into the world). */
 	public void clear() {
 		fluids.clear();
+	}
+
+	/**
+	 * Remove all suspended solids from the tank, emitting them as items via
+	 * {@code sink} (1 item per {@code mbPerItem} mB, rounded, min 1). The liquid
+	 * (molecules + ions) stays in the tank. Returns the total mB of solids removed.
+	 */
+	public int extractSuspended(Consumer<ItemStack> sink, int mbPerItem) {
+		int extracted = 0;
+		for (FluidStack stack : new ArrayList<>(fluids)) {
+			if (!Mixture.isMixture(stack)) {
+				continue;
+			}
+			Map<ResourceLocation, Integer> susp = Mixture.deriveSuspendedAmounts(stack);
+			if (susp.isEmpty()) {
+				continue;
+			}
+			Map<ResourceLocation, Integer> mol = Mixture.deriveAmounts(stack);
+			Map<String, Integer> ions = Mixture.deriveIonAmounts(stack);
+			for (Map.Entry<ResourceLocation, Integer> e : susp.entrySet()) {
+				Item item = ForgeRegistries.ITEMS.getValue(e.getKey());
+				if (item == null || e.getValue() <= 0) {
+					continue;
+				}
+				int count = Math.max(1, (int) Math.round((double) e.getValue() / mbPerItem));
+				sink.accept(new ItemStack(item, count));
+				extracted += e.getValue();
+			}
+			int newTotal = 0;
+			for (int v : mol.values()) {
+				newTotal += v;
+			}
+			for (int v : ions.values()) {
+				newTotal += v;
+			}
+			int idx = fluids.indexOf(stack);
+			if (newTotal <= 0) {
+				fluids.set(idx, FluidStack.EMPTY);
+			} else {
+				FluidStack replacement = Mixture.create(mol, ions, newTotal);
+				Temperature.set(replacement, Temperature.get(stack));
+				fluids.set(idx, replacement);
+			}
+		}
+		if (extracted > 0) {
+			removeEmpty();
+			onChanged.run();
+		}
+		return extracted;
+	}
+
+	/**
+	 * Replace the entire contents with the given molecular + ionic amounts
+	 * (mole-equivalents). A single pure molecular species becomes a pure stack;
+	 * anything else becomes one {@link Mixture}. Used by the rules engine to write
+	 * its solved composition back in one canonical step.
+	 */
+	public void setContents(Map<ResourceLocation, Integer> molecules, Map<String, Integer> ions, int temperature) {
+		setContents(molecules, ions, Map.of(), temperature);
+	}
+
+	/**
+	 * Replace the entire contents with the given molecular + ionic + suspended
+	 * amounts (mole-equivalents). A single pure molecular species becomes a pure
+	 * stack; anything else becomes one {@link Mixture}. Used by the rules engine to
+	 * write its solved composition back in one canonical step.
+	 */
+	public void setContents(Map<ResourceLocation, Integer> molecules, Map<String, Integer> ions,
+		Map<ResourceLocation, Integer> suspended, int temperature) {
+		fluids.clear();
+		molecules.values().removeIf(v -> v <= 0);
+		ions.values().removeIf(v -> v <= 0);
+		suspended.values().removeIf(v -> v <= 0);
+		if (molecules.isEmpty() && ions.isEmpty() && suspended.isEmpty()) {
+			onChanged.run();
+			return;
+		}
+		FluidStack target;
+		if (molecules.size() == 1 && ions.isEmpty() && suspended.isEmpty()) {
+			Map.Entry<ResourceLocation, Integer> only = molecules.entrySet().iterator().next();
+			Fluid pf = ForgeRegistries.FLUIDS.getValue(only.getKey());
+			if (pf == null || pf == Fluids.EMPTY) {
+				onChanged.run();
+				return;
+			}
+			target = new FluidStack(pf, only.getValue());
+		} else {
+			int total = 0;
+			for (int v : molecules.values()) {
+				total += v;
+			}
+			for (int v : ions.values()) {
+				total += v;
+			}
+			for (int v : suspended.values()) {
+				total += v;
+			}
+			target = Mixture.create(molecules, ions, suspended, total);
+		}
+		Temperature.set(target, temperature);
+		fluids.add(target);
+		onChanged.run();
 	}
 
 	public CompoundTag serializeNBT() {

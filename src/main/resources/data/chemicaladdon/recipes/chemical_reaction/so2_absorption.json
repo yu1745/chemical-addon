@@ -2,10 +2,11 @@
   "type": "chemicaladdon:chemical_reaction",
   "ingredients": [
     { "fluid": "chemicaladdon:sulfur_dioxide", "amount": 1000 },
-    { "fluid": "chemicaladdon:water", "amount": 1000 }
+    { "fluid": "minecraft:water", "amount": 1000 }
   ],
-  "results": [
-    { "fluid": "chemicaladdon:dilute_sulfuric_acid", "amount": 2000 }
+  "results": [],
+  "solutionOutputs": [
+    { "species": "chemicaladdon:sulfuric_acid", "amount": 300, "concentration": 0.15 }
   ],
   "processingTime": 200,
   "deltaHeat": 100

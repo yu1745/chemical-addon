@@ -1,0 +1,12 @@
+{
+  "type": "chemicaladdon:chemical_reaction",
+  "ingredients": [
+    { "fluid": "chemicaladdon:sulfur_trioxide", "amount": 1000 },
+    { "fluid": "minecraft:water", "amount": 600 }
+  ],
+  "results": [],
+  "solutionOutputs": [
+    { "species": "chemicaladdon:sulfuric_acid", "amount": 600, "concentration": 1.0 }
+  ],
+  "processingTime": 100
+}

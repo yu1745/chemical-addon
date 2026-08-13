@@ -1,0 +1,10 @@
+{
+  "formula": "Ca(OH)2 slurry",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "color": "#E8E8E0",
+  "solventRatio": 10,
+  "suspended": [
+    { "species": "chemicaladdon:slaked_lime", "count": 1 }
+  ]
+}

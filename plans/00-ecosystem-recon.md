@@ -1,5 +1,7 @@
 # 00-ecosystem-recon · 社区生态盘点：什么已经写好了
 
+> 文档状态：**reference**（盘点快照 2026-09；结论已吸收进 README D11–D17，正文不随 v2 演进）
+
 > 依据：本地源码盘点（create-forge_1.20.1 = Create 6.0.8 / createaddition-forge_1.20.1 = 1.3.3 / create-tfmg-forge_1.20.1 / create-diesel-generators-forge_1.20.1）+ Modrinth API 数据（1714 个 Create 相关项目）+ forge1 生产服 mods 目录实测。
 > 结论先行：**平台锁定 Create Forge 6.0.8（forge1 已原生安装）**；液体/配方/热/物流/动能大量现成可用；**气体与多组分流股必须自研**；石油化工赛道社区已占据，我们主打**无机化工**。
 
@@ -74,7 +76,7 @@
 | 编号 | 决策 | 理由 |
 |------|------|------|
 | D11 | **平台 = Create Forge 6.0.8**（forge1 原生，含 createaddition 1.3.3） | 生产服已装，零部署风险 |
-| D12 | **全量流体注册 + 组合系统** | 61 种物种**全部注册为 Forge Fluid**（气体=负密度流体），运输/储存层全走 Create 管道/罐/泵/喷头；多组分溶液（氨盐水=水+NaCl+NH₃）用**组合系统**表达（借鉴匠魂 JSON 修饰器机制：JSON 定义、组分条目、hook 行为分发、datagen）；**只有进入反应釜才切换自研流股**（反应进度/中间态/温度/压力），釜口⇄Forge Fluid 自动转换 | Create 管道单流体+混液炸管不影响（每种组合都是独立流体物种）；匠魂 SmelteryTank（List<FluidStack> 多流体共存）作釜内容器参考 |
+| ~~D12~~ | ~~**全量流体注册 + 组合系统**~~（已被 D19 离子基底取代，见 README） | 61 种物种**全部注册为 Forge Fluid**（气体=负密度流体），运输/储存层全走 Create 管道/罐/泵/喷头；多组分溶液（氨盐水=水+NaCl+NH₃）用**组合系统**表达（借鉴匠魂 JSON 修饰器机制：JSON 定义、组分条目、hook 行为分发、datagen）；**只有进入反应釜才切换自研流股**（反应进度/中间态/温度/压力），釜口⇄Forge Fluid 自动转换 | Create 管道单流体+混液炸管不影响（每种组合都是独立流体物种）；匠魂 SmelteryTank（List<FluidStack> 多流体共存）作釜内容器参考 |
 | D13 | **反应配方 = ProcessingRecipe 派生**（自定义 RecipeType `chemical_reaction`），釜体 = 我们的多方块处理机（Basin 的放大版：大容量、多口、密封/压力） | 白拿 Create 配方管线/JEI/datagen/KubeJS-Create 脚本化/ponder；玩家可脚本加反应 |
 | D14 | **热需求直接用 HeatCondition**（HEATED/SUPERHEATED）+ 我们的扩展热源（注册进 BoilerHeater.REGISTRY 或自定义）：Blaze Burner/Blaze Cake/液体烈焰人（创想）都当热源；H4/H5 高温热源（电热/化学燃料燃烧）自制 | Create 热源玩家已有认知，教学成本低 |
 | D15 | **不做石油/精馏/柴油主线**（TFMG/DG 已做），主攻无机化工；蒸馏塔保留（用于氨水/稀酸分离，无机场景）但结构参考 TFMG 模式 | 差异化，避免重复劳动 |
@@ -96,12 +98,12 @@
 | 蒸馏塔板 | 竖直堆叠塔板（参考 TFMG 蒸馏塔模式） | 2–3 |
 | 冷却塔 | Create Fan 抽风 + 喷淋 | 1–2 |
 | 尾气净化塔 | 塔板 + 喷淋 + 引风 | 2 |
-| 控制面板 | 配方选择/参数显示（釜的 GUI） | 1 |
+| ~~控制面板~~（已取消） | 配方选择/参数显示（釜的 GUI；已按世界内基调取消，见 AGENTS.md） | 0 |
 | 仪表（温度/压力/浓度） | Create 无流体量具，自制显示方块/叠加到面板 | 2 |
 | 催化剂托盘 | 釜内件 | 1 |
 | 化学燃料（氢气/CO/水煤气）烧 Blaze Burner | 物品 tag `create:blaze_burner_fuel/*`（**零代码**） | 0 |
 
-**合计自研方块约 25–30 种**（对比 v1 计划的 70 种）；配方/反应引擎复用 ProcessingRecipe 管线后，反应相关代码量减半。
+**合计自研方块约 25–30 种**（快照时点数量；v2 加入节拍控制件 S11–S15 后调整为 ~35–39，见 04-machines）；配方/反应引擎复用 ProcessingRecipe 管线后，反应相关代码量减半。
 
 ## 7. 交互设计基调调研（2026-10，源码证据）
 

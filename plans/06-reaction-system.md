@@ -1,6 +1,8 @@
 # 06 · 反应引擎设计（Create 架构版）
 
-> 关联：[03-substance-model.md](03-substance-model.md)（釜内流股）、[05-mechanics.md](05-mechanics.md)（M5 核心机制）、[07-reaction-catalog.md](07-reaction-catalog.md)（52 条配方）。
+> 文档状态：**current**（引擎设计，含 §10 运行模式）
+
+> 关联：[03-substance-model.md](03-substance-model.md)（釜内流股）、[05-mechanics.md](05-mechanics.md)（M5 核心机制）、[07-reaction-catalog.md](07-reaction-catalog.md)（52 条配方）、[13-flow-modes.md](13-flow-modes.md)（运行模式 batch/continuous）。
 > **变化**：配方层复用 Create ProcessingRecipe 管线（白拿 JEI/datagen/KubeJS）；釜内执行端为自研流股模拟（进度/中间态/温度/压力/催化）。
 
 ## 1. 两级结构
@@ -44,7 +46,7 @@ chemical_reaction {
 每低频 tick（10 tick）执行：
 
 ```
-1. 匹配：釜内容器流股集合 vs 已登记配方（控制面板选定，最多同时 1 个主配方 + 0..2 个副配方）
+1. 匹配：釜内容器流股集合 vs 白名单配方（**自动匹配**，最多同时 1 个主配方 + 0..2 个副配方；匹配失败由 ReactorStatus 诊断）
 2. 校验：热级 ≥ 门槛（Blaze Burner/夹套状态）、压力 ∈ 窗口、密封等级、催化剂在位、浓度下限
 3. 进度：progress += baseRate × 温度系数 × 搅拌系数 × 规模系数
    - 温度系数：窗口内 1.0，低于下限衰减（0.5/0.25…），高于上限触发危险检查
@@ -161,4 +163,14 @@ species: {
 - **实现含义**：规则引擎以「一个 `mixture` FluidStack（= 一个互溶相）」为求解单元循环；跨相反应作为独立的「界面配方」类型，由搅拌/接触条件触发，不进离子重组搜索。
 
 > ⚠️ 这是**远期但非常重要**的部分，是"模拟真实化学"的兑现点。混合流体系统 + 互溶性概念是它的前置地基。
+
+## 10. 运行模式：批式 / 连续流（流态范式）
+
+> 详见 [13-flow-modes.md](13-flow-modes.md)。本文 §3 的釜内执行模拟目前是**批式原生**（进度 0→100% 一次性结算清空）。
+
+- **批式（BATCH）**：四相状态机 `投料→反应→排空→复位`；引擎语义照旧，补 S11–S13 + S15 即闭环。
+- **连续流（CONTINUOUS）**：容器状态加 `mode` 字段，每 tick 按**停留时间 τ=V/Q** 转化分率，产物 + 未反应进料连续流出；沉淀连续累积进 `Suspended` 域。索尔维碳化塔 / 合成氨循环的引擎语义所在。
+- 引擎分支落在 `tickReaction`：`mode=BATCH` 走现有进度结算，`mode=CONTINUOUS` 走分率转化 + 出流。
+
+控制层（传感器/时序/阀泵）由 S11–S15 方块 + Create 红石承载，见 13 §5–§7。
 

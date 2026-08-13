@@ -44,31 +44,8 @@ FLUIDS = [
     ("nitrogen_dioxide",   "二氧化氮", "Nitrogen Dioxide",    0xB84A2A, -400, 200, 293, True),
     ("ammonia",            "氨气",     "Ammonia",             0xC8E0C8, -350, 200, 293, True),
     ("hydrogen_chloride",  "氯化氢",   "Hydrogen Chloride",   0xD8E8D0, -400, 200, 293, True),
-    # --- liquids / solutions ---
-    ("water",                      "水",     "Water",              0x3F76E4, 1000, 1000, 300, False),
-    ("brine",                      "饱和盐水", "Saturated Brine",   0x8FB4E8, 1200, 1300, 300, False),
-    ("ammoniated_brine",           "氨盐水", "Ammoniated Brine",   0xA8C8E8, 1150, 1200, 300, False),
-    ("dilute_hydrochloric_acid",   "稀盐酸", "Dilute Hydrochloric Acid", 0xD8F0D8, 1050, 1000, 300, False),
-    ("concentrated_hydrochloric_acid", "浓盐酸", "Concentrated Hydrochloric Acid", 0xC8E8C0, 1190, 1100, 300, False),
-    ("dilute_sulfuric_acid",       "稀硫酸", "Dilute Sulfuric Acid", 0xE8E8D0, 1080, 1000, 300, False),
-    ("concentrated_sulfuric_acid", "浓硫酸", "Concentrated Sulfuric Acid", 0xF0E0B0, 1840, 2000, 320, False),
-    ("oleum",                      "发烟硫酸", "Oleum",           0xF0C890, 1900, 2500, 320, False),
-    ("dilute_nitric_acid",         "稀硝酸", "Dilute Nitric Acid", 0xE8E8F0, 1060, 1000, 300, False),
-    ("concentrated_nitric_acid",   "浓硝酸", "Concentrated Nitric Acid", 0xE8D8A0, 1400, 1500, 300, False),
-    ("caustic_soda_solution",      "烧碱液", "Caustic Soda Solution", 0xD8E0F0, 1300, 1500, 300, False),
-    ("soda_ash_solution",          "纯碱液", "Soda Ash Solution", 0xE0E8E0, 1100, 1000, 300, False),
-    ("ammonium_chloride_solution", "氯化铵液", "Ammonium Chloride Solution", 0xD0E0D0, 1050, 1000, 300, False),
-    ("calcium_chloride_solution",  "氯化钙液", "Calcium Chloride Solution", 0xE0E8F0, 1200, 1200, 300, False),
-    ("ammonia_water",              "氨水",   "Ammonia Water",      0xC8E0D0, 950, 1000, 300, False),
-    ("milk_of_lime",               "石灰乳", "Milk of Lime",       0xE8E8E0, 1150, 3000, 300, False),
-    ("bleach_solution",            "漂白液", "Bleach Solution",    0xC8F0E8, 1100, 1000, 300, False),
-    ("phosphoric_acid",            "磷酸",   "Phosphoric Acid",    0xE8E0D8, 1700, 1800, 300, False),
-    ("ammonium_sulfate_solution",  "硫酸铵液", "Ammonium Sulfate Solution", 0xE0E8D8, 1150, 1100, 300, False),
-    ("ammonium_nitrate_solution",  "硝酸铵液", "Ammonium Nitrate Solution", 0xE0E8E8, 1200, 1100, 300, False),
-    ("sodium_aluminate_solution",  "铝酸钠液", "Sodium Aluminate Solution", 0xD8E0E8, 1250, 1400, 330, False),
-    ("sodium_bicarbonate_slurry",  "重碱浆", "Sodium Bicarbonate Slurry", 0xE0E8E0, 1300, 3000, 300, False),
-    ("gypsum_slurry",              "石膏浆", "Gypsum Slurry",      0xE0E0D0, 1400, 4000, 300, False),
-    ("calcium_sulfite_slurry",     "亚硫酸钙浆", "Calcium Sulfite Slurry", 0xD8E8D8, 1400, 4000, 300, False),
+    # --- liquids (pure fluids only; solutions/slurries are species "modes", not fluids) ---
+    # water is vanilla minecraft:water (the aqueous solvent) — NOT registered here
     # --- heat transfer medium ---
     ("thermal_oil",                "导热油", "Thermal Oil",        0xC89030, 900, 1500, 400, False),
 ]
@@ -92,16 +69,48 @@ SOLIDS = [
     ("ammonium_nitrate",       "硝酸铵", "Ammonium Nitrate", 0xE8E8F0),
     ("urea",                   "尿素",   "Urea",            0xF0F0F0),
     ("calcium_chloride",       "氯化钙", "Calcium Chloride", 0xE0E8F0),
+    ("calcium_sulfite",        "亚硫酸钙", "Calcium Sulfite", 0xE0E8E0),
     ("filter_cake",            "滤渣",   "Filter Cake",     0x908878),
 ]
 
 # (id, cn, en, color)
 BLOCKS = [
     ("chemical_brick",    "化工砖", "Chemical Brick",    0x8E8478),
+    ("decant_port",       "分液口", "Decant Port",       0x9A7048),
     ("reactor_controller", "反应釜控制器", "Reactor Controller", 0x6E6E6E),
     ("filter_press",      "过滤机", "Filter Press",      0x7A7A8A),
     ("settling_basin",    "沉淀池控制器", "Settling Basin", 0x5E6E7A),
     ("electrolyzer",      "电解槽", "Electrolyzer",     0x5E7A8A),
+]
+
+# Solution modes ("species = mode", plans/03 §4): NOT registered fluids — only a
+# creative "packed mixture" bucket per mode. Ions/solventRatio live in the species
+# JSON (data/chemistry/species/*.json); this table only drives the bucket item's
+# model + lang (the item registration lives in registry/AllContainers.java).
+# (id, cn, en)
+SOLUTIONS = [
+    ("sulfuric_acid",            "硫酸",   "Sulfuric Acid"),
+    ("hydrochloric_acid",        "盐酸",   "Hydrochloric Acid"),
+    ("nitric_acid",              "硝酸",   "Nitric Acid"),
+    ("brine",                    "饱和盐水", "Saturated Brine"),
+    ("caustic_soda_solution",    "烧碱液", "Caustic Soda Solution"),
+    ("soda_ash_solution",        "纯碱液", "Soda Ash Solution"),
+    ("ammonium_chloride_solution", "氯化铵液", "Ammonium Chloride Solution"),
+    ("calcium_chloride_solution",  "氯化钙液", "Calcium Chloride Solution"),
+    ("ammonia_water",            "氨水",   "Ammonia Water"),
+    ("ammonium_sulfate_solution", "硫酸铵液", "Ammonium Sulfate Solution"),
+    ("ammonium_nitrate_solution", "硝酸铵液", "Ammonium Nitrate Solution"),
+]
+
+# Slurry modes (plans/03 §12): water + a suspended solid (NOT dissolved ions).
+# Same "packed mixture" bucket treatment as SOLUTIONS; the difference is only the
+# species JSON (a "suspended" array instead of "ions").
+# (id, cn, en)
+SLURRIES = [
+    ("milk_of_lime",             "石灰乳", "Milk of Lime"),
+    ("gypsum_slurry",            "石膏浆", "Gypsum Slurry"),
+    ("sodium_bicarbonate_slurry", "重碱浆", "Sodium Bicarbonate Slurry"),
+    ("calcium_sulfite_slurry",   "亚硫酸钙浆", "Calcium Sulfite Slurry"),
 ]
 
 # ---------------------------------------------------------------- png writer
@@ -346,7 +355,7 @@ def gen_bucket_models():
     d = os.path.join(ASSETS, "models/item")
     os.makedirs(d, exist_ok=True)
     import json as _json
-    for sid, *_ in FLUIDS:
+    for sid, _, _, _, _, _, _, is_gas in FLUIDS:
         model = {
             "parent": "forge:item/default",
             "loader": "forge:fluid_container",
@@ -355,6 +364,32 @@ def gen_bucket_models():
                 "fluid": "forge:item/mask/bucket_fluid"
             },
             "fluid": f"chemicaladdon:{sid}"
+        }
+        if is_gas:
+            # lighter-than-air fluids render flipped (upside-down) in the bucket
+            model["flip_gas"] = True
+        with open(os.path.join(d, f"{sid}_bucket.json"), "w", encoding="utf-8") as f:
+            _json.dump(model, f, indent=2)
+            f.write("\n")
+
+def gen_solution_bucket_models():
+    """Write the per-solution creative "packed mixture" bucket models. They use
+    Forge's DynamicFluidContainerModel (the same bucket base + fluid mask as the
+    species buckets) with `fluid: minecraft:empty` — the actual mixture is read
+    from the item's FluidHandlerItemStack NBT and tinted by the per-stack colour
+    (see ChemicalAddonClient's colour-provider registration)."""
+    d = os.path.join(ASSETS, "models/item")
+    os.makedirs(d, exist_ok=True)
+    import json as _json
+    for sid, *_ in SOLUTIONS + SLURRIES:
+        model = {
+            "parent": "forge:item/default",
+            "loader": "forge:fluid_container",
+            "textures": {
+                "base": "minecraft:item/bucket",
+                "fluid": "forge:item/mask/bucket_fluid"
+            },
+            "fluid": "minecraft:empty"
         }
         with open(os.path.join(d, f"{sid}_bucket.json"), "w", encoding="utf-8") as f:
             _json.dump(model, f, indent=2)
@@ -411,6 +446,7 @@ def gen_block_textures():
     d = os.path.join(ASSETS, "textures/block")
     os.makedirs(d, exist_ok=True)
     write_png(os.path.join(d, "chemical_brick.png"), make_brick_texture(0x8E8478))
+    write_png(os.path.join(d, "decant_port.png"), make_brick_texture(0x9A7048))
     write_png(os.path.join(d, "reactor_controller.png"), make_panel_texture(0x6E6E6E))
     write_png(os.path.join(d, "reactor_controller_open.png"), make_open_panel_texture(0x6E6E6E))
     write_png(os.path.join(d, "filter_press.png"), make_panel_texture(0x7A7A8A))
@@ -428,6 +464,8 @@ EXTRA_LANG_ZH = {
     "goggles.chemicaladdon.heat.heated": "加热",
     "goggles.chemicaladdon.heat.superheated": "超级加热",
     "goggles.chemicaladdon.contents": "釜内：",
+    "goggles.chemicaladdon.solution": "溶液",
+    "goggles.chemicaladdon.bucket_empty": "空",
     "goggles.chemicaladdon.items": "物品：",
     "goggles.chemicaladdon.progress": "进度：%s%%（%s）",
     "goggles.chemicaladdon.status": "状态：",
@@ -458,6 +496,8 @@ EXTRA_LANG_EN = {
     "goggles.chemicaladdon.heat.heated": "Heated",
     "goggles.chemicaladdon.heat.superheated": "Superheated",
     "goggles.chemicaladdon.contents": "Contents:",
+    "goggles.chemicaladdon.solution": "Solution",
+    "goggles.chemicaladdon.bucket_empty": "Empty",
     "goggles.chemicaladdon.items": "Items:",
     "goggles.chemicaladdon.progress": "Progress: %s%% (%s)",
     "goggles.chemicaladdon.status": "Status:",
@@ -485,6 +525,8 @@ def gen_lang():
         zh[f"item.chemicaladdon.{sid}_bucket"] = cn + "桶"
     for sid, cn, _, _ in SOLIDS:
         zh[f"item.chemicaladdon.{sid}"] = cn
+    for sid, cn, _ in SOLUTIONS + SLURRIES:
+        zh[f"item.chemicaladdon.{sid}_bucket"] = cn + "桶"
     for sid, cn, _, _ in BLOCKS:
         zh[f"block.chemicaladdon.{sid}"] = cn
     import json as _json
@@ -577,6 +619,34 @@ def gen_fluid_colors_java():
     with open(os.path.join(JAVA, "..", "fluid", "FluidColors.java"), "w", encoding="utf-8") as f:
         f.write("\n".join(parts))
 
+def gen_solid_colors_java():
+    """Emit SolidColors.java: the per-species RGB colour of SOLIDS (single source
+    of truth, same column as the item texture tint) so Java can weight-blend the
+    tint of suspended solids in a mixture at runtime."""
+    parts = ["package com.yu1745.chemicaladdon.fluid;",
+             "",
+             "import java.util.HashMap;",
+             "import java.util.Map;",
+             "import net.minecraft.resources.ResourceLocation;",
+             "import com.yu1745.chemicaladdon.ChemicalAddon;",
+             "",
+             "/** Solid species colour table (single source of truth: tools/gen_species.py SOLIDS).",
+             " *  Used to weight-blend suspended-solid tint in a mixture. ARGB, fully opaque. */",
+             "public final class SolidColors {",
+             "\tprivate SolidColors() {}",
+             "\tprivate static final Map<ResourceLocation, Integer> COLORS = new HashMap<>();",
+             "\tstatic {"]
+    for sid, _, _, color in SOLIDS:
+        argb = 0xFF000000 | color
+        parts.append(f'\t\tCOLORS.put(new ResourceLocation(ChemicalAddon.MODID, "{sid}"), 0x{argb:08X});')
+    parts += ["\t}", "",
+              "\t/** @return the solid's ARGB colour, or -1 (white) if unknown. */",
+              "\tpublic static int of(ResourceLocation id) {",
+              "\t\treturn COLORS.getOrDefault(id, 0xFFFFFFFF);",
+              "\t}", "}", ""]
+    with open(os.path.join(JAVA, "..", "fluid", "SolidColors.java"), "w", encoding="utf-8") as f:
+        f.write("\n".join(parts))
+
 def gen_items_java():
     parts = ["package com.yu1745.chemicaladdon.registry;",
              "",
@@ -601,9 +671,11 @@ if __name__ == "__main__":
     gen_textures()
     gen_atlas()
     gen_bucket_models()
+    gen_solution_bucket_models()
     gen_block_textures()
     gen_lang()
     gen_fluids_java()
     gen_fluid_colors_java()
+    gen_solid_colors_java()
     gen_items_java()
-    print(f"OK: {len(FLUIDS)} fluids, {len(SOLIDS)} solids, {len(BLOCKS)} blocks -> textures/atlas/lang/Java generated")
+    print(f"OK: {len(FLUIDS)} fluids, {len(SOLIDS)} solids, {len(SOLUTIONS)} solutions, {len(SLURRIES)} slurries, {len(BLOCKS)} blocks -> textures/atlas/lang/Java generated")

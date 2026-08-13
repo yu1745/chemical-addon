@@ -1,7 +1,6 @@
 package com.yu1745.chemicaladdon.reactor;
 
 import java.util.List;
-import java.util.Map;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
@@ -17,17 +16,14 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.LightLayer;
-import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.fluids.FluidStack;
-import net.minecraftforge.registries.ForgeRegistries;
 
 /**
  * Renders the vessel interior: the fluid surface (a semi-transparent "pot of
@@ -293,19 +289,9 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 			if (isLighterThanAir(f)) {
 				continue;
 			}
-			if (Mixture.isMixture(f) && Mixture.getMixDegree(f) < 1.0f) {
-				// not yet homogenised: render the component colours as a patchwork
-				// across the XZ surface (a particle grid), so the un-mixed state is
-				// visible looking down at the fluid; once MixDegree reaches 1 this
-				// falls through to the single blended box below
-				float h = levelHeight * f.getAmount() / total;
-				renderMixtureSurface(f, ix1, ix2, iz1, iz2, y, y + h, ms, buffer, light, reactor.getBlockPos());
-				y += h;
-			} else {
-				float h = levelHeight * f.getAmount() / total;
-				renderBox(f, ix1, y, iz1, ix2, y + h, iz2, ms, buffer, light);
-				y += h;
-			}
+			float h = levelHeight * f.getAmount() / total;
+			renderBox(f, ix1, y, iz1, ix2, y + h, iz2, ms, buffer, light);
+			y += h;
 		}
 		// gases: hang from the level top downward
 		float gasTop = levelHeight;
@@ -322,64 +308,22 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 
 	private void renderBox(FluidStack fluid, float x1, float y1, float z1, float x2, float y2, float z2,
 		PoseStack ms, MultiBufferSource buffer, int light) {
+		// water (the aqueous solvent) renders colourless in the vessel (plans/03 §6
+		// "釜内清水"): vanilla's water sprite is blue, so swap in the neutral mixture
+		// sprite (white tint) instead. Aqueous mixtures already render colourless via
+		// MixtureFluidType.getTintColor → blendColor (the solvent contributes no colour).
+		FluidStack render = isWater(fluid) ? new FluidStack(Mixture.fluid(), fluid.getAmount()) : fluid;
 		// no bottom face (the vessel floor is brick), no gas flipping (we layer gases on top ourselves)
-		ForgeCatnipServices.FLUID_RENDERER.renderFluidBox(fluid, x1, y1, z1, x2, y2, z2, buffer, ms, light, false, false);
-	}
-
-	/**
-	 * Renders a not-yet-homogenised mixture as a particle grid across the XZ
-	 * surface: each cell is a full-height column coloured by one component
-	 * (chosen by amount-weighted deterministic scatter). The grid is coarse when
-	 * MixDegree is low (big colour patches = visibly un-mixed) and grows fine as
-	 * it approaches 1 (fine speckle that reads as the blended colour). This is
-	 * the surface-particle model: the colours live in the XZ plane (the fluid
-	 * top), not stacked vertically, so the patchwork is visible looking down into
-	 * the vessel.
-	 */
-	private void renderMixtureSurface(FluidStack mixture, float x1, float x2, float z1, float z2,
-		float yBottom, float yTop, PoseStack ms, MultiBufferSource buffer, int light, BlockPos vesselPos) {
-		Map<ResourceLocation, Integer> comps = Mixture.deriveAmounts(mixture);
-		int total = mixture.getAmount();
-		if (total <= 0 || comps.isEmpty()) {
-			return;
-		}
-		float md = Mixture.getMixDegree(mixture);
-		int grid = Math.min(8, 2 + Math.round(md * 6f)); // 2 (4 cells) -> 8 (64 cells)
-		float cellW = (x2 - x1) / grid;
-		float cellD = (z2 - z1) / grid;
-		int seed = vesselPos.hashCode();
-		for (int i = 0; i < grid; i++) {
-			for (int j = 0; j < grid; j++) {
-				int h = seed ^ (i * 73856093) ^ (j * 19349663);
-				Fluid cf = pickComponentFluid(comps, total, h);
-				if (cf == null || cf == Fluids.EMPTY) {
-					continue;
-				}
-				float cx1 = x1 + i * cellW;
-				float cz1 = z1 + j * cellD;
-				renderBox(new FluidStack(cf, 1000), cx1, yBottom, cz1, cx1 + cellW, yTop, cz1 + cellD,
-					ms, buffer, light);
-			}
-		}
-	}
-
-	/** Picks a component fluid by amount-weighted deterministic scatter. */
-	private static Fluid pickComponentFluid(Map<ResourceLocation, Integer> comps, int total, int hash) {
-		int r = (hash & 0x7FFFFFFF) % total;
-		int acc = 0;
-		ResourceLocation picked = null;
-		for (Map.Entry<ResourceLocation, Integer> e : comps.entrySet()) {
-			acc += e.getValue();
-			picked = e.getKey();
-			if (r < acc) {
-				break;
-			}
-		}
-		return picked != null ? ForgeRegistries.FLUIDS.getValue(picked) : null;
+		ForgeCatnipServices.FLUID_RENDERER.renderFluidBox(render, x1, y1, z1, x2, y2, z2, buffer, ms, light, false, false);
 	}
 
 	private static boolean isLighterThanAir(FluidStack fluid) {
 		return fluid.getFluid().getFluidType().isLighterThanAir();
+	}
+
+	/** True when this stack is the aqueous solvent (vanilla water). */
+	private static boolean isWater(FluidStack fluid) {
+		return fluid.getFluid() == Fluids.WATER;
 	}
 
 	@Override

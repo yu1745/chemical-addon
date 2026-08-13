@@ -1,5 +1,8 @@
 package com.yu1745.chemicaladdon.recipe;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import com.google.gson.JsonObject;
 import com.simibubi.create.content.processing.recipe.ProcessingRecipe;
 import com.simibubi.create.content.processing.recipe.ProcessingRecipeBuilder.ProcessingRecipeParams;
@@ -20,6 +23,8 @@ import net.minecraft.world.level.Level;
 public class ChemicalReactionRecipe extends ProcessingRecipe<Container> {
 
 	private int deltaHeat = 0;
+	private final List<SolutionIngredient> solutions = new ArrayList<>();
+	private final List<SolutionIngredient> solutionOutputs = new ArrayList<>();
 
 	public ChemicalReactionRecipe(ProcessingRecipeParams params) {
 		super(AllRecipeTypes.CHEMICAL_REACTION, params);
@@ -27,6 +32,16 @@ public class ChemicalReactionRecipe extends ProcessingRecipe<Container> {
 
 	public int getDeltaHeat() {
 		return deltaHeat;
+	}
+
+	/** Solution-species inputs (matched against the vessel's dissolved ions). */
+	public List<SolutionIngredient> getSolutions() {
+		return solutions;
+	}
+
+	/** Solution-species outputs (expanded into ions + water, no fluid entry needed). */
+	public List<SolutionIngredient> getSolutionOutputs() {
+		return solutionOutputs;
 	}
 
 	@Override
@@ -75,6 +90,12 @@ public class ChemicalReactionRecipe extends ProcessingRecipe<Container> {
 		if (GsonHelper.isValidNode(json, "deltaHeat")) {
 			deltaHeat = GsonHelper.getAsInt(json, "deltaHeat");
 		}
+		if (GsonHelper.isValidNode(json, "solutions")) {
+			solutions.addAll(SolutionIngredient.listFromJson(json.getAsJsonArray("solutions")));
+		}
+		if (GsonHelper.isValidNode(json, "solutionOutputs")) {
+			solutionOutputs.addAll(SolutionIngredient.listFromJson(json.getAsJsonArray("solutionOutputs")));
+		}
 	}
 
 	@Override
@@ -82,6 +103,12 @@ public class ChemicalReactionRecipe extends ProcessingRecipe<Container> {
 		super.writeAdditional(json);
 		if (deltaHeat != 0) {
 			json.addProperty("deltaHeat", deltaHeat);
+		}
+		if (!solutions.isEmpty()) {
+			json.add("solutions", SolutionIngredient.listToJson(solutions));
+		}
+		if (!solutionOutputs.isEmpty()) {
+			json.add("solutionOutputs", SolutionIngredient.listToJson(solutionOutputs));
 		}
 	}
 }

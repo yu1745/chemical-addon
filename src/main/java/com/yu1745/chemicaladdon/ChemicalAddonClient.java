@@ -24,6 +24,14 @@ public class ChemicalAddonClient {
 		// vial (any fluid with NBT) and every species bucket (still sprite + tint).
 		DynamicFluidContainerModel.Colors fluidTint = new DynamicFluidContainerModel.Colors();
 		Minecraft.getInstance().getItemColors().register(fluidTint, AllContainers.FLUID_VIAL.get());
+		for (com.tterrag.registrate.util.entry.ItemEntry<com.yu1745.chemicaladdon.item.SolutionBucketItem> entry
+			: AllContainers.SOLUTION_BUCKETS) {
+			Minecraft.getInstance().getItemColors().register(fluidTint, entry.get());
+		}
+		for (com.tterrag.registrate.util.entry.ItemEntry<com.yu1745.chemicaladdon.item.SolutionBucketItem> entry
+			: AllContainers.SLURRY_BUCKETS) {
+			Minecraft.getInstance().getItemColors().register(fluidTint, entry.get());
+		}
 		for (Fluid fluid : ForgeRegistries.FLUIDS) {
 			ResourceLocation id = ForgeRegistries.FLUIDS.getKey(fluid);
 			if (id == null || !ChemicalAddon.MODID.equals(id.getNamespace())) {

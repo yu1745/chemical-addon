@@ -1,12 +1,12 @@
 # AGENTS.md - chemical-addon（Create 化学附属）
 
-本仓库是 **Create Forge 6.0.8 的无机化工附属**（Forge 1.20.1，Java 17），设计计划书在 `plans/`（主索引 `plans/README.md`，平台决策 `plans/00-platform-decision.md`，生态盘点 `plans/00-ecosystem-recon.md`），**开发进度在 `docs/progress.md`**（M0–M2 完成，7/7 GameTest 通过；改代码前先看它了解现状）。
+本仓库是 **Create Forge 6.0.8 的无机化工附属**（Forge 1.20.1，Java 17），设计计划书在 `plans/`（主索引 `plans/README.md`，平台决策 `plans/00-platform-decision.md`，生态盘点 `plans/00-ecosystem-recon.md`），**开发进度在 `docs/progress.md`**（M0–M2 完成，v2 离子基底 S1–S3d，39/39 GameTest 通过；改代码前先看它了解现状）。
 
 ## 核心架构（改动前必读 plans/03-substance-model.md）
 
-- **全量流体注册**：所有化学物种注册为 Forge Fluid（气体=负密度流体），运输/储存层复用 Create 管道/罐。
-- **组合系统**：多组分溶液（氨盐水=水+NaCl+NH₃）用数据驱动组合表达，借鉴匠魂 JSON 修饰器架构（JSON 定义 + ResourceLocation id + 轻量条目）。
-- **釜内流股**：只有进入反应釜（自研多方块）才使用流股表示（进度/中间态/温度/压力/催化）。
+- **离子基底单一混合物**：溶液/浆料只注册一个 `chemicaladdon:mixture` 元流体，FluidStack NBT 承载三个域——`Molecules`（分子物种）+ `Ions`（电中性离子多重集，硬不变量）+ `Suspended`（悬浮固相=浆料）。纯物质（水、13 气体、导热油）照旧注册 Forge Fluid（气体=负密度）。
+- **物种 = 模式**：species JSON 是「命名组成模式」，只用于配方匹配/名字/颜色/创造栏桶默认配比，**不参与釜内存储与显示**。浓/稀是**连续浓度**（离子单位/水单位，运行时算），不是身份、不做二值判断。
+- **沉淀先入釜内悬浮**：规则引擎（crystallise→neutralise→precipitate）把沉淀/析晶写入 `Suspended` 域成浆料；过滤机/沉淀池抽走 `Suspended` 域吐固体 item。
 - 自研多方块模板（釜/塔/池）是后续所有容器结构的范本（plans/10-multiblock.md）。
 
 ## 构建
@@ -53,7 +53,7 @@
 
 ## 物种资源生成（重要）
 
-**不要手写** 流体/固体注册代码、纹理、语言文件——单一数据源在 `tools/gen_species.py`（38 流体 + 18 固体），修改物种先改该脚本的数据表，再运行：
+**不要手写** 流体/固体注册代码、纹理、语言文件——单一数据源在 `tools/gen_species.py`（15 纯流体 + 18 固体 + 5 方块），修改物种先改该脚本的数据表，再运行：
 
 ```bash
 python3 tools/gen_species.py

@@ -6,8 +6,8 @@ import net.minecraftforge.fluids.FluidStack;
 /**
  * Per-stack temperature carried in the FluidStack NBT ({@code Temperature}, °C).
  *
- * <p>Like {@link Mixture MixDegree}, temperature travels with the fluid but is
- * <b>frozen during transport</b>: only a vessel (reactor / future multiblocks)
+ * <p>Temperature travels with the fluid but is <b>frozen during transport</b>:
+ * only a vessel (reactor / future multiblocks)
  * changes it, so Create's {@code isFluidEqual} (fluid + full tag) sees a stable
  * tag while the fluid is in a pipe. Amount-weighted averaging is the physical
  * mixing rule for the same species (equal specific heat), so pouring a 40 °C
@@ -15,7 +15,7 @@ import net.minecraftforge.fluids.FluidStack;
  *
  * <p>Stored as an {@code int} on purpose: NBT float equality is bit-exact, so a
  * float temperature would make "the same" temperature drift into a different
- * tag and silently break transport (the MixDegree bug again).
+ * tag and silently break transport.
  */
 public final class Temperature {
 

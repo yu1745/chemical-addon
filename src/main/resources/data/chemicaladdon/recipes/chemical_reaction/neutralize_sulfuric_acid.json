@@ -1,0 +1,11 @@
+{
+  "type": "chemicaladdon:chemical_reaction",
+  "ingredients": [],
+  "solutions": [
+    { "species": "chemicaladdon:sulfuric_acid", "amount": 600, "minConcentration": 0.5 }
+  ],
+  "results": [
+    { "fluid": "minecraft:water", "amount": 600 }
+  ],
+  "processingTime": 100
+}

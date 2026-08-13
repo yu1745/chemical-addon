@@ -5,5 +5,5 @@
     "base": "minecraft:item/bucket",
     "fluid": "forge:item/mask/bucket_fluid"
   },
-  "fluid": "chemicaladdon:ammonium_nitrate_solution"
+  "fluid": "minecraft:empty"
 }

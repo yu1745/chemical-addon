@@ -1,8 +1,15 @@
 {
   "formula": "NaCl(aq)",
   "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "color": "#8FB4E8",
+  "solventRatio": 10,
+  "ions": [
+    { "ion": "Na", "charge": 1, "count": 1 },
+    { "ion": "Cl", "charge": -1, "count": 1 }
+  ],
   "components": [
-    { "species": "chemicaladdon:water", "maxConcentration": 0.74 },
+    { "species": "minecraft:water", "maxConcentration": 0.74 },
     { "species": "chemicaladdon:rock_salt", "maxConcentration": 0.26 }
   ]
 }

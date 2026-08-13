@@ -8,7 +8,7 @@ import net.minecraftforge.fluids.capability.templates.FluidHandlerItemStack;
 
 /**
  * Generic fluid sample container: a single item that stores one {@code FluidStack}
- * (fluid <b>plus full NBT</b> — temperature, mixture composition, MixDegree) in the
+ * (fluid <b>plus full NBT</b> — temperature, mixture composition) in the
  * item's own NBT.
  *
  * <p>This exists because Forge's per-species {@code BucketItem} keeps a fluid tag-less

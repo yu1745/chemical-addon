@@ -28,7 +28,10 @@ public class AllCreativeModeTabs {
 				for (Item item : BuiltInRegistries.ITEM) {
 					ResourceLocation key = BuiltInRegistries.ITEM.getKey(item);
 					if (ChemicalAddon.MODID.equals(key.getNamespace())) {
-						output.accept(item);
+						// getDefaultInstance() so pre-filled containers (the packed-mixture
+						// solution buckets) carry their fluid NBT straight out of the tab —
+						// accept(ItemLike) would build a bare `new ItemStack(item)` with no tag
+						output.accept(item.getDefaultInstance());
 					}
 				}
 			})

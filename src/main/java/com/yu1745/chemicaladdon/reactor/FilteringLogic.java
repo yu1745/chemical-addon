@@ -2,6 +2,7 @@ package com.yu1745.chemicaladdon.reactor;
 
 import com.simibubi.create.content.processing.recipe.ProcessingOutput;
 import com.simibubi.create.foundation.fluid.FluidIngredient;
+import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.recipe.AllRecipeTypes;
 import com.yu1745.chemicaladdon.recipe.FilteringRecipe;
 
@@ -15,10 +16,19 @@ import net.minecraftforge.items.ItemHandlerHelper;
 import net.minecraftforge.items.ItemStackHandler;
 
 /**
- * Shared separation engine for the filter press and the settling basin:
- * matches FILTERING recipes against an input tank, drains inputs, fills an
- * output tank (may be the same tank) and inserts the cake into an item
- * buffer. Speed multiplier distinguishes fast press vs slow settling.
+ * Shared separation engine for the filter press and the settling basin.
+ *
+ * <p>Two modes:
+ * <ol>
+ *   <li><b>generic</b> — any mixture with a {@code Suspended} domain (a slurry) is
+ *       separated straight through: the solids become items, the liquid
+ *       (molecules + ions) passes to the output tank. This is how a reaction's
+ *       precipitate (which the rules engine deposits into {@code Suspended}) is
+ *       recovered;</li>
+ *   <li><b>recipe-driven</b> — legacy FILTERING recipes (matched by fluid
+ *       ingredient).</li>
+ * </ol>
+ * The speed multiplier distinguishes fast press vs slow settling (recipe path).
  */
 public class FilteringLogic {
 
@@ -35,6 +45,11 @@ public class FilteringLogic {
 		if (level == null || level.isClientSide) {
 			return;
 		}
+		// generic: separate suspended solids out of any slurry
+		if (filterSuspended(level, input, output, items, pos)) {
+			progress = 0;
+			return;
+		}
 		FilteringRecipe recipe = findRecipe(level, input);
 		if (recipe == null || !canFitOutputs(recipe, output, items)) {
 			progress = 0;
@@ -44,6 +59,43 @@ public class FilteringLogic {
 		if (progress >= 1.0f) {
 			complete(level, recipe, input, output, items, pos);
 			progress = 0;
+		}
+	}
+
+	/** True when the input tank holds a mixture with suspended solids; separates them if so. */
+	private static boolean filterSuspended(Level level, ReactorTank input, ReactorTank output, ItemStackHandler items,
+		BlockPos pos) {
+		boolean hasSuspended = false;
+		for (FluidStack stack : input.getFluids()) {
+			if (Mixture.isMixture(stack) && !Mixture.getSuspended(stack).isEmpty()) {
+				hasSuspended = true;
+				break;
+			}
+		}
+		if (!hasSuspended) {
+			return false;
+		}
+		input.extractSuspended(s -> {
+			ItemStack remainder = ItemHandlerHelper.insertItemStacked(items, s, false);
+			if (!remainder.isEmpty()) {
+				Containers.dropItemStack(level, pos.getX(), pos.getY(), pos.getZ(), remainder);
+			}
+		}, RulesEngine.MB_PER_ITEM);
+		if (input != output) {
+			moveLiquid(input, output);
+		}
+		output.collapseIfNeeded(); // degrade a single-component remainder to a pure fluid
+		return true;
+	}
+
+	/** Drain the whole input into the output (the liquid left behind after filtering). */
+	private static void moveLiquid(ReactorTank input, ReactorTank output) {
+		while (!input.getFluids().isEmpty()) {
+			FluidStack drained = input.drain(Integer.MAX_VALUE, FluidAction.EXECUTE);
+			if (drained.isEmpty()) {
+				break;
+			}
+			output.fill(drained, FluidAction.EXECUTE);
 		}
 	}
 

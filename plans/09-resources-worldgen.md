@@ -1,5 +1,7 @@
 # 09 · 原材料与资源链
 
+> 文档状态：**current**（资源/世界生成，与物质模型无关）
+
 > 关联：08-substance-catalog（物种）、07-reaction-catalog（配方）、02-progression（阶段）。
 > 平台为 Create Forge：矿石除新增 5 种外，复用原版与 Create（锌/铜矿 Create 已有）。
 

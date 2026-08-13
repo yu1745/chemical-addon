@@ -5,6 +5,7 @@ import com.tterrag.registrate.util.entry.BlockEntry;
 import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlock;
 import com.yu1745.chemicaladdon.reactor.ChemicalGlassBlock;
+import com.yu1745.chemicaladdon.reactor.DecantPortBlock;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlock;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlock;
 import com.yu1745.chemicaladdon.reactor.SettlingBasinBlockEntity.SettlingBasinBlock;
@@ -42,6 +43,16 @@ public class AllBlocks {
 			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(),
 				prov.models().cubeAll(ctx.getName(), prov.models().mcLoc("block/glass"))))
 			.addLayer(() -> RenderType::cutoutMipped)
+			.simpleItem()
+			.register();
+
+	/** One-way drain port (分液口): a shell block whose FLUID_HANDLER drains only the densest phase. */
+	public static final BlockEntry<DecantPortBlock> DECANT_PORT =
+		REGISTRATE.block("decant_port", DecantPortBlock::new)
+			.properties(p -> p.mapColor(MapColor.METAL).strength(2.0f, 6.0f))
+			.lang("Decant Port")
+			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
+				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
 			.simpleItem()
 			.register();
 

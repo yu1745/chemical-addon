@@ -1,0 +1,11 @@
+{
+  "formula": "(NH4)2SO4(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "color": "#E0E8D8",
+  "solventRatio": 10,
+  "ions": [
+    { "ion": "NH4", "charge": 1, "count": 2 },
+    { "ion": "SO4", "charge": -2, "count": 1 }
+  ]
+}

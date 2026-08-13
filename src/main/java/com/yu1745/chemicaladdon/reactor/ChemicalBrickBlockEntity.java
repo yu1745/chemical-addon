@@ -7,6 +7,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
@@ -25,8 +26,12 @@ public class ChemicalBrickBlockEntity extends BlockEntity {
 	@Nullable
 	private BlockPos masterPos;
 
+	protected ChemicalBrickBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
+		super(type, pos, state);
+	}
+
 	public ChemicalBrickBlockEntity(BlockPos pos, BlockState state) {
-		super(AllBlockEntities.CHEMICAL_BRICK.get(), pos, state);
+		this(AllBlockEntities.CHEMICAL_BRICK.get(), pos, state);
 	}
 
 	/** Called by the master controller on assembly / disassembly. */

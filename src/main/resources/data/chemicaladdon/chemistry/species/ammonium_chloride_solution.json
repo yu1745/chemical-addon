@@ -1,0 +1,11 @@
+{
+  "formula": "NH4Cl(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "color": "#D0E0D0",
+  "solventRatio": 10,
+  "ions": [
+    { "ion": "NH4", "charge": 1, "count": 1 },
+    { "ion": "Cl", "charge": -1, "count": 1 }
+  ]
+}

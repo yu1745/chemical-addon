@@ -1,0 +1,10 @@
+{
+  "formula": "CaSO4 slurry",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "color": "#E0E0D0",
+  "solventRatio": 10,
+  "suspended": [
+    { "species": "chemicaladdon:gypsum", "count": 1 }
+  ]
+}

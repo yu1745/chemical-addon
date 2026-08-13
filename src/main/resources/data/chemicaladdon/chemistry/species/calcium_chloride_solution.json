@@ -1,0 +1,11 @@
+{
+  "formula": "CaCl2(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "color": "#E0E8F0",
+  "solventRatio": 10,
+  "ions": [
+    { "ion": "Ca", "charge": 2, "count": 1 },
+    { "ion": "Cl", "charge": -1, "count": 2 }
+  ]
+}
