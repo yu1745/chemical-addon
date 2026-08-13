@@ -15,8 +15,8 @@ import net.minecraftforge.fluids.FluidType;
  */
 public class ChemFluidType extends FluidType {
 
-	private final ResourceLocation still;
-	private final ResourceLocation flowing;
+	protected final ResourceLocation still;
+	protected final ResourceLocation flowing;
 	private final boolean gas;
 
 	public ChemFluidType(Properties properties, ResourceLocation still, ResourceLocation flowing, boolean gas) {

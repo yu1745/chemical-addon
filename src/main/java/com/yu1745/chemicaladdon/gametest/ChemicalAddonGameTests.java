@@ -3,17 +3,27 @@ package com.yu1745.chemicaladdon.gametest;
 import com.simibubi.create.content.processing.burner.BlazeBurnerBlock;
 import com.simibubi.create.content.processing.burner.BlazeBurnerBlockEntity;
 import com.yu1745.chemicaladdon.ChemicalAddon;
+import com.yu1745.chemicaladdon.fluid.FluidColors;
+import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlock;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlock;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlockEntity;
+import com.yu1745.chemicaladdon.reactor.ReactorTank;
+import com.yu1745.chemicaladdon.reactor.SpillLogic;
 import com.yu1745.chemicaladdon.registry.AllBlocks;
 import com.yu1745.chemicaladdon.registry.AllFluids;
 import com.yu1745.chemicaladdon.registry.AllItems;
 
+import com.simibubi.create.foundation.fluid.FluidIngredient;
+
+import java.util.List;
+import java.util.Map;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.Blocks;
@@ -445,6 +455,143 @@ public class ChemicalAddonGameTests {
 		helper.assertTrue(be.getTank().getTotalAmount() == 1000,
 			"interior water (1 source = 1000 mB) must be absorbed into the tank (got total="
 				+ be.getTank().getTotalAmount() + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void mixtureCollapsesAndBlends(GameTestHelper helper) {
+		// 2 distinct species coexisting collapse into one mixture stack whose NBT
+		// keeps both components (no info loss) and whose colour is the weight blend.
+		buildReactor(helper);
+		ReactorControllerBlockEntity be = reactor(helper);
+		ReactorTank tank = be.getTank();
+		tank.fill(new FluidStack(AllFluids.WATER.get().getSource(), 400), FluidAction.EXECUTE);
+		tank.fill(new FluidStack(AllFluids.BRINE.get().getSource(), 600), FluidAction.EXECUTE);
+		helper.assertTrue(tank.getFluids().size() == 2, "two pure fluids should coexist before collapse");
+
+		tank.collapseIfNeeded();
+		helper.assertTrue(tank.getFluids().size() == 1, "should collapse to one mixture stack");
+		FluidStack mix = tank.getFluids().get(0);
+		helper.assertTrue(Mixture.isMixture(mix), "the single stack should be a mixture");
+		Map<ResourceLocation, Integer> comps = Mixture.deriveAmounts(mix);
+		helper.assertTrue(comps.size() == 2, "mixture should keep both components (got " + comps.size() + ")");
+		helper.assertTrue(mix.getAmount() == 1000, "mixture total should be 1000 mB (got " + mix.getAmount() + ")");
+
+		int color = Mixture.getColor(mix);
+		int waterColor = FluidColors.of(new ResourceLocation("chemicaladdon", "water"));
+		int brineColor = FluidColors.of(new ResourceLocation("chemicaladdon", "brine"));
+		helper.assertTrue(color != waterColor && color != brineColor,
+			"mixture colour should be a blend, not either pure colour");
+		// Create's pump probes with drain(1, SIMULATE); if that returns empty the
+		// pump can never extract the mixture (regression: integer truncation rounded
+		// every component to 0 -> amount-0 stack -> read as empty)
+		FluidStack probe = tank.drain(1, FluidAction.SIMULATE);
+		helper.assertTrue(!probe.isEmpty() && Mixture.isMixture(probe),
+			"a 1 mB probe of the mixture must return a non-empty mixture stack so pumps can extract it");
+		helper.assertTrue(mix.getAmount() == 1000,
+			"a SIMULATE probe must not mutate the tank (got " + mix.getAmount() + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void mixtureDegradesToPure(GameTestHelper helper) {
+		// draining one component out of a mixture (the path reactions use) must
+		// leave the rest, and when only one component remains the mixture degrades
+		// back to a pure fluid stack.
+		buildReactor(helper);
+		ReactorControllerBlockEntity be = reactor(helper);
+		ReactorTank tank = be.getTank();
+		tank.fill(new FluidStack(AllFluids.WATER.get().getSource(), 400), FluidAction.EXECUTE);
+		tank.fill(new FluidStack(AllFluids.BRINE.get().getSource(), 600), FluidAction.EXECUTE);
+		tank.collapseIfNeeded();
+
+		// consume all the water component via the ingredient path (same mechanism
+		// completeRecipe uses), then settle -> should degrade to pure brine
+		FluidIngredient waterIng = FluidIngredient.fromFluid(AllFluids.WATER.get().getSource(), 400);
+		int drained = tank.drainIngredient(waterIng, 400, FluidAction.EXECUTE);
+		helper.assertTrue(drained == 400, "should drain 400 mB water from the mixture (got " + drained + ")");
+		tank.collapseIfNeeded();
+
+		helper.assertTrue(tank.getFluids().size() == 1, "one stack after degrading");
+		FluidStack remain = tank.getFluids().get(0);
+		helper.assertTrue(!Mixture.isMixture(remain), "should degrade to a pure fluid");
+		helper.assertTrue(remain.getFluid() == AllFluids.BRINE.get().getSource(),
+			"remaining fluid should be brine");
+		helper.assertTrue(remain.getAmount() == 600,
+			"600 mB brine should remain (got " + remain.getAmount() + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void mixtureSpillsAsPureComponents(GameTestHelper helper) {
+		// regression: breaking the vessel used to spill the mixture as a single
+		// component-less fluid (NBT lost) -> reform re-absorbed many 1-bucket
+		// mixtures that never merged. The mixture now decomposes into its PURE
+		// components for spilling (those survive world fluid blocks), and reform
+		// re-merges them. Uses a 5x5x5 (27-bucket) so the components are >= 1 bucket.
+		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
+		ReactorTank tank = be.getTank();
+		tank.fill(new FluidStack(AllFluids.WATER.get().getSource(), 2000), FluidAction.EXECUTE);
+		tank.fill(new FluidStack(AllFluids.BRINE.get().getSource(), 3000), FluidAction.EXECUTE);
+		tank.collapseIfNeeded();
+		helper.assertTrue(Mixture.isMixture(tank.getFluids().get(0)), "baseline: tank holds a mixture");
+
+		List<FluidStack> spilled = SpillLogic.queueFluids(tank);
+		helper.assertTrue(tank.getFluids().isEmpty(), "the spill must empty the tank");
+		helper.assertTrue(!spilled.isEmpty(), "the mixture must pour out (as its components)");
+		for (FluidStack s : spilled) {
+			helper.assertTrue(!Mixture.isMixture(s),
+				"spilled stacks must be pure components (survive world blocks), not a mixture");
+		}
+		// reform: re-absorb the spilled pure fluids, then settle -> mixture restored
+		for (FluidStack s : spilled) {
+			tank.fill(s.copy(), FluidAction.EXECUTE);
+		}
+		tank.collapseIfNeeded();
+		helper.assertTrue(tank.getFluids().size() == 1 && Mixture.isMixture(tank.getFluids().get(0)),
+			"reform should re-merge the components into one mixture");
+		helper.assertTrue(Mixture.deriveAmounts(tank.getFluids().get(0)).size() == 2,
+			"both components must survive the spill/reform cycle");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 40)
+	public static void mixDegreeRisesOverTime(GameTestHelper helper) {
+		// a freshly poured mixture starts at MixDegree 0 (distinct bands) and
+		// homogenises over time toward 1 (blended). Without this it read as
+		// instantly fully mixed and the un-mixed -> mixed transition was untestable.
+		buildReactor(helper);
+		ReactorControllerBlockEntity be = reactor(helper);
+		ReactorTank tank = be.getTank();
+		tank.fill(new FluidStack(AllFluids.WATER.get().getSource(), 400), FluidAction.EXECUTE);
+		tank.fill(new FluidStack(AllFluids.BRINE.get().getSource(), 600), FluidAction.EXECUTE);
+		tank.collapseIfNeeded();
+		float initial = Mixture.getMixDegree(tank.getFluids().get(0));
+		helper.assertTrue(initial == 0f, "a freshly mixed mixture should start at MixDegree 0 (got " + initial + ")");
+		helper.startSequence()
+			.thenIdle(TICKS * 5) // ~5 s -> several MIX_TICK cycles
+			.thenExecute(() -> {
+				float now = Mixture.getMixDegree(tank.getFluids().get(0));
+				helper.assertTrue(now > initial,
+					"MixDegree should rise over time (was " + initial + ", now " + now + ")");
+			})
+			.thenSucceed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void collapseDropsCorruptMixtures(GameTestHelper helper) {
+		// regression: legacy component-less mixture stacks (left by the old
+		// spill/absorb round-trip) accumulated because collapseIfNeeded did nothing
+		// when merged was empty. They must now be cleaned up.
+		buildReactor(helper);
+		ReactorControllerBlockEntity be = reactor(helper);
+		ReactorTank tank = be.getTank();
+		tank.getFluids().add(new FluidStack(Mixture.fluid(), 1000)); // no components
+		tank.getFluids().add(new FluidStack(Mixture.fluid(), 1000)); // no components
+		tank.collapseIfNeeded();
+		helper.assertTrue(tank.getFluids().isEmpty(),
+			"component-less mixture stacks should be dropped, not accumulate (got "
+				+ tank.getFluids().size() + ")");
 		helper.succeed();
 	}
 

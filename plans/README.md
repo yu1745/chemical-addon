@@ -39,8 +39,9 @@
 | D15 | **无机主线** | 不做石油/精馏/柴油（TFMG/Diesel Generators 已占据），主攻酸碱盐/氯碱/合成氨/索尔维/拜耳法 |
 | D16 | **电力** | 统一走 createaddition Forge Energy 电网（电解槽/电热器耗 FE，搅拌/泵/压滤走旋转） |
 | D17 | **事故机制** | Create 混液炸管等原生行为直接用作禁忌混合的事故表现，少写一套事故渲染 |
+| D18 | **互溶性（Miscibility）** | 液-液能否混溶由「互溶组（miscibilityGroup，数据驱动）」决定：同组互溶 → 合并成单一 `mixture`；跨组不互溶 → 分相分层、抽出时按密度**先后**抽出（非混合）。互溶性决定能否共线输送（不互溶共管=混液炸管），并给 M7 增添「倾析/分相」分离手段。详见 [03-substance-model.md §5.4](03-substance-model.md) |
 
-> D1–D10 为初版设计；D11–D17 为 2026-09 社区生态盘点后新增/修订，完整论证见 [00-ecosystem-recon.md](00-ecosystem-recon.md)。详细可行性论证见 [12-feasibility.md](12-feasibility.md)。
+> D1–D10 为初版设计；D11–D17 为 2026-09 社区生态盘点后新增/修订，完整论证见 [00-ecosystem-recon.md](00-ecosystem-recon.md)；D18 为 2026-08 新增（互溶性概念）。详细可行性论证见 [12-feasibility.md](12-feasibility.md)。
 
 ---
 
@@ -88,3 +89,6 @@
 | 密封等级 | 常压 / 密封 / 高压密封，决定容器能承受的压力上限 |
 | 热媒/冷媒 | 只负责运热/运冷的循环介质（导热油、冷盐水、氨制冷循环） |
 | 热级 HeatLevel | Create 原生热级：NONE/SMOULDERING/FADING/KINDLED/SEETHING；配方门槛用 HeatCondition（HEATED/SUPERHEATED） |
+| 互溶 / 不互溶（Miscibility） | 两种液体能否混成一杯均相（液-液）。互溶→合并成单一 `mixture` 流体；不互溶→分相分层、按密度先后抽出。由互溶组（miscibilityGroup）数据驱动判定，见 [03 §5.4](03-substance-model.md) |
+| 分相 / 倾析（Decantation） | 不互溶相在罐内按密度分层；底口抽重相、顶口撇轻相即得液-液分离（M7 的液-液分离手段） |
+| 互溶组（miscibilityGroup） | 物种 JSON 字段，标注液体所属相族（aqueous/nonpolar/mercury…）；同组互溶，跨组不互溶 |

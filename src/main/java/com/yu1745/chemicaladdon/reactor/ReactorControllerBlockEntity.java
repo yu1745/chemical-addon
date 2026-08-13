@@ -2,6 +2,7 @@ package com.yu1745.chemicaladdon.reactor;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import javax.annotation.Nullable;
 
@@ -13,6 +14,7 @@ import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
 import com.simibubi.create.foundation.fluid.FluidIngredient;
 import com.yu1745.chemicaladdon.ChemicalAddon;
+import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.recipe.AllRecipeTypes;
 import com.yu1745.chemicaladdon.recipe.ChemicalReactionRecipe;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
@@ -39,10 +41,12 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.Fluid;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.common.util.LazyOptional;
 import net.minecraftforge.fluids.FluidStack;
+import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.fluids.capability.IFluidHandler;
 import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.ItemHandlerHelper;
@@ -69,6 +73,10 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 
 	private static final int HEAT_TICK = 20;
 	private static final int REACTION_TICK = 10;
+	private static final int MIX_TICK = 20; // how often the in-vessel mixture homogenises
+	/** MixDegree added per MIX_TICK at the natural (un-stirred) diffusion rate.
+	 *  0 -> 1 in ~20 s; a future mixer block will multiply this via {@link #mixRate()}. */
+	private static final float NATURAL_MIX_RATE = 0.05f;
 
 	private final ReactorTank tank = new ReactorTank(TANK_CAPACITY, this::onTankChanged);
 	private final ItemStackHandler items = new ItemStackHandler(ITEM_SLOTS) {
@@ -149,6 +157,45 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		}
 		tickSpill();
 		absorbFromWorld();
+		// settle multi-fluid contents into a single mixture (or degrade to pure);
+		// runs after absorb/fill so coexisting species collapse same-tick
+		tank.collapseIfNeeded();
+		if (tickCounter % MIX_TICK == 0) {
+			tickMixture();
+		}
+	}
+
+	/**
+	 * Advance the in-vessel mixture's homogenisation: MixDegree rises over time
+	 * (slow natural diffusion; a future mixer block raises {@link #mixRate()}).
+	 * The renderer shows distinct component bands while MixDegree < 1 and the flat
+	 * blended colour once it reaches 1, so the un-mixed -> mixed transition is
+	 * observable. Without this a freshly poured mixture reads as instantly mixed.
+	 */
+	private void tickMixture() {
+		if (level == null || level.isClientSide) {
+			return;
+		}
+		List<FluidStack> fluids = tank.getFluids();
+		if (fluids.size() != 1) {
+			return;
+		}
+		FluidStack stack = fluids.get(0);
+		if (!Mixture.isMixture(stack)) {
+			return;
+		}
+		float md = Mixture.getMixDegree(stack);
+		if (md >= 1.0f) {
+			return;
+		}
+		Mixture.setMixDegree(stack, Math.min(1f, md + mixRate()));
+		setChanged();
+		sync();
+	}
+
+	/** Per-MIX_TICK MixDegree increment. Override / extend for a mixer block bonus. */
+	protected float mixRate() {
+		return NATURAL_MIX_RATE;
 	}
 
 	/**
@@ -372,13 +419,9 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 	}
 
 	private boolean hasFluid(FluidIngredient ingredient) {
-		int total = 0;
-		for (FluidStack stack : tank.getFluids()) {
-			if (ingredient.test(stack)) {
-				total += stack.getAmount();
-			}
-		}
-		return total >= ingredient.getRequiredAmount();
+		// countIngredient looks inside mixture components, so a recipe matches a
+		// species dissolved in the mix as well as a pure stack
+		return tank.countIngredient(ingredient) >= ingredient.getRequiredAmount();
 	}
 
 	private void completeRecipe(ChemicalReactionRecipe recipe) {
@@ -394,15 +437,11 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 			}
 		}
 		// consume fluid inputs
+		// consume fluid inputs (mixture-aware: draws from pure stacks first,
+		// then from mixture components, so a recipe can consume a species that is
+		// dissolved in the mix)
 		for (FluidIngredient fluid : recipe.getFluidIngredients()) {
-			int remaining = fluid.getRequiredAmount();
-			for (int i = 0; i < tank.getTanks() && remaining > 0; i++) {
-				FluidStack stack = tank.getFluidInTank(i);
-				if (fluid.test(stack)) {
-					int drained = tank.drain(new FluidStack(stack.getFluid(), remaining), IFluidHandler.FluidAction.EXECUTE).getAmount();
-					remaining -= drained;
-				}
-			}
+			tank.drainIngredient(fluid, fluid.getRequiredAmount(), IFluidHandler.FluidAction.EXECUTE);
 		}
 		// item outputs (chance-based)
 		for (ProcessingOutput output : recipe.getRollableResults()) {
@@ -957,11 +996,34 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 			tooltip.add(Component.literal(spacing + " ").append(Component.literal("0 mB")).withStyle(ChatFormatting.GRAY));
 		} else {
 			for (FluidStack stack : tank.getFluids()) {
-				tooltip.add(Component.literal(spacing + " ").append(stack.getDisplayName())
-					.withStyle(ChatFormatting.GRAY));
-				tooltip.add(Component.literal(spacing + "  ")
-					.append(Component.literal(stack.getAmount() + " mB")).withStyle(ChatFormatting.GOLD)
-					.append(Component.literal(" / " + tank.getTankCapacity(0) + " mB").withStyle(ChatFormatting.DARK_GRAY)));
+				if (Mixture.isMixture(stack)) {
+					// a mixture: show the total, then its component breakdown so the
+					// player can see what's dissolved in it (the data the reaction
+					// engine and future solubility act on)
+					tooltip.add(Component.literal(spacing + " ").append(stack.getDisplayName())
+						.withStyle(ChatFormatting.GRAY));
+						tooltip.add(Component.literal(spacing + "  ")
+							.append(Component.literal(stack.getAmount() + " mB")).withStyle(ChatFormatting.GOLD)
+							.append(Component.literal(" / " + tank.getTankCapacity(0) + " mB").withStyle(ChatFormatting.DARK_GRAY)));
+						// homogenisation progress: 0% = distinct bands, 100% = blended
+						int mixPct = (int) Math.round(Mixture.getMixDegree(stack) * 100);
+						tooltip.add(Component.literal(spacing + "  mix " + mixPct + "%").withStyle(ChatFormatting.DARK_GRAY));
+						for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveAmounts(stack).entrySet()) {
+						Fluid cf = ForgeRegistries.FLUIDS.getValue(e.getKey());
+						if (cf == null) {
+							continue;
+						}
+						String name = new FluidStack(cf, e.getValue()).getDisplayName().getString();
+						tooltip.add(Component.literal(spacing + "   • " + name + "  " + e.getValue() + " mB")
+							.withStyle(ChatFormatting.DARK_GRAY));
+					}
+				} else {
+					tooltip.add(Component.literal(spacing + " ").append(stack.getDisplayName())
+						.withStyle(ChatFormatting.GRAY));
+					tooltip.add(Component.literal(spacing + "  ")
+						.append(Component.literal(stack.getAmount() + " mB")).withStyle(ChatFormatting.GOLD)
+						.append(Component.literal(" / " + tank.getTankCapacity(0) + " mB").withStyle(ChatFormatting.DARK_GRAY)));
+				}
 			}
 		}
 

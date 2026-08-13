@@ -1,10 +1,12 @@
 package com.yu1745.chemicaladdon.reactor;
 
 import java.util.List;
+import java.util.Map;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import com.simibubi.create.foundation.blockEntity.renderer.SmartBlockEntityRenderer;
+import com.yu1745.chemicaladdon.fluid.Mixture;
 
 import net.createmod.catnip.animation.AnimationTickHolder;
 import net.createmod.catnip.math.VecHelper;
@@ -15,13 +17,17 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.material.Fluid;
+import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.fluids.FluidStack;
+import net.minecraftforge.registries.ForgeRegistries;
 
 /**
  * Renders the vessel interior: the fluid surface (a semi-transparent "pot of
@@ -32,6 +38,9 @@ import net.minecraftforge.fluids.FluidStack;
  * chasing the synced fill state.
  */
 public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorControllerBlockEntity> {
+
+	/** Global speed multiplier for item drift / bob / roll (lower = slower, lazier motion). */
+	private static final float MOTION_SPEED = 0.2f;
 
 	public ReactorControllerRenderer(BlockEntityRendererProvider.Context context) {
 		super(context);
@@ -73,13 +82,16 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 			reactor.getLevel().getBrightness(LightLayer.SKY, centerPos));
 
 		float renderTime = AnimationTickHolder.getRenderTime(reactor.getLevel());
+		// motion (drift / bob / roll / pitch rock) runs on a scaled clock so the whole
+		// animation can be sped up or slowed down from one constant (MOTION_SPEED)
+		float t = renderTime * MOTION_SPEED;
 
-		// --- fluid pass: layered soup surface rising from the interior floor ---
+		// --- fluid-surface height: compute WITHOUT drawing yet. Items must render
+		// before the fluid so their submerged parts show through the translucent
+		// fluid (the fluid writes depth; rendering it first would depth-cull every
+		// item fragment behind its front faces). ---
 		float levelHeight = reactor.getRenderedLevel(partialTicks) * height;
-		float liquidSurface = 0;
-		if (levelHeight > 1 / 1024f) {
-			liquidSurface = renderFluid(reactor, x1, z1, x2, z2, levelHeight, ms, buffer, light);
-		}
+		float liquidSurface = liquidSurfaceHeight(reactor, levelHeight);
 
 		// --- item pass: float on the fluid surface, half-submerged, bobbing ---
 		int itemCount = 0;
@@ -88,59 +100,163 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 				itemCount++;
 			}
 		}
-		if (itemCount == 0) {
-			return;
-		}
 
-		// item ring centre sits on the liquid surface (below any gas layer);
-		// with no fluid, items rest near the floor
+		// surface the items float on (below any gas layer); empty vessel -> near the floor
 		float surfaceY = Math.max(liquidSurface, 0.125f);
-
-		ms.pushPose();
-		ms.translate(cx, surfaceY - 0.1f, cz);
-
-		// slow whole-ring rotation (driven by render time, no BE tick needed)
-		float angle = (renderTime * 4) % 360;
-		ms.mulPose(Axis.YP.rotationDegrees(angle));
-
-		RandomSource r = RandomSource.create(reactor.getBlockPos().hashCode());
-		float ringRadius = (size - 2) * 0.3f; // scales with the interior footprint
-		Vec3 baseVector = itemCount == 1 ? new Vec3(0, 0, 0) : new Vec3(ringRadius, 0, 0);
-		float anglePartition = 360f / itemCount;
-		int remaining = itemCount;
 		boolean floating = reactor.getFillState() > 0;
 
-		for (int slot = 0; slot < reactor.getItems().getSlots(); slot++) {
-			ItemStack stack = reactor.getItems().getStackInSlot(slot);
-			if (stack.isEmpty()) {
-				continue;
+		if (itemCount > 0) {
+			// Free-drift positions roam the WHOLE interior footprint (two sines per
+			// axis, large amplitude) — not a small pocket. A lightweight pairwise
+			// repulsion (O(n^2), n <= 4) then separates any items that drift too
+			// close, so they share the vessel without overlapping. Everything is a
+			// pure function of time -> no per-item state, deterministic per frame.
+			float interiorR = Math.max(0.1f, (size - 2) * 0.5f - 0.35f);
+			float[] posX = new float[itemCount];
+			float[] posZ = new float[itemCount];
+			float[] velX = new float[itemCount];
+			float[] velZ = new float[itemCount];
+
+			int idx = 0;
+			for (int slot = 0; slot < reactor.getItems().getSlots(); slot++) {
+				if (reactor.getItems().getStackInSlot(slot).isEmpty()) {
+					continue;
+				}
+				if (floating) {
+					// roam the full footprint; the two periods are incommensurate so the
+					// path never retraces (an organic Lissajous wander)
+					float ax = t / 9.1f + slot * 2.3f;
+					float az = t / 11.7f + slot * 3.7f;
+					posX[idx] = Mth.sin(ax) * interiorR;
+					posZ[idx] = Mth.cos(az) * interiorR;
+					// analytic velocity (derivative of position) -> heading of motion
+					velX[idx] = Mth.cos(ax) / 9.1f * interiorR;
+					velZ[idx] = -Mth.sin(az) / 11.7f * interiorR;
+				} else {
+					// dry vessel: rest at a fixed ring anchor near the floor, no motion
+					float a = itemCount == 1 ? 0 : idx * (float) (2.0 * Math.PI / itemCount);
+					float ar = itemCount == 1 ? 0 : interiorR;
+					posX[idx] = (float) Math.cos(a) * ar;
+					posZ[idx] = (float) Math.sin(a) * ar;
+				}
+				idx++;
 			}
+
+			// pairwise repulsion: nudge apart any pair closer than minDist (a few
+			// relaxation passes), then clamp back inside the footprint.
+			float minDist = 0.55f;
+			for (int iter = 0; iter < 3 && itemCount > 1; iter++) {
+				for (int i = 0; i < itemCount; i++) {
+					for (int j = i + 1; j < itemCount; j++) {
+						float ddx = posX[i] - posX[j];
+						float ddz = posZ[i] - posZ[j];
+						float d = (float) Math.sqrt(ddx * ddx + ddz * ddz);
+						float overlap = minDist - d;
+						if (overlap > 0 && d > 1e-4f) {
+							float nx = ddx / d * overlap * 0.5f;
+							float nz = ddz / d * overlap * 0.5f;
+							posX[i] += nx; posZ[i] += nz;
+							posX[j] -= nx; posZ[j] -= nz;
+						}
+					}
+				}
+			}
+			for (int i = 0; i < itemCount; i++) {
+				posX[i] = Math.max(-interiorR, Math.min(interiorR, posX[i]));
+				posZ[i] = Math.max(-interiorR, Math.min(interiorR, posZ[i]));
+			}
+
+			RandomSource rng = RandomSource.create(reactor.getBlockPos().hashCode());
 			ms.pushPose();
+			ms.translate(cx, surfaceY - 0.1f, cz);
 
-			Vec3 itemPosition = VecHelper.rotate(baseVector, anglePartition * remaining, Direction.Axis.Y);
-			// bob only when floating on fluid (Basin/Vat style); still on the floor otherwise
-			float bob = 0;
-			if (floating) {
-				bob = (Mth.sin(renderTime / 12f + remaining) + 1.5f) * 1 / 32f;
-			}
-			ms.translate(itemPosition.x, itemPosition.y + bob, itemPosition.z);
-			ms.mulPose(Axis.YP.rotationDegrees(anglePartition * remaining + 35));
-			ms.mulPose(Axis.XP.rotationDegrees(65));
+			idx = 0;
+			for (int slot = 0; slot < reactor.getItems().getSlots(); slot++) {
+				ItemStack stack = reactor.getItems().getStackInSlot(slot);
+				if (stack.isEmpty()) {
+					continue;
+				}
+				float px = posX[idx], pz = posZ[idx];
 
-			// visually stack large counts like a heap on the surface
-			for (int i = 0; i <= stack.getCount() / 8; i++) {
+				// vertical bob: sum of two incommensurate sines (gentle, never metronomic)
+				float bob = 0;
+				if (floating) {
+					bob = (Mth.sin(t / 12f + slot) + 0.5f * Mth.sin(t / 7.3f + slot * 1.7f)) * 1 / 32f;
+				}
+
 				ms.pushPose();
-				Vec3 scatter = VecHelper.offsetRandomly(Vec3.ZERO, r, 1 / 16f);
-				ms.translate(scatter.x, scatter.y, scatter.z);
-				Minecraft.getInstance().getItemRenderer()
-					.renderStatic(stack, ItemDisplayContext.GROUND, light, overlay, ms, buffer,
-						Minecraft.getInstance().level, 0);
+				ms.translate(px, bob, pz);
+
+				// orientation: face the direction of travel (heading), barrel-roll about
+				// the side axis so the item tumbles as it drifts, plus a gentle pitch
+				// rock. Nothing is locked — items turn and roll with their motion.
+				float yawDeg;
+				float rollDeg;
+				float pitchDeg;
+				if (floating) {
+					float speed = (float) Math.sqrt(velX[idx] * velX[idx] + velZ[idx] * velZ[idx]);
+					yawDeg = speed > 1e-3f
+						? (float) Math.toDegrees(Math.atan2(velZ[idx], velX[idx]))
+						: slot * 47 + 35; // near-stationary: stable fallback heading
+					rollDeg = (t * 1.5f + slot * 60f) % 360f;            // slow continuous barrel roll
+					pitchDeg = 65 + 6 * Mth.sin(t / 8.3f + slot * 2.1f); // lay flat + gentle rock
+				} else {
+					yawDeg = slot * 47 + 35;
+					rollDeg = 0;
+					pitchDeg = 65;
+				}
+				ms.mulPose(Axis.YP.rotationDegrees(yawDeg));
+				ms.mulPose(Axis.ZP.rotationDegrees(rollDeg));
+				ms.mulPose(Axis.XP.rotationDegrees(pitchDeg));
+
+				// a small heap per stack (visible even at low counts); tight scatter
+				// keeps the pile at this item's position, clear of the others.
+				int copies = 1 + stack.getCount() / 4;
+				for (int i = 0; i < copies; i++) {
+					ms.pushPose();
+					Vec3 scatter = VecHelper.offsetRandomly(Vec3.ZERO, rng, 1 / 24f);
+					ms.translate(scatter.x, scatter.y, scatter.z);
+					Minecraft.getInstance().getItemRenderer()
+						.renderStatic(stack, ItemDisplayContext.GROUND, light, overlay, ms, buffer,
+							Minecraft.getInstance().level, 0);
+					ms.popPose();
+				}
 				ms.popPose();
+				idx++;
 			}
 			ms.popPose();
-			remaining--;
 		}
-		ms.popPose();
+
+		// --- fluid pass: drawn AFTER the items. Because the fluid renders in the
+		// translucent pass (which writes depth) and is flushed after the item
+		// geometry, the submerged item fragments — already in the framebuffer —
+		// show through the translucent fluid instead of being depth-culled. ---
+		if (levelHeight > 1 / 1024f) {
+			renderFluid(reactor, x1, z1, x2, z2, levelHeight, ms, buffer, light);
+		}
+	}
+
+	/**
+	 * Height of the top of the non-gas (liquid) region — the surface items float on
+	 * (gases hang above it). Computed without drawing so the item pass can run
+	 * before the fluid pass (items must render first to show through the fluid).
+	 */
+	private float liquidSurfaceHeight(ReactorControllerBlockEntity reactor, float levelHeight) {
+		if (levelHeight <= 1 / 1024f) {
+			return 0;
+		}
+		List<FluidStack> fluids = reactor.getTank().getFluids();
+		int total = reactor.getTank().getTotalAmount();
+		if (fluids.isEmpty() || total <= 0) {
+			return 0;
+		}
+		int liquidAmount = 0;
+		for (FluidStack f : fluids) {
+			if (!isLighterThanAir(f)) {
+				liquidAmount += f.getAmount();
+			}
+		}
+		return levelHeight * liquidAmount / total;
 	}
 
 	/**
@@ -177,9 +293,19 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 			if (isLighterThanAir(f)) {
 				continue;
 			}
-			float h = levelHeight * f.getAmount() / total;
-			renderBox(f, ix1, y, iz1, ix2, y + h, iz2, ms, buffer, light);
-			y += h;
+			if (Mixture.isMixture(f) && Mixture.getMixDegree(f) < 1.0f) {
+				// not yet homogenised: render the component colours as a patchwork
+				// across the XZ surface (a particle grid), so the un-mixed state is
+				// visible looking down at the fluid; once MixDegree reaches 1 this
+				// falls through to the single blended box below
+				float h = levelHeight * f.getAmount() / total;
+				renderMixtureSurface(f, ix1, ix2, iz1, iz2, y, y + h, ms, buffer, light, reactor.getBlockPos());
+				y += h;
+			} else {
+				float h = levelHeight * f.getAmount() / total;
+				renderBox(f, ix1, y, iz1, ix2, y + h, iz2, ms, buffer, light);
+				y += h;
+			}
 		}
 		// gases: hang from the level top downward
 		float gasTop = levelHeight;
@@ -198,6 +324,58 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 		PoseStack ms, MultiBufferSource buffer, int light) {
 		// no bottom face (the vessel floor is brick), no gas flipping (we layer gases on top ourselves)
 		ForgeCatnipServices.FLUID_RENDERER.renderFluidBox(fluid, x1, y1, z1, x2, y2, z2, buffer, ms, light, false, false);
+	}
+
+	/**
+	 * Renders a not-yet-homogenised mixture as a particle grid across the XZ
+	 * surface: each cell is a full-height column coloured by one component
+	 * (chosen by amount-weighted deterministic scatter). The grid is coarse when
+	 * MixDegree is low (big colour patches = visibly un-mixed) and grows fine as
+	 * it approaches 1 (fine speckle that reads as the blended colour). This is
+	 * the surface-particle model: the colours live in the XZ plane (the fluid
+	 * top), not stacked vertically, so the patchwork is visible looking down into
+	 * the vessel.
+	 */
+	private void renderMixtureSurface(FluidStack mixture, float x1, float x2, float z1, float z2,
+		float yBottom, float yTop, PoseStack ms, MultiBufferSource buffer, int light, BlockPos vesselPos) {
+		Map<ResourceLocation, Integer> comps = Mixture.deriveAmounts(mixture);
+		int total = mixture.getAmount();
+		if (total <= 0 || comps.isEmpty()) {
+			return;
+		}
+		float md = Mixture.getMixDegree(mixture);
+		int grid = Math.min(8, 2 + Math.round(md * 6f)); // 2 (4 cells) -> 8 (64 cells)
+		float cellW = (x2 - x1) / grid;
+		float cellD = (z2 - z1) / grid;
+		int seed = vesselPos.hashCode();
+		for (int i = 0; i < grid; i++) {
+			for (int j = 0; j < grid; j++) {
+				int h = seed ^ (i * 73856093) ^ (j * 19349663);
+				Fluid cf = pickComponentFluid(comps, total, h);
+				if (cf == null || cf == Fluids.EMPTY) {
+					continue;
+				}
+				float cx1 = x1 + i * cellW;
+				float cz1 = z1 + j * cellD;
+				renderBox(new FluidStack(cf, 1000), cx1, yBottom, cz1, cx1 + cellW, yTop, cz1 + cellD,
+					ms, buffer, light);
+			}
+		}
+	}
+
+	/** Picks a component fluid by amount-weighted deterministic scatter. */
+	private static Fluid pickComponentFluid(Map<ResourceLocation, Integer> comps, int total, int hash) {
+		int r = (hash & 0x7FFFFFFF) % total;
+		int acc = 0;
+		ResourceLocation picked = null;
+		for (Map.Entry<ResourceLocation, Integer> e : comps.entrySet()) {
+			acc += e.getValue();
+			picked = e.getKey();
+			if (r < acc) {
+				break;
+			}
+		}
+		return picked != null ? ForgeRegistries.FLUIDS.getValue(picked) : null;
 	}
 
 	private static boolean isLighterThanAir(FluidStack fluid) {

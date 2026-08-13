@@ -2,14 +2,20 @@ package com.yu1745.chemicaladdon.reactor;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.Fluid;
+import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.fluids.FluidStack;
+import net.minecraftforge.registries.ForgeRegistries;
+import com.yu1745.chemicaladdon.fluid.Mixture;
 import net.minecraftforge.items.ItemStackHandler;
 
 /**
@@ -55,18 +61,41 @@ public final class SpillLogic {
 	}
 
 	/**
-	 * Moves the tank's contents into a spill queue (whole buckets only; the
-	 * sub-bucket remainder is lost). The tank is emptied. Returns the queue.
+	 * Moves the tank's contents into a spill queue as whole-bucket pure fluids
+	 * (the sub-bucket remainder is lost). The tank is emptied.
+	 *
+	 * <p>A mixture is DECOMPOSED into its pure components for spilling: a mixture's
+	 * composition lives in FluidStack NBT, which Forge fluid source blocks cannot
+	 * carry, so the mixture cannot survive a world round-trip as a single fluid.
+	 * Its pure components can — they spill as ordinary fluid blocks and
+	 * {@code collapseIfNeeded} re-merges them back into a mixture on re-absorb.
+	 * This keeps the break/reform cycle physical (fluid pours out) without the
+	 * composition loss or the proliferation of component-less mixture stacks.
 	 */
 	public static List<FluidStack> queueFluids(ReactorTank tank) {
 		List<FluidStack> pending = new ArrayList<>();
-		for (FluidStack stack : tank.getFluids()) {
-			int wholeBuckets = stack.getAmount() / 1000;
-			if (wholeBuckets > 0) {
-				pending.add(new FluidStack(stack.getFluid(), wholeBuckets * 1000));
+		var it = tank.getFluids().iterator();
+		while (it.hasNext()) {
+			FluidStack stack = it.next();
+			it.remove();
+			if (Mixture.isMixture(stack)) {
+				for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveAmounts(stack).entrySet()) {
+					Fluid cf = ForgeRegistries.FLUIDS.getValue(e.getKey());
+					if (cf == null || cf == Fluids.EMPTY) {
+						continue;
+					}
+					int wholeBuckets = e.getValue() / 1000;
+					if (wholeBuckets > 0) {
+						pending.add(new FluidStack(cf, wholeBuckets * 1000));
+					}
+				}
+			} else {
+				int wholeBuckets = stack.getAmount() / 1000;
+				if (wholeBuckets > 0) {
+					pending.add(new FluidStack(stack.getFluid(), wholeBuckets * 1000));
+				}
 			}
 		}
-		tank.clear();
 		return pending;
 	}
 

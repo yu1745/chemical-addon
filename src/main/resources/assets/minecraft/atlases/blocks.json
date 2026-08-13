@@ -303,6 +303,14 @@
     {
       "type": "single",
       "resource": "chemicaladdon:fluid/thermal_oil_flow"
+    },
+    {
+      "type": "single",
+      "resource": "chemicaladdon:fluid/mixture_still"
+    },
+    {
+      "type": "single",
+      "resource": "chemicaladdon:fluid/mixture_flow"
     }
   ]
 }

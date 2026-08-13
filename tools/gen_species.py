@@ -298,6 +298,14 @@ def gen_textures():
         for kind in ("still", "flow"):
             with open(os.path.join(d, f"{sid}_{kind}.png.mcmeta"), "w", encoding="utf-8") as f:
                 f.write(anim_mcmeta)
+    # mixture fluid: raw neutral base (no baked colour — the colour comes from
+    # the per-stack NBT tint blended from components, see MixtureFluidType).
+    # Animated like the species sprites (same vertical-sheet base).
+    write_png(os.path.join(d, "mixture_still.png"), still_base[2])
+    write_png(os.path.join(d, "mixture_flow.png"), flow_base[2])
+    for kind in ("still", "flow"):
+        with open(os.path.join(d, f"mixture_{kind}.png.mcmeta"), "w", encoding="utf-8") as f:
+            f.write(anim_mcmeta)
     d = os.path.join(ASSETS, "textures/item")
     os.makedirs(d, exist_ok=True)
     for sid, _, _, color in SOLIDS:
@@ -324,6 +332,9 @@ def gen_atlas():
     for sid, *_ in FLUIDS:
         sources.append({"type": "single", "resource": f"chemicaladdon:fluid/{sid}_still"})
         sources.append({"type": "single", "resource": f"chemicaladdon:fluid/{sid}_flow"})
+    # the mixture fluid's neutral base textures must be stitched too
+    for kind in ("still", "flow"):
+        sources.append({"type": "single", "resource": f"chemicaladdon:fluid/mixture_{kind}"})
     with open(os.path.join(d, "blocks.json"), "w", encoding="utf-8") as f:
         _json.dump({"sources": sources}, f, indent=2)
         f.write("\n")
@@ -491,6 +502,7 @@ def gen_fluids_java():
              "import com.tterrag.registrate.util.entry.FluidEntry;",
              "import com.yu1745.chemicaladdon.ChemicalAddon;",
              "import com.yu1745.chemicaladdon.fluid.ChemFluidType;",
+             "import com.yu1745.chemicaladdon.fluid.MixtureFluidType;",
              "import net.minecraftforge.fluids.ForgeFlowingFluid;",
              "",
              "public class AllFluids {",
@@ -498,8 +510,49 @@ def gen_fluids_java():
              ""]
     for sid, _, en_name, _, density, viscosity, temp, gas in FLUIDS:
         parts.append(fluid_entry(sid, en_name, density, viscosity, temp, gas))
+    # the mixture meta-fluid: a single registered Forge fluid whose FluidStack
+    # NBT carries the component composition + blended colour (see Mixture /
+    # MixtureFluidType). No block/bucket — it lives in tanks/pipes only.
+    parts.append(
+        "\n\tpublic static final FluidEntry<ForgeFlowingFluid.Flowing> MIXTURE = REGISTRATE.standardFluid(\"mixture\",\n"
+        "\t\t\t(props, still, flow) -> new MixtureFluidType(props, still, flow))\n"
+        "\t\t.lang(\"Mixture\")\n"
+        "\t\t.properties(b -> b.density(1000)\n"
+        "\t\t\t.viscosity(1000)\n"
+        "\t\t\t.temperature(300))\n"
+        "\t\t.source(ForgeFlowingFluid.Source::new)\n"
+        "\t\t.register();")
     parts += ["", "\tpublic static void register() {", "\t}", "}", ""]
     with open(os.path.join(JAVA, "AllFluids.java"), "w", encoding="utf-8") as f:
+        f.write("\n".join(parts))
+
+def gen_fluid_colors_java():
+    """Emit FluidColors.java: the per-species RGB colour (same source column as
+    the texture tint) so Java can blend mixture colours at runtime. Without this
+    Java has no access to species colours (they're otherwise only baked into the
+    PNGs by tint_fluid)."""
+    parts = ["package com.yu1745.chemicaladdon.fluid;",
+             "",
+             "import java.util.HashMap;",
+             "import java.util.Map;",
+             "import net.minecraft.resources.ResourceLocation;",
+             "import com.yu1745.chemicaladdon.ChemicalAddon;",
+             "",
+             "/** Species colour table (single source of truth: tools/gen_species.py FLUIDS).",
+             " *  Used to weight-blend mixture colours at runtime. ARGB, fully opaque. */",
+             "public final class FluidColors {",
+             "\tprivate FluidColors() {}",
+             "\tprivate static final Map<ResourceLocation, Integer> COLORS = new HashMap<>();",
+             "\tstatic {"]
+    for sid, _, _, color, *_ in FLUIDS:
+        argb = 0xFF000000 | color  # fully opaque alpha over the 0xRRGGBB value
+        parts.append(f'\t\tCOLORS.put(new ResourceLocation(ChemicalAddon.MODID, "{sid}"), 0x{argb:08X});')
+    parts += ["\t}", "",
+              "\t/** @return the species' ARGB colour, or -1 (white) if unknown. */",
+              "\tpublic static int of(ResourceLocation id) {",
+              "\t\treturn COLORS.getOrDefault(id, 0xFFFFFFFF);",
+              "\t}", "}", ""]
+    with open(os.path.join(JAVA, "..", "fluid", "FluidColors.java"), "w", encoding="utf-8") as f:
         f.write("\n".join(parts))
 
 def gen_items_java():
@@ -528,5 +581,6 @@ if __name__ == "__main__":
     gen_block_textures()
     gen_lang()
     gen_fluids_java()
+    gen_fluid_colors_java()
     gen_items_java()
     print(f"OK: {len(FLUIDS)} fluids, {len(SOLIDS)} solids, {len(BLOCKS)} blocks -> textures/atlas/lang/Java generated")

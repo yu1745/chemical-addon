@@ -4,6 +4,7 @@ import com.simibubi.create.foundation.data.CreateRegistrate;
 import com.tterrag.registrate.util.entry.FluidEntry;
 import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.fluid.ChemFluidType;
+import com.yu1745.chemicaladdon.fluid.MixtureFluidType;
 import net.minecraftforge.fluids.ForgeFlowingFluid;
 
 public class AllFluids {
@@ -502,6 +503,15 @@ public class AllFluids {
 		.lang("Thermal Oil")
 		.build()
 		.bucket().lang("Thermal Oil Bucket").build()
+		.register();
+
+	public static final FluidEntry<ForgeFlowingFluid.Flowing> MIXTURE = REGISTRATE.standardFluid("mixture",
+			(props, still, flow) -> new MixtureFluidType(props, still, flow))
+		.lang("Mixture")
+		.properties(b -> b.density(1000)
+			.viscosity(1000)
+			.temperature(300))
+		.source(ForgeFlowingFluid.Source::new)
 		.register();
 
 	public static void register() {
