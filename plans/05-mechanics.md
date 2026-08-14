@@ -61,10 +61,11 @@
 - **玩家交互**：滤饼上传送带运走；滤液回系统；蒸馏塔板数决定分离纯度。
 - **边界**：过滤效率=配方参数（滤饼含水率）；蒸馏按沸点差查表，不做平衡级数模拟。
 - **液-液分离（倾析/分相，D18 已落地）**：不互溶相在罐内按密度分层（`collapseIfNeeded` 按互溶组合并、气体独立相），与「按沸点分离」（蒸馏）、「按固液分离」（过滤）并列。抽哪一相由**端口**决定——**底口=重相先出**（普通抽出，D18 `drain(int)` 密度序）；**顶口=轻相先出**（分液）。
-  - **分液软管（转化式，D18.5）**：把 **Create 软管滑轮**装到**开口釜正上方**（软管从开口顶伸入），放置时经 Forge `BlockEvent.EntityPlaceEvent`（浅 hook，非深 mixin）**特化为自研「分液软管」块**——换方块 ID、继承 `HorizontalKineticBlock`、保留 `HORIZONTAL_FACING`。JEI/创造栏仍只有原版软管滑轮一个；敲掉/中键拾取掉回原版（`getCloneItemStack` + loot 表指向 `create:hose_pulley`）。
-  - **软管跟随虚拟液面**：BE 沿 DOWN 找下方开口釜，`offset`（`LerpedFloat`）追釜的 `getFillHeight()`（fill/容量），液面降软管跟着降；抽液走釜的 `drainLightest(...)`（`drain(int)` 反向排序）。
-  - **扳手双模式（锁相）**：默认「**只抽上层**」= 软管记住当前抽的那一相 identity（`FluidStack.isFluidEqual`），该相抽空即停、不落回下一相（正确处理「两层→上层抽空→变一层」）；「**全部抽**」= 不锁相、密度序排空。扳手（`WrenchItem`）右键循环，护目镜 HUD（`IHaveGoggleInformation`）显示模式，无 GUI。
-  - **触发/反馈/发现性**：特化瞬间加「咬合」粒子/音效（同成型成功），不静默换 ID；Ponder/JEI 信息页说清「软管滑轮装在开口釜上 = 分液软管」。
+  - **分液软管（转化式，D18.5，已实现）**：把 **Create 软管滑轮**装到**开口釜正上方**，放置时经 Forge `BlockEvent.EntityPlaceEvent`（浅 hook，非深 mixin）**特化为自研「分液软管」块**——换方块 ID（简单方块、无朝向，BE 沿 DOWN 找开口釜）。JEI/创造栏只有原版软管滑轮一个；敲掉/中键拾取掉回原版（`getCloneItemStack` + loot 表指向 `create:hose_pulley`）。
+  - **软管跟随虚拟液面（已实现）**：渲染器（`DecantHoseRenderer`，照抄 Create `AbstractPulleyRenderer`）沿 DOWN 找下方开口釜，软管 `offset`（BE 内 `LerpedFloat`，客户端 tick 用 `Chaser.EXP` 缓动追 `getLiquidSurfaceY`）从 0 慢慢下放到液面、液面升降自动跟随、无手动收放；抽液走釜的 `drainLightest(...)`。
+  - **扳手双模式（锁相，已实现）**：默认「**只抽上层**」= 软管锁最轻相（`FluidStack.isFluidEqual`），该相抽空即停、不落回下一相；「**全部抽**」= `drainLightest` 排空。扳手（`WrenchItem`）右键循环。
+  - **软管头密度（未来计划，未实现）**：给软管末端软管头一个可调密度值，靠浮力自动停在对应液层，是比扳手切上/下更物理的相选择——ρ头 < ρ油 浮在油上表面（抽油/最轻相）；ρ水 < ρ头 沉入水相（抽底层/最重相）；ρ油 < ρ头 < ρ水 卡在油水界面（临界点、不稳定、不作工作点，仅作连续过渡说明）。依赖软管头密度可调（世界内调值，如 ValueSettingsBehaviour）+ 渲染器按密度把软管头插到对应界面高度。
+  - **触发/反馈/发现性**：特化瞬间播**铁砧放置音**（`SoundEvents.ANVIL_PLACE`，响亮清脆，已实现），不静默换 ID；Ponder/JEI 信息页说清「软管滑轮装在开口釜上 = 分液软管」。
   - **分液口（已实现，底口）**：`decant_port` 是 `vessel_walls` 壁块（非凸出、可接管），其 `FLUID_HANDLER` 只暴露最重相——锁相（首次出料锁最重相、抽干即停，浮球阀语义）；普通管道接砖 = 排空（重相先出）。顶口撇轻相仍走软管滑轮。
 - **Create 对接**：滤饼/晶体=item（漏斗/传送带/机械臂全通）；蒸馏塔=模板实例（再沸釜+塔板+冷凝段）。
 - **可表达**：可表达。

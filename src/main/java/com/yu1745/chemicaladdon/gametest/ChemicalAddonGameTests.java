@@ -612,6 +612,95 @@ public class ChemicalAddonGameTests {
 	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void decantHoseDrainsLightestThenStops(GameTestHelper helper) {
+		// 分液软管: placed above an open-topped vessel, its FLUID_HANDLER drains the
+		// lightest (top) phase and, in the default "only top" mode, latches onto it and
+		// runs dry once it is gone — the denser phase below is left untouched.
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick); // floor
+			}
+		}
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				if (x == 2 && z == 2) continue;
+				BlockPos p = new BlockPos(x, 2, z);
+				helper.setBlock(p, x == 2 && z == 1 ? controller : brick);
+			}
+		}
+		helper.setBlock(new BlockPos(2, 2, 2), Blocks.AIR.defaultBlockState());
+		ReactorControllerBlockEntity be = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 1));
+		helper.assertTrue(be.tryAssemble().ok() && be.isOpen(), "open reactor should assemble");
+
+		be.getTank().fill(new FluidStack(Fluids.WATER, 400), FluidAction.EXECUTE);
+		be.getTank().fill(new FluidStack(AllFluids.THERMAL_OIL.get().getSource(), 600), FluidAction.EXECUTE);
+		be.getTank().collapseIfNeeded();
+
+		helper.setBlock(new BlockPos(2, 3, 2), AllBlocks.DECANT_HOSE.get().defaultBlockState());
+		BlockEntity hoseBe = helper.getBlockEntity(new BlockPos(2, 3, 2));
+		helper.assertTrue(hoseBe != null, "decant hose should have a BE");
+		IFluidHandler handler = hoseBe.getCapability(ForgeCapabilities.FLUID_HANDLER).orElse(null);
+		helper.assertTrue(handler != null, "decant hose must expose FLUID_HANDLER");
+
+		FluidStack light = handler.drain(100, FluidAction.EXECUTE);
+		helper.assertTrue(light.getFluid() == AllFluids.THERMAL_OIL.get().getSource(),
+			"the hose should drain the lighter oil first");
+
+		FluidStack rest = handler.drain(500, FluidAction.EXECUTE);
+		helper.assertTrue(rest.getFluid() == AllFluids.THERMAL_OIL.get().getSource() && rest.getAmount() == 500,
+			"the hose should drain the remaining oil");
+
+		FluidStack after = handler.drain(100, FluidAction.EXECUTE);
+		helper.assertTrue(after.isEmpty(), "after the oil is drained the hose must stop, not drain water");
+		helper.assertTrue(hasFluid(be, Fluids.WATER, 400), "the water must stay in the vessel");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void decantHoseCanFillReactor(GameTestHelper helper) {
+		// 分液软管双向: a pump can also push fluid back into the vessel through the hose
+		// (reverse fill) — fill must delegate to the reactor tank, not reject.
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick); // floor
+			}
+		}
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				if (x == 2 && z == 2) continue;
+				BlockPos p = new BlockPos(x, 2, z);
+				helper.setBlock(p, x == 2 && z == 1 ? controller : brick);
+			}
+		}
+		helper.setBlock(new BlockPos(2, 2, 2), Blocks.AIR.defaultBlockState());
+		ReactorControllerBlockEntity be = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 1));
+		helper.assertTrue(be.tryAssemble().ok() && be.isOpen(), "open reactor should assemble");
+
+		helper.setBlock(new BlockPos(2, 3, 2), AllBlocks.DECANT_HOSE.get().defaultBlockState());
+		BlockEntity hoseBe = helper.getBlockEntity(new BlockPos(2, 3, 2));
+		helper.assertTrue(hoseBe != null, "decant hose should have a BE");
+		IFluidHandler handler = hoseBe.getCapability(ForgeCapabilities.FLUID_HANDLER).orElse(null);
+		helper.assertTrue(handler != null, "decant hose must expose FLUID_HANDLER");
+
+		// reverse fill: push water back into the vessel through the hose
+		int filled = handler.fill(new FluidStack(Fluids.WATER, 500), FluidAction.EXECUTE);
+		helper.assertTrue(filled == 500, "the hose should fill the vessel (got " + filled + ")");
+		helper.assertTrue(hasFluid(be, Fluids.WATER, 500), "the water must land in the vessel tank");
+
+		// it must still drain the lightest phase (oil floats above water)
+		be.getTank().fill(new FluidStack(AllFluids.THERMAL_OIL.get().getSource(), 500), FluidAction.EXECUTE);
+		be.getTank().collapseIfNeeded();
+		FluidStack drained = handler.drain(100, FluidAction.EXECUTE);
+		helper.assertTrue(drained.getFluid() == AllFluids.THERMAL_OIL.get().getSource(),
+			"the hose must still drain the lighter oil first after a reverse fill");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void collapseDoesNotChurnMixtureRatio(GameTestHelper helper) {
 		// regression: collapseIfNeeded on a multi-phase tank used to rebuild the
 		// mixture every tick (derive amounts -> Mixture.create GCD-reduce), churning

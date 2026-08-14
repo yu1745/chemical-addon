@@ -176,12 +176,18 @@ public class ReactorTank implements IFluidHandler {
 				if (amount <= 0) {
 					return FluidStack.EMPTY;
 				}
+				// copy the live stack BEFORE shrinking (a fully-drained stack copies to
+				// EMPTY and setAmount would throw) — its NBT (frozen temperature) travels
+				// with the sample; a stripped tag would break Create's isFluidEqual
+				// against getFluidInTank and stall the pump
+				FluidStack out = f.copy();
+				out.setAmount(amount);
 				if (action.execute()) {
 					f.shrink(amount);
 					removeEmpty();
 					onChanged.run();
 				}
-				return new FluidStack(target, amount);
+				return out;
 			}
 		}
 		return FluidStack.EMPTY;

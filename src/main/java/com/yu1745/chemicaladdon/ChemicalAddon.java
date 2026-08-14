@@ -9,6 +9,7 @@ import com.mojang.logging.LogUtils;
 import com.simibubi.create.foundation.data.CreateRegistrate;
 import com.yu1745.chemicaladdon.composition.SpeciesManager;
 import com.yu1745.chemicaladdon.network.AssaySyncPacket;
+import com.yu1745.chemicaladdon.reactor.DecantHoseBlockEntity;
 import com.yu1745.chemicaladdon.recipe.AllRecipeTypes;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
 import com.yu1745.chemicaladdon.registry.AllBlocks;
@@ -97,6 +98,24 @@ public class ChemicalAddon {
 			if (event.getEntity() instanceof ServerPlayer sp) {
 				ASSAY_CHANNEL.send(PacketDistributor.PLAYER.with(() -> sp),
 					new AssaySyncPacket(ASSAY_PLAYERS.contains(sp.getUUID())));
+			}
+		});
+
+		// Convert a Create Hose Pulley placed above an open-topped vessel into the decant
+		// hose (shallow placement hook — the block is a transient conversion, not an item).
+		MinecraftForge.EVENT_BUS.addListener((net.minecraftforge.event.level.BlockEvent.EntityPlaceEvent event) -> {
+			if (event.getLevel().isClientSide()
+				|| !(event.getLevel() instanceof net.minecraft.world.level.Level level)) {
+				return;
+			}
+			if (!event.getPlacedBlock().is(com.simibubi.create.AllBlocks.HOSE_PULLEY.get())) {
+				return;
+			}
+			if (DecantHoseBlockEntity.findReactorBelow(level, event.getPos()) != null) {
+				level.setBlock(event.getPos(), AllBlocks.DECANT_HOSE.get().defaultBlockState(), 3);
+				// loud, bright "snap" so the player notices the pulley converted into a decant hose
+				level.playSound(null, event.getPos(), net.minecraft.sounds.SoundEvents.ANVIL_PLACE,
+					net.minecraft.sounds.SoundSource.BLOCKS, 1.0f, 1.0f);
 			}
 		});
 

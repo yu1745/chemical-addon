@@ -893,6 +893,28 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		return renderedLevel.getValue(partialTicks);
 	}
 
+	/**
+	 * World-space Y of the liquid (non-gas) surface — the height the decant hose
+	 * tracks. Mirrors {@link ReactorControllerRenderer}'s surface math (interpolated
+	 * fill fraction scaled by the interior height, gases excluded) so the hose tip
+	 * lands exactly on the rendered surface. Empty vessels report the floor.
+	 */
+	public float getLiquidSurfaceY(float partialTicks) {
+		float levelHeight = getRenderedLevel(partialTicks) * getHeight();
+		List<FluidStack> fluids = tank.getFluids();
+		int total = tank.getTotalAmount();
+		if (levelHeight <= 1 / 1024f || fluids.isEmpty() || total <= 0) {
+			return worldPosition.getY(); // empty: surface rests on the interior floor
+		}
+		int liquidAmount = 0;
+		for (FluidStack f : fluids) {
+			if (!f.getFluid().getFluidType().isLighterThanAir()) {
+				liquidAmount += f.getAmount();
+			}
+		}
+		return worldPosition.getY() + levelHeight * liquidAmount / total;
+	}
+
 	/** The vessel's temperature = the settled contents' temperature (°C); ambient when empty. */
 	public int getTemperature() {
 		if (tank.getFluids().isEmpty()) {
@@ -923,6 +945,9 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 	@Override
 	public <T> LazyOptional<T> getCapability(Capability<T> cap, @Nullable Direction side) {
 		if (cap == ForgeCapabilities.FLUID_HANDLER) {
+			if (side == Direction.UP) {
+				return LazyOptional.empty(); // vessel top never accepts a pipe (side + bottom only)
+			}
 			return fluidCap.cast();
 		}
 		if (cap == ForgeCapabilities.ITEM_HANDLER) {

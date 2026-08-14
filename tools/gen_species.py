@@ -77,6 +77,7 @@ SOLIDS = [
 BLOCKS = [
     ("chemical_brick",    "化工砖", "Chemical Brick",    0x8E8478),
     ("decant_port",       "分液口", "Decant Port",       0x8E8478),
+    ("decant_hose",       "分液软管", "Decant Hose",       0xB87333),
     ("reactor_controller", "反应釜控制器", "Reactor Controller", 0x6E6E6E),
     ("filter_press",      "过滤机", "Filter Press",      0x7A7A8A),
     ("settling_basin",    "沉淀池控制器", "Settling Basin", 0x5E6E7A),

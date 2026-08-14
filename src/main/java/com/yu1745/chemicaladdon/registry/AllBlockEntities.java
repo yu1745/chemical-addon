@@ -2,6 +2,7 @@ package com.yu1745.chemicaladdon.registry;
 
 import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlockEntity;
+import com.yu1745.chemicaladdon.reactor.DecantHoseBlockEntity;
 import com.yu1745.chemicaladdon.reactor.DecantPortBlockEntity;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlockEntity;
@@ -22,6 +23,11 @@ public class AllBlockEntities {
 		REGISTER.register("chemical_brick",
 			() -> BlockEntityType.Builder.of(ChemicalBrickBlockEntity::new,
 				AllBlocks.CHEMICAL_BRICK.get(), AllBlocks.CHEMICAL_GLASS.get())
+				.build(null));
+
+	public static final RegistryObject<BlockEntityType<DecantHoseBlockEntity>> DECANT_HOSE =
+		REGISTER.register("decant_hose",
+			() -> BlockEntityType.Builder.of(DecantHoseBlockEntity::new, AllBlocks.DECANT_HOSE.get())
 				.build(null));
 
 	public static final RegistryObject<BlockEntityType<DecantPortBlockEntity>> DECANT_PORT =

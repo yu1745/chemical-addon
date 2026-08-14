@@ -5,6 +5,7 @@ import com.tterrag.registrate.util.entry.BlockEntry;
 import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlock;
 import com.yu1745.chemicaladdon.reactor.ChemicalGlassBlock;
+import com.yu1745.chemicaladdon.reactor.DecantHoseBlock;
 import com.yu1745.chemicaladdon.reactor.DecantPortBlock;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlock;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlock;
@@ -44,6 +45,15 @@ public class AllBlocks {
 				prov.models().cubeAll(ctx.getName(), prov.models().mcLoc("block/glass"))))
 			.addLayer(() -> RenderType::cutoutMipped)
 			.simpleItem()
+			.register();
+
+	/** Decant hose (分液软管): a transient conversion of Create's Hose Pulley that drains the lightest phase. */
+	public static final BlockEntry<DecantHoseBlock> DECANT_HOSE =
+		REGISTRATE.block("decant_hose", DecantHoseBlock::new)
+			.properties(p -> p.mapColor(MapColor.METAL).strength(2.0f, 6.0f).noOcclusion())
+			.lang("Decant Hose")
+			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
+				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
 			.register();
 
 	/** One-way drain port (分液口): a shell block whose FLUID_HANDLER drains only the densest phase. */

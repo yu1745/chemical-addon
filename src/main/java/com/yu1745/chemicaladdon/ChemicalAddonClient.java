@@ -1,5 +1,6 @@
 package com.yu1745.chemicaladdon;
 
+import com.yu1745.chemicaladdon.reactor.DecantHoseRenderer;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerRenderer;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
 import com.yu1745.chemicaladdon.registry.AllContainers;
@@ -19,6 +20,8 @@ public class ChemicalAddonClient {
 	public static void init() {
 		// render the vessel's item buffer + fluid surface inside the hollow interior
 		BlockEntityRenderers.register(AllBlockEntities.REACTOR_CONTROLLER.get(), ReactorControllerRenderer::new);
+		// render the decant hose's coil + hanging rope (Create hose-pulley look, surface-tracking)
+		BlockEntityRenderers.register(AllBlockEntities.DECANT_HOSE.get(), DecantHoseRenderer::new);
 
 		// per-stack fluid tint for every DynamicFluidContainerModel item: the sample
 		// vial (any fluid with NBT) and every species bucket (still sprite + tint).
