@@ -7,6 +7,8 @@
   "goggles.chemicaladdon.heat.superheated": "超级加热",
   "goggles.chemicaladdon.contents": "釜内：",
   "goggles.chemicaladdon.solution": "溶液",
+  "goggles.chemicaladdon.suspended": "混悬",
+  "goggles.chemicaladdon.sediment": "沉底",
   "goggles.chemicaladdon.bucket_empty": "空",
   "goggles.chemicaladdon.items": "物品：",
   "goggles.chemicaladdon.progress": "进度：%s%%（%s）",

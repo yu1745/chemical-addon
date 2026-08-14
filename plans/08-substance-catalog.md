@@ -1,8 +1,8 @@
 # 08 · 物质全目录（61 种，v2 离子基底口径）
 
 > 文档状态：**current**（2026-08 重写，取代 D12「全量注册」口径）
-> **v2 口径**（见 [03-substance-model.md](03-substance-model.md)）：**纯物质**（13 气体 + 导热油）注册为 Forge Fluid，水用原版 `minecraft:water`；**溶液/浆料 = 模式别名**——不单独注册流体，釜/罐/管道里是离子基底单一 `mixture`（离子多重集 + 水 + 分子溶质 + `Suspended` 悬浮固相）；**浓/稀是连续浓度，不是物种**。
-> 气体用**负密度 + 半透明/粒子化渲染**（Create 6.0.8 无气体系统，自研规避）；固体矿物/产品为 item 走传送带（浆料=mixture 的 `Suspended` 域，过滤机抽走吐 item）。
+> **v2 口径**（见 [03-substance-model.md](03-substance-model.md)）：**纯物质**（13 气体 + 导热油）注册为 Forge Fluid，水用原版 `minecraft:water`；**溶液/浆料 = 模式别名**——不单独注册流体，釜/罐/管道里是离子基底单一 `mixture`（离子多重集 + 水 + 分子溶质 + `Suspended` 混悬 + `Sediment` 沉底）；**浓/稀是连续浓度，不是物种**。
+> 气体用**负密度 + 半透明/粒子化渲染**（Create 6.0.8 无气体系统，自研规避）；固体矿物/产品为 item 走传送带（浆料=mixture 的 `Suspended` 混悬域，过滤机抽走吐 item；结晶= `Sediment` 沉底域）。
 
 ## A. 气体（13，负密度流体）
 
@@ -24,7 +24,7 @@
 
 ## B. 液体与溶液（水 + 模式别名）
 
-> 下表溶液全部为**模式别名**（species JSON：`data/chemicaladdon/chemistry/species/*.json`），只用于配方匹配/名字/颜色/桶默认配比；釜内存储是离子基底 mixture。**浓/稀已合并单模式**（如 `sulfuric_acid` 覆盖稀→浓的连续浓度，配方用浓度区间区分，见 03 §5）；「悬浊/浆料」= mixture 的 `Suspended` 悬浮固相域（沉淀/析晶先入釜内，见 03 §12）。
+> 下表溶液全部为**模式别名**（species JSON：`data/chemicaladdon/chemistry/species/*.json`），只用于配方匹配/名字/颜色/桶默认配比；釜内存储是离子基底 mixture。**浓/稀已合并单模式**（如 `sulfuric_acid` 覆盖稀→浓的连续浓度，配方用浓度区间区分，见 03 §5）；「悬浊/浆料」= mixture 的 `Suspended` 混悬域（快速沉淀），降温结晶走 `Sediment` 沉底域（见 03 §12）。
 
 | 物种（模式） | 组成（离子基底） | 要点 | 用途 |
 |------|------------|------|------|

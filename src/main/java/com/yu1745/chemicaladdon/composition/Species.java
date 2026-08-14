@@ -26,7 +26,7 @@ import net.minecraft.resources.ResourceLocation;
  * <p>This class also carries the thermodynamic/ionic data the emergent
  * rules engine (plans/06 §9) consumes: electrolyte dissociation ({@link #ions}),
  * precipitate solubility product ({@link #ksp}), crystallisation curve
- * ({@link #solubility}/{@link #solute}/{@link #concentration}), phase
+ * ({@link #solubility}/{@link #solute}), phase
  * transitions ({@link #phaseTransitions}) and miscibility grouping
  * ({@link #miscibilityGroup}). Ions are NOT registered species — they are
  * simulation-internal identities carried by {@link Ion}.
@@ -143,7 +143,6 @@ public final class Species {
 	private final double ksp; // NaN = not a precipitate
 	private final List<SolubilityPoint> solubility;
 	private final ResourceLocation solute; // solid that crystallises out (nullable)
-	private final double concentration; // g solute / 100 g water (NaN = none)
 	private final int solventRatio; // water parts per formula unit (0 = not a solution)
 	private final int color; // RGB tint for the creative bucket (0 = derive from components)
 	private final String miscibilityGroup; // nullable
@@ -151,7 +150,7 @@ public final class Species {
 
 	private Species(ResourceLocation id, String formula, Phase phase, int boilingPointC, int meltingPointC,
 		List<Component> components, Set<String> dangers, List<IonComponent> ions, List<SuspendedComponent> suspended,
-		double ksp, List<SolubilityPoint> solubility, ResourceLocation solute, double concentration, int solventRatio,
+		double ksp, List<SolubilityPoint> solubility, ResourceLocation solute, int solventRatio,
 		int color, String miscibilityGroup, List<PhaseTransition> phaseTransitions) {
 		this.id = id;
 		this.formula = formula;
@@ -165,7 +164,6 @@ public final class Species {
 		this.ksp = ksp;
 		this.solubility = solubility;
 		this.solute = solute;
-		this.concentration = concentration;
 		this.solventRatio = solventRatio;
 		this.color = color;
 		this.miscibilityGroup = miscibilityGroup;
@@ -244,7 +242,6 @@ public final class Species {
 				solute = ResourceLocation.tryParse(getString(o, "solute", ""));
 			}
 
-			double concentration = getDouble(o, "concentration", Double.NaN);
 			int solventRatio = getInt(o, "solventRatio", 0);
 			int color = 0;
 			if (o.has("color")) {
@@ -270,7 +267,7 @@ public final class Species {
 			}
 
 			return new Species(id, formula, phase, bp, mp, List.copyOf(components), Set.copyOf(dangers),
-				List.copyOf(ions), List.copyOf(suspended), ksp, List.copyOf(solubility), solute, concentration,
+				List.copyOf(ions), List.copyOf(suspended), ksp, List.copyOf(solubility), solute,
 				solventRatio, color, miscibilityGroup, List.copyOf(transitions));
 		} catch (Exception e) {
 			ChemicalAddon.LOGGER.error("Failed to parse species {}: {}", id, e.getMessage());
@@ -335,14 +332,14 @@ public final class Species {
 		return solute;
 	}
 
-	/** Fixed concentration of this solution species (g solute / 100 g water); NaN = none. */
-	public double concentration() {
-		return concentration;
-	}
-
-	/** True when this solution species can crystallise on cooling. */
+	/**
+	 * True when this solution species can crystallise on cooling: it names a solid
+	 * solute and carries a solubility curve. Whether it <i>actually</i> crystallises
+	 * is decided at runtime by the rules engine from the vessel's continuous
+	 * concentration (formula units / water) against {@link #solubilityAt(int)}.
+	 */
 	public boolean isCrystallisable() {
-		return solute != null && !solubility.isEmpty() && !Double.isNaN(concentration);
+		return solute != null && !solubility.isEmpty();
 	}
 
 	/** Default water parts per formula unit (the "known ratio" a creative bucket packs); 0 = none. */

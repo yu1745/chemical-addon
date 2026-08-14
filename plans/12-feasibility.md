@@ -6,7 +6,7 @@
 ## 1. 结论
 
 **全部 10 种机制可表达、可实现。** 自研核心收敛为两块：
-1. **离子基底单一 `mixture`**（离子多重集 + 水 + 分子溶质 + Suspended，电中性硬不变量）——单一注册流体承载任意浓度；物种退化为「命名组成模式」（species JSON 数据包，匠魂修饰器式加载），只用于匹配/名字/颜色/桶配比（见 03 §2–§4）；
+1. **离子基底单一 `mixture`**（离子多重集 + 水 + 分子溶质 + `Suspended` 混悬 + `Sediment` 沉底，电中性硬不变量）——单一注册流体承载任意浓度；物种退化为「命名组成模式」（species JSON 数据包，匠魂修饰器式加载），只用于匹配/名字/颜色/桶配比（见 03 §2–§4）；
 2. **釜内反应模拟**（白名单配方 + 规则引擎涌现化学）——容器结构参考匠魂 SmelteryTank（`List<FluidStack>` 多流体共存，已证实直接实现 Forge IFluidHandler）；白名单走 ProcessingRecipe 管线，涌现（沉淀/中和/结晶）走规则引擎直改离子集（06 §9）；运行模式 BATCH/连续流（13-flow-modes）。
 
 其余全部是成熟模式：Create 配方管线（ProcessingRecipe）、热级（HeatCondition/BoilerHeater）、动能（KineticBlock/BlockStressValues）、物流（IItemHandler/传送带）、电网（createaddition BaseElectricBlockEntity）、多方块（ConnectivityHandler 罐式成型）。
@@ -20,7 +20,7 @@
 | M3 相态 | 物种沸点/熔点查表 + 釜内相变 | 查表规则 | 低 |
 | M4 浓度 | 连续浓度（离子单位/水单位）+ 溶解度查表 | 03 §5：浓度由 mixture 组成推导，无独立字段 | 低 |
 | M5 反应引擎 | chemical_reaction 配方（ProcessingRecipe 派生）+ 釜内模拟（BATCH/连续流，见 13） | Create ProcessingRecipe 全管线现成；KubeJS 可脚本化 | 中（执行端自研） |
-| M6 沉淀 | Suspended 悬浮固相域 + 沉降行为 | 浆料=mixture 第三域（03 §12 已定） | 低 |
+| M6 沉淀 | `Suspended` 混悬 + `Sediment` 沉底两固相域 | 固相=mixture 两域（03 §12 已定） | 低 |
 | M7 分离 | 过滤/离心/蒸馏行为 | 产物=item 走 Create 物流 | 低 |
 | M8 换热 | 换热器块（两流股温度交换） | 简单数值 | 低 |
 | M9 管网 | Create 管道全复用 | 现成（单流体/网约束天然适配单一 mixture + 纯流体） | 低 |

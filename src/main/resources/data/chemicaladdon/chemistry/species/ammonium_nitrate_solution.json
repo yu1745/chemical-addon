@@ -9,7 +9,6 @@
     { "ion": "NO3", "charge": -1, "count": 1 }
   ],
   "solute": "chemicaladdon:ammonium_nitrate",
-  "concentration": 400,
   "solubility": [
     { "tempC": 0, "gPer100g": 118 },
     { "tempC": 20, "gPer100g": 192 },

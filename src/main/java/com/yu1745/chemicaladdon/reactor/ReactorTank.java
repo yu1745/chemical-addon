@@ -329,12 +329,12 @@ public class ReactorTank implements IFluidHandler {
 				FluidStack only = fluids.get(0);
 				if (Mixture.isMixture(only)) {
 					int comps = Mixture.getMolecules(only).size() + Mixture.getIons(only).size()
-						+ Mixture.getSuspended(only).size();
+						+ Mixture.getSuspended(only).size() + Mixture.getSediment(only).size();
 					if (comps == 0) {
 						fluids.clear(); // corrupt component-less mixture
 						onChanged.run();
 					} else if (Mixture.getIons(only).isEmpty() && Mixture.getSuspended(only).isEmpty()
-						&& Mixture.getMolecules(only).size() == 1) {
+						&& Mixture.getSediment(only).isEmpty() && Mixture.getMolecules(only).size() == 1) {
 						degradeSingleComponentMixture(only);
 					}
 					// otherwise: settled — leave the ratio tag alone
@@ -411,6 +411,7 @@ public class ReactorTank implements IFluidHandler {
 		Map<ResourceLocation, Integer> molecules = new LinkedHashMap<>();
 		Map<String, Integer> ions = new LinkedHashMap<>();
 		Map<ResourceLocation, Integer> suspended = new LinkedHashMap<>();
+		Map<ResourceLocation, Integer> sediment = new LinkedHashMap<>();
 		long weightedTemp = 0; // Σ (temperature × amount), °C·mB
 		int total = 0;
 		for (FluidStack stack : members) {
@@ -426,6 +427,9 @@ public class ReactorTank implements IFluidHandler {
 				for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveSuspendedAmounts(stack).entrySet()) {
 					suspended.merge(e.getKey(), e.getValue(), Integer::sum);
 				}
+				for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveSedimentAmounts(stack).entrySet()) {
+					sediment.merge(e.getKey(), e.getValue(), Integer::sum);
+				}
 			} else {
 				ResourceLocation id = ForgeRegistries.FLUIDS.getKey(sourceOf(stack.getFluid()));
 				if (id != null) {
@@ -436,12 +440,13 @@ public class ReactorTank implements IFluidHandler {
 		molecules.values().removeIf(v -> v <= 0);
 		ions.values().removeIf(v -> v <= 0);
 		suspended.values().removeIf(v -> v <= 0);
+		sediment.values().removeIf(v -> v <= 0);
 
-		if (molecules.isEmpty() && ions.isEmpty() && suspended.isEmpty()) {
+		if (molecules.isEmpty() && ions.isEmpty() && suspended.isEmpty() && sediment.isEmpty()) {
 			return FluidStack.EMPTY; // every entry was corrupt
 		}
 		FluidStack target;
-		if (molecules.size() == 1 && ions.isEmpty() && suspended.isEmpty()) {
+		if (molecules.size() == 1 && ions.isEmpty() && suspended.isEmpty() && sediment.isEmpty()) {
 			// a single pure molecular species → a pure fluid
 			Map.Entry<ResourceLocation, Integer> only = molecules.entrySet().iterator().next();
 			Fluid pf = ForgeRegistries.FLUIDS.getValue(only.getKey());
@@ -450,7 +455,7 @@ public class ReactorTank implements IFluidHandler {
 			}
 			target = new FluidStack(pf, total);
 		} else {
-			target = Mixture.create(molecules, ions, suspended, total);
+			target = Mixture.create(molecules, ions, suspended, sediment, total);
 		}
 		Temperature.set(target, Temperature.fromWeightedSum(weightedTemp, total));
 		return target;
@@ -537,17 +542,31 @@ public class ReactorTank implements IFluidHandler {
 			}
 			if (changed && action.execute()) {
 				amounts.values().removeIf(v -> v <= 0);
-				if (amounts.isEmpty()) {
-					stack.setAmount(0); // removeEmpty drops it
+				Map<String, Integer> ions = Mixture.deriveIonAmounts(stack);
+				Map<ResourceLocation, Integer> susp = Mixture.deriveSuspendedAmounts(stack);
+				Map<ResourceLocation, Integer> sed = Mixture.deriveSedimentAmounts(stack);
+				int newTotal = 0;
+				for (int v : amounts.values()) {
+					newTotal += v;
+				}
+				for (int v : ions.values()) {
+					newTotal += v;
+				}
+				for (int v : susp.values()) {
+					newTotal += v;
+				}
+				for (int v : sed.values()) {
+					newTotal += v;
+				}
+				int idx = fluids.indexOf(stack);
+				if (newTotal <= 0 || (amounts.isEmpty() && ions.isEmpty() && susp.isEmpty() && sed.isEmpty())) {
+					fluids.set(idx, FluidStack.EMPTY);
 				} else {
-					// re-stamp the ratio from the surviving absolute amounts and rebalance
-					// the total; collapseIfNeeded degrades a 1-component remainder to pure
-					int newTotal = 0;
-					for (int v : amounts.values()) {
-						newTotal += v;
-					}
-					Mixture.setMolecules(stack, Mixture.reduce(amounts));
-					stack.setAmount(newTotal);
+					// rebuild with ALL domains preserved (ions / suspended / sediment survive
+					// a molecular drain); collapseIfNeeded degrades a 1-component remainder
+					FluidStack replacement = Mixture.create(amounts, ions, susp, sed, newTotal);
+					Temperature.set(replacement, Temperature.get(stack));
+					fluids.set(idx, replacement);
 				}
 			}
 		}
@@ -620,17 +639,22 @@ public class ReactorTank implements IFluidHandler {
 			int takeMb = (int) (take * ic);
 			if (action.execute()) {
 				Map<ResourceLocation, Integer> mol = Mixture.deriveAmounts(stack);
+				Map<ResourceLocation, Integer> susp = Mixture.deriveSuspendedAmounts(stack);
+				Map<ResourceLocation, Integer> sed = Mixture.deriveSedimentAmounts(stack);
 				for (Species.IonComponent c : species.ions()) {
 					ionAmounts.merge(c.ion().id(), (int) (-take * c.count()), Integer::sum);
 				}
 				ionAmounts.values().removeIf(v -> v <= 0);
 				mol.values().removeIf(v -> v <= 0);
+				susp.values().removeIf(v -> v <= 0);
+				sed.values().removeIf(v -> v <= 0);
 				int newTotal = stack.getAmount() - takeMb;
 				int idx = fluids.indexOf(stack);
-				if (newTotal <= 0 || (ionAmounts.isEmpty() && mol.isEmpty())) {
+				if (newTotal <= 0 || (mol.isEmpty() && ionAmounts.isEmpty() && susp.isEmpty() && sed.isEmpty())) {
 					fluids.set(idx, FluidStack.EMPTY);
 				} else {
-					FluidStack replacement = Mixture.create(mol, ionAmounts, newTotal);
+					// preserve suspended + sediment alongside the surviving molecules + ions
+					FluidStack replacement = Mixture.create(mol, ionAmounts, susp, sed, newTotal);
 					Temperature.set(replacement, Temperature.get(stack));
 					fluids.set(idx, replacement);
 				}
@@ -662,7 +686,8 @@ public class ReactorTank implements IFluidHandler {
 	/**
 	 * Remove all suspended solids from the tank, emitting them as items via
 	 * {@code sink} (1 item per {@code mbPerItem} mB, rounded, min 1). The liquid
-	 * (molecules + ions) stays in the tank. Returns the total mB of solids removed.
+	 * (molecules + ions) and any settled solids (sediment) stay in the tank.
+	 * Returns the total mB of suspended solids removed.
 	 */
 	public int extractSuspended(Consumer<ItemStack> sink, int mbPerItem) {
 		int extracted = 0;
@@ -676,6 +701,7 @@ public class ReactorTank implements IFluidHandler {
 			}
 			Map<ResourceLocation, Integer> mol = Mixture.deriveAmounts(stack);
 			Map<String, Integer> ions = Mixture.deriveIonAmounts(stack);
+			Map<ResourceLocation, Integer> sed = Mixture.deriveSedimentAmounts(stack);
 			for (Map.Entry<ResourceLocation, Integer> e : susp.entrySet()) {
 				Item item = ForgeRegistries.ITEMS.getValue(e.getKey());
 				if (item == null || e.getValue() <= 0) {
@@ -692,11 +718,14 @@ public class ReactorTank implements IFluidHandler {
 			for (int v : ions.values()) {
 				newTotal += v;
 			}
+			for (int v : sed.values()) {
+				newTotal += v;
+			}
 			int idx = fluids.indexOf(stack);
 			if (newTotal <= 0) {
 				fluids.set(idx, FluidStack.EMPTY);
 			} else {
-				FluidStack replacement = Mixture.create(mol, ions, newTotal);
+				FluidStack replacement = Mixture.create(mol, ions, Map.of(), sed, newTotal);
 				Temperature.set(replacement, Temperature.get(stack));
 				fluids.set(idx, replacement);
 			}
@@ -715,7 +744,7 @@ public class ReactorTank implements IFluidHandler {
 	 * its solved composition back in one canonical step.
 	 */
 	public void setContents(Map<ResourceLocation, Integer> molecules, Map<String, Integer> ions, int temperature) {
-		setContents(molecules, ions, Map.of(), temperature);
+		setContents(molecules, ions, Map.of(), Map.of(), temperature);
 	}
 
 	/**
@@ -726,16 +755,28 @@ public class ReactorTank implements IFluidHandler {
 	 */
 	public void setContents(Map<ResourceLocation, Integer> molecules, Map<String, Integer> ions,
 		Map<ResourceLocation, Integer> suspended, int temperature) {
+		setContents(molecules, ions, suspended, Map.of(), temperature);
+	}
+
+	/**
+	 * Replace the entire contents with the given molecular + ionic + suspended +
+	 * sediment amounts (mole-equivalents). A single pure molecular species becomes
+	 * a pure stack; anything else becomes one {@link Mixture}. Used by the rules
+	 * engine to write its solved composition back in one canonical step.
+	 */
+	public void setContents(Map<ResourceLocation, Integer> molecules, Map<String, Integer> ions,
+		Map<ResourceLocation, Integer> suspended, Map<ResourceLocation, Integer> sediment, int temperature) {
 		fluids.clear();
 		molecules.values().removeIf(v -> v <= 0);
 		ions.values().removeIf(v -> v <= 0);
 		suspended.values().removeIf(v -> v <= 0);
-		if (molecules.isEmpty() && ions.isEmpty() && suspended.isEmpty()) {
+		sediment.values().removeIf(v -> v <= 0);
+		if (molecules.isEmpty() && ions.isEmpty() && suspended.isEmpty() && sediment.isEmpty()) {
 			onChanged.run();
 			return;
 		}
 		FluidStack target;
-		if (molecules.size() == 1 && ions.isEmpty() && suspended.isEmpty()) {
+		if (molecules.size() == 1 && ions.isEmpty() && suspended.isEmpty() && sediment.isEmpty()) {
 			Map.Entry<ResourceLocation, Integer> only = molecules.entrySet().iterator().next();
 			Fluid pf = ForgeRegistries.FLUIDS.getValue(only.getKey());
 			if (pf == null || pf == Fluids.EMPTY) {
@@ -754,7 +795,10 @@ public class ReactorTank implements IFluidHandler {
 			for (int v : suspended.values()) {
 				total += v;
 			}
-			target = Mixture.create(molecules, ions, suspended, total);
+			for (int v : sediment.values()) {
+				total += v;
+			}
+			target = Mixture.create(molecules, ions, suspended, sediment, total);
 		}
 		Temperature.set(target, temperature);
 		fluids.add(target);

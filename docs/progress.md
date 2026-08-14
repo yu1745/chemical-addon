@@ -1,6 +1,6 @@
 # 开发进度
 
-> 最后更新：2026-08（M0–M2 完成，规则引擎 v1 + v2 离子基底 S1–S3f + D18 互溶性分相 + D18.5 分液口/软管 + S02 温度计（双形态），64/64 GameTest 通过）
+> 最后更新：2026-08（M0–M2 完成，规则引擎 v1 + v2 离子基底 S1–S3g + 溶解度量纲约定 + D18 互溶性分相 + D18.5 分液口/软管 + S02 温度计（双形态），64/64 GameTest 通过）
 > 里程碑定义见 `plans/11-content-scope.md`；设计计划书主索引 `plans/README.md`。
 
 ## 状态总览
@@ -137,6 +137,23 @@
 - **重新引入 3 个浆料模式**：`gypsum_slurry`（悬浮石膏）、`sodium_bicarbonate_slurry`（悬浮重碱）、`calcium_sulfite_slurry`（悬浮亚硫酸钙，SOLIDS 补 `calcium_sulfite` 固体）；各配打包浆料桶。
 - **创造栏预填修复**：`AllCreativeModeTabs` 从 `output.accept(item)`（= 无 NBT 的 `new ItemStack`）改为 `output.accept(item.getDefaultInstance())`——否则溶液/浆料桶出栏是空桶、倒不进釜。
 - **GameTest +1**：`slurryBucketPacksSuspendedSolid`（石灰乳桶预填悬浮熟石灰 + 水，无溶解离子）。11 溶液 + 4 浆料桶，共 15 个打包混合液桶。
+
+### S3g · 固相二分：混悬（Suspended）vs 沉底（Sediment）+ 渲染
+
+- **固相拆两域**：`Mixture` NBT 加第四域 `Sediment`（沉底固相，与 `Suspended` 混悬并列）；`KEY_SEDIMENT`/`get/set/deriveSedimentAmounts`/`deriveJoint`/`create`（5 参）全链路四域。`Sediment` **不进流体 tint**（独立成层），`Suspended` 仍进 tint（浑浊贡献）。
+- **归属按生成规则**（不靠 JSON 手标）：`Solution` 单一 `precipitates` 拆成 `suspended()`（`precipitate()` Ksp 快速双置换 → 混悬）+ `sediment()`（`crystallise()` 溶解度降温 → 沉底）。
+- **`RulesEngine`** 读/写两个固相域（`beforeSuspended`/`beforeSediment`，`setContents` 5 参）；`ReactorTank` 的 `setContents`/`collapseIfNeeded`/`mergeGroup`/`extractSuspended` 全程携带 `Sediment`；**`drainIngredient`/`drainSolution` 重建时保留全部四域**（顺带修掉既有的「消耗组分丢 Suspended」隐性丢料）。
+- **渲染**：沉底层 = 脱色纹理（`mixture_still`）× 固相色 tint 的底部盒子（`renderTintedBox`，高度 ∝ 沉积量，非纯色平涂）；混悬 = 流体 tint 换成悬浮固相色并强制不透明（CaCO₃ → 不透明白）；化验 HUD 补「混悬/沉底」两行明细。
+- **颜色修正**：无色离子/纯水 tint 从 `0xFFFFFFFF`（不透明白）→ `IonColors.CLEAR_TINT = 0x28FFFFFF`（淡白 ~16%）——纯水与 CaCO₃ 混悬白可分辨，且液面仍可见（非全透明）。
+- **GameTest**：析晶断言迁 `deriveSedimentAmounts`；沉淀测试补「快速沉淀不沉底」；`solventWaterContributesNoColor` 断言改 `CLEAR_TINT`。
+
+### 溶解度量纲约定（降温结晶，替代 S2 固定浓度）
+
+- **问题**：现实溶解度 g/100g 是**质量比**，引擎算的是「分子式单元/水」，两者量纲不一致；旧 `crystallise` 用写死的 `concentration` 字段（g/100g）判析出，与「浓/稀 = 运行时连续浓度」的基调冲突。
+- **约定（声明性，不引摩尔质量）**：`1 mB 水 ≡ 1 g`、`1 分子式单元 ≡ 1 g`（忽略摩尔质量）；`Solution.SOLUBILITY_SCALE = 1.0` 是唯一全局缩放旋钮。**阈值 = `gPer100g / 100 × SOLUBILITY_SCALE`（分子式单元 / 水 mB）**。
+- **`crystallise()`** 改用运行时连续浓度 `分子式单元 / 水`（`maxFormable(s) / water`，不再离子单位、不读 JSON 固定浓度）；`Species` 删 `concentration` 字段/解析/`isCrystallisable` 要求；`ammonium_nitrate_solution.json` 删 `"concentration": 400`。
+- **默认桶不饱和**：溶液桶 `solventRatio=10` → NH₄NO₃ 仅 0.1 分子式单元/水 ≈ 10 g/100g，远低于 0°C 溶解度 118 g/100g，故**默认桶永远不饱和、降温不结晶**；触发结晶需配方高 `targetConcentration` 输出（或未来蒸发/溶解固体）。这是连续浓度的自然结果，非量纲 bug。
+- **GameTest**：`rulesEngineCrystallisesOnCooling` 改用 2.5 分子式单元/水的浓溶液（100°C 阈值 8.71 不析、20°C 阈值 1.92 析出 500 mB 硝酸铵）。
 
 ### 渲染 · 溶剂无色 + 水复用原版（去重复）
 

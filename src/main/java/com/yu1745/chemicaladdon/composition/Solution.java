@@ -23,10 +23,12 @@ import net.minecraft.resources.ResourceLocation;
  * <p>Solver pipeline (see plans/03 §8):
  * <ol>
  *   <li>{@link #crystallise()} — a supersaturated solute crashes out as a solid
- *       (cooling below its solubility curve removes its whole neutral ion set);</li>
+ *       (cooling below its solubility curve removes its whole neutral ion set).
+ *       Slow → the solid <b>settles</b> to the bottom ({@link #sediment()});</li>
  *   <li>{@link #neutralise()} — H+ + OH- → H₂O (exothermic);</li>
  *   <li>{@link #precipitate()} — insoluble solids form from ions, least-soluble
- *       (lowest Ksp) first.</li>
+ *       (lowest Ksp) first. Fast → the solid stays <b>suspended</b> as a turbid
+ *       slurry ({@link #suspended()}).</li>
  * </ol>
  *
  * <p>Amounts are "mole-equivalents": 1 mB × a species' ion count gives that many
@@ -42,7 +44,8 @@ public final class Solution {
 
 	private final Map<String, Long> ions = new LinkedHashMap<>(); // ion id → units
 	private final Map<ResourceLocation, Long> molecular = new LinkedHashMap<>(); // water/gases/molecular solutes → mB
-	private final Map<ResourceLocation, Long> precipitates = new LinkedHashMap<>(); // solid species → mB
+	private final Map<ResourceLocation, Long> suspended = new LinkedHashMap<>(); // precipitated solid species → mB (slurry)
+	private final Map<ResourceLocation, Long> sediment = new LinkedHashMap<>(); // crystallised solid species → mB (settles)
 	private final int temperature;
 	private int heat; // °C added by exothermic neutralisation
 
@@ -78,9 +81,14 @@ public final class Solution {
 		return ions;
 	}
 
-	/** Precipitated/crystallised solids (solid species id → mB) to emit as items. */
-	public Map<ResourceLocation, Long> precipitates() {
-		return precipitates;
+	/** Precipitated solids (solid species id → mB) — stay suspended as a turbid slurry. */
+	public Map<ResourceLocation, Long> suspended() {
+		return suspended;
+	}
+
+	/** Crystallised solids (solid species id → mB) — sink to the bottom as sediment. */
+	public Map<ResourceLocation, Long> sediment() {
+		return sediment;
 	}
 
 	/** °C rise from exothermic reactions (apply to the tank contents). */
@@ -91,26 +99,46 @@ public final class Solution {
 	// ------------------------------------------------------------ pipeline steps
 
 	/**
-	 * A supersaturated solute (solubility at the current temperature &lt; its fixed
-	 * concentration) crashes out as a solid. S2 simplification: the solute's whole
-	 * neutral ion set is removed in one go (no partial crystallisation yet).
+	 * Global solubility scale (unit convention, plans/03): solubility is authored
+	 * as real-world g solute / 100 g water, and the in-game threshold is
+	 * {@code gPer100g / 100 × SOLUBILITY_SCALE} formula units per water mB. This
+	 * declares "1 formula unit ≡ 1 g" and "1 mB water ≡ 1 g" and deliberately
+	 * ignores molar mass — raise/lower this one constant to rescale every
+	 * substance's crystallisation point without touching the data tables.
+	 */
+	public static final double SOLUBILITY_SCALE = 1.0;
+
+	/** The "per 100 g water" divisor in real solubility tables. */
+	private static final double SOLUBILITY_PER_100G = 100.0;
+
+	/**
+	 * A supersaturated solute crashes out as a solid: the vessel's continuous
+	 * concentration (solute formula units / water mB) exceeds the solubility curve
+	 * at the current temperature. S2 simplification: the solute's whole neutral ion
+	 * set is removed in one go (no partial crystallisation yet).
 	 */
 	private void crystallise() {
+		double water = molecular.getOrDefault(WATER, 0L);
+		if (water <= 0) {
+			return; // no solvent → nothing is "dissolved", nothing can be supersaturated
+		}
 		for (Species s : SpeciesManager.all()) {
 			if (!s.isCrystallisable() || !s.isElectrolyte()) {
 				continue;
 			}
-			if (s.solubilityAt(temperature) >= s.concentration()) {
-				continue; // unsaturated at this temperature
-			}
-			long form = maxFormable(s);
+			long form = maxFormable(s); // formula units of this solute dissolved
 			if (form <= 0) {
 				continue;
+			}
+			double concentration = (double) form / water; // formula units / water mB
+			double threshold = s.solubilityAt(temperature) / SOLUBILITY_PER_100G * SOLUBILITY_SCALE;
+			if (threshold >= concentration) {
+				continue; // unsaturated at this temperature
 			}
 			for (Species.IonComponent c : s.ions()) {
 				subtract(c.ion().id(), form * c.count());
 			}
-			precipitates.merge(s.solute(), form, Long::sum);
+			sediment.merge(s.solute(), form, Long::sum);
 		}
 	}
 
@@ -144,7 +172,7 @@ public final class Solution {
 				for (Species.IonComponent c : s.ions()) {
 					subtract(c.ion().id(), form * c.count());
 				}
-				precipitates.merge(s.id(), form, Long::sum);
+				suspended.merge(s.id(), form, Long::sum);
 			}
 		}
 	}

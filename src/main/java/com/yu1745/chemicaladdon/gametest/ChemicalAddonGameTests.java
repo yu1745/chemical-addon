@@ -7,6 +7,7 @@ import com.yu1745.chemicaladdon.composition.Solution;
 import com.yu1745.chemicaladdon.composition.Species;
 import com.yu1745.chemicaladdon.composition.SpeciesManager;
 import com.yu1745.chemicaladdon.fluid.FluidColors;
+import com.yu1745.chemicaladdon.fluid.IonColors;
 import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.fluid.Temperature;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlock;
@@ -1182,10 +1183,13 @@ public class ChemicalAddonGameTests {
 			"solvent water must contribute no colour (got " + Integer.toHexString(color)
 				+ ", want " + Integer.toHexString(co2Color) + ")");
 
-		// pure solvent (water only) has nothing coloured -> white (no tint)
+		// pure solvent (water only) has nothing coloured -> faint white (no tint):
+		// clear water must NOT read as opaque white (or a white precipitate CaCO3
+		// would be indistinguishable), but also not fully transparent (the liquid
+		// surface must stay visible).
 		FluidStack pure = Mixture.create(Map.of(water, 1000), 1000);
-		helper.assertTrue(Mixture.getColor(pure) == 0xFFFFFFFF,
-			"pure solvent water should render white (got " + Integer.toHexString(Mixture.getColor(pure)) + ")");
+		helper.assertTrue(Mixture.getColor(pure) == IonColors.CLEAR_TINT,
+			"pure solvent water should render faint white (got " + Integer.toHexString(Mixture.getColor(pure)) + ")");
 		helper.succeed();
 	}
 
@@ -1512,6 +1516,8 @@ public class ChemicalAddonGameTests {
 		FluidStack result = tank.getFluids().get(0);
 		helper.assertTrue(Mixture.deriveSuspendedAmounts(result).getOrDefault(limestone, 0) == 1000,
 			"Ca2+ + CO3-- should precipitate 1000 mB limestone (got " + Mixture.deriveSuspendedAmounts(result) + ")");
+		helper.assertTrue(Mixture.deriveSedimentAmounts(result).isEmpty(),
+			"fast precipitation should stay suspended, not settle (got " + Mixture.deriveSedimentAmounts(result) + ")");
 		Map<String, Integer> ions = Mixture.deriveIonAmounts(result);
 		helper.assertTrue(ions.getOrDefault("Ca+2", 0) == 0, "Ca2+ should be consumed (got " + ions + ")");
 		helper.assertTrue(ions.getOrDefault("CO3-2", 0) == 0, "CO3-- should be consumed (got " + ions + ")");
@@ -1522,25 +1528,32 @@ public class ChemicalAddonGameTests {
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void rulesEngineCrystallisesOnCooling(GameTestHelper helper) {
-		// NH4+ + NO3- (aq) is stable hot, crystallises ammonium nitrate on cooling
+		// NH4+ + NO3- (aq) is stable hot, crystallises ammonium nitrate on cooling.
+		// 500 formula units / 200 water = 2.5 f.u./water: below the 100°C threshold
+		// (871 g/100g → 8.71) but above the 20°C threshold (192 g/100g → 1.92).
 		ResourceLocation water = Solution.WATER;
 		ResourceLocation ammoniumNitrate = new ResourceLocation(ChemicalAddon.MODID, "ammonium_nitrate");
 		ReactorTank tank = new ReactorTank(10000, () -> {});
 		FluidStack hot = Mixture.create(
-			Map.of(water, 1000),
+			Map.of(water, 200),
 			Map.of("NH4+1", 500, "NO3-1", 500),
-			2000);
+			1200);
 		Temperature.set(hot, 100);
 		tank.fill(hot, FluidAction.EXECUTE);
 
 		RulesEngine.apply(tank);
+		helper.assertTrue(Mixture.deriveSedimentAmounts(tank.getFluids().get(0)).isEmpty(),
+			"hot unsaturated solution should not crystallise (sediment)");
 		helper.assertTrue(Mixture.deriveSuspendedAmounts(tank.getFluids().get(0)).isEmpty(),
-			"hot unsaturated solution should not crystallise");
+			"hot unsaturated solution should not precipitate (suspended)");
 
 		Temperature.set(tank.getFluids().get(0), 20);
 		RulesEngine.apply(tank);
-		helper.assertTrue(Mixture.deriveSuspendedAmounts(tank.getFluids().get(0)).getOrDefault(ammoniumNitrate, 0) == 500,
-			"cooling should crystallise 500 mB ammonium nitrate (got "
+		helper.assertTrue(Mixture.deriveSedimentAmounts(tank.getFluids().get(0)).getOrDefault(ammoniumNitrate, 0) == 500,
+			"cooling should crystallise 500 mB ammonium nitrate into sediment (got "
+				+ Mixture.deriveSedimentAmounts(tank.getFluids().get(0)) + ")");
+		helper.assertTrue(Mixture.deriveSuspendedAmounts(tank.getFluids().get(0)).isEmpty(),
+			"crystallisation should not leave suspended solids (got "
 				+ Mixture.deriveSuspendedAmounts(tank.getFluids().get(0)) + ")");
 		Map<String, Integer> ions = Mixture.deriveIonAmounts(tank.getFluids().get(0));
 		helper.assertTrue(ions.getOrDefault("NH4+1", 0) == 0 && ions.getOrDefault("NO3-1", 0) == 0,

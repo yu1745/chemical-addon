@@ -6,6 +6,8 @@
   "goggles.chemicaladdon.heat.superheated": "Superheated",
   "goggles.chemicaladdon.contents": "Contents:",
   "goggles.chemicaladdon.solution": "Solution",
+  "goggles.chemicaladdon.suspended": "suspended",
+  "goggles.chemicaladdon.sediment": "sediment",
   "goggles.chemicaladdon.bucket_empty": "Empty",
   "goggles.chemicaladdon.items": "Items:",
   "goggles.chemicaladdon.progress": "Progress: %s%% (%s)",

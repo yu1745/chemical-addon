@@ -23,11 +23,12 @@ import net.minecraftforge.registries.ForgeRegistries;
  * recombination round-trip.
  *
  * <p>One pass: settle the tank to a single mixture (which expands any solution
- * species into its ions + water), read the ion/molecule/suspended domains, solve,
- * then write the final domains back. Precipitated / crystallised solids are
- * <b>deposited into the mixture's {@code Suspended} domain</b> — the vessel holds
- * a slurry, and a downstream filter press (not the reaction) separates them into
- * items. If nothing changed the tank is left untouched.
+ * species into its ions + water), read the ion/molecule/suspended/sediment
+ * domains, solve, then write the final domains back. Precipitated solids are
+ * <b>deposited into the mixture's {@code Suspended} domain</b> (a turbid slurry);
+ * crystallised solids go to the {@code Sediment} domain (they sink to the bottom).
+ * A downstream filter press separates the slurry into items. If nothing changed
+ * the tank is left untouched.
  */
 public final class RulesEngine {
 
@@ -50,6 +51,7 @@ public final class RulesEngine {
 		Map<ResourceLocation, Long> beforeMol = new LinkedHashMap<>();
 		Map<String, Long> beforeIons = new LinkedHashMap<>();
 		Map<ResourceLocation, Long> beforeSuspended = new LinkedHashMap<>();
+		Map<ResourceLocation, Long> beforeSediment = new LinkedHashMap<>();
 		int total = 0;
 		long weightedTemp = 0;
 		for (FluidStack stack : tank.getFluids()) {
@@ -64,6 +66,9 @@ public final class RulesEngine {
 				}
 				for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveSuspendedAmounts(stack).entrySet()) {
 					beforeSuspended.merge(e.getKey(), (long) e.getValue(), Long::sum);
+				}
+				for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveSedimentAmounts(stack).entrySet()) {
+					beforeSediment.merge(e.getKey(), (long) e.getValue(), Long::sum);
 				}
 			} else if (!Miscibility.isGas(stack) && Miscibility.AQUEOUS.equals(Miscibility.groupOf(stack))) {
 				// pure aqueous liquid (water) — part of the aqueous phase
@@ -87,14 +92,15 @@ public final class RulesEngine {
 		solution.solve();
 
 		// 4. skip the rewrite if nothing happened (avoids sync churn on inert contents)
-		if (solution.precipitates().isEmpty() && solution.heat() == 0
+		if (solution.suspended().isEmpty() && solution.sediment().isEmpty() && solution.heat() == 0
 			&& sameMolecules(beforeMol, solution.molecular())
 			&& sameIons(beforeIons, solution.ions())) {
 			return;
 		}
 
 		// 5. rewrite the aqueous phase (temperature + exotherm); precipitated solids
-		//    join the existing suspended domain (they stay in the vessel as a slurry)
+		//    join the existing suspended domain (they stay in the vessel as a slurry),
+		//    crystallised solids join the sediment domain (they sink to the bottom)
 		Map<ResourceLocation, Integer> molAfter = new LinkedHashMap<>();
 		for (Map.Entry<ResourceLocation, Long> e : solution.molecular().entrySet()) {
 			molAfter.put(e.getKey(), (int) Math.min(e.getValue(), Integer.MAX_VALUE));
@@ -107,10 +113,17 @@ public final class RulesEngine {
 		for (Map.Entry<ResourceLocation, Long> e : beforeSuspended.entrySet()) {
 			suspAfter.put(e.getKey(), (int) Math.min(e.getValue(), Integer.MAX_VALUE));
 		}
-		for (Map.Entry<ResourceLocation, Long> e : solution.precipitates().entrySet()) {
+		for (Map.Entry<ResourceLocation, Long> e : solution.suspended().entrySet()) {
 			suspAfter.merge(e.getKey(), (int) Math.min(e.getValue(), Integer.MAX_VALUE), Integer::sum);
 		}
-		tank.setContents(molAfter, ionAfter, suspAfter, clamp(temperature + solution.heat()));
+		Map<ResourceLocation, Integer> sedAfter = new LinkedHashMap<>();
+		for (Map.Entry<ResourceLocation, Long> e : beforeSediment.entrySet()) {
+			sedAfter.put(e.getKey(), (int) Math.min(e.getValue(), Integer.MAX_VALUE));
+		}
+		for (Map.Entry<ResourceLocation, Long> e : solution.sediment().entrySet()) {
+			sedAfter.merge(e.getKey(), (int) Math.min(e.getValue(), Integer.MAX_VALUE), Integer::sum);
+		}
+		tank.setContents(molAfter, ionAfter, suspAfter, sedAfter, clamp(temperature + solution.heat()));
 		// 6. re-append the inert phases untouched (gases / nonpolar liquids)
 		for (FluidStack s : bystanders) {
 			tank.fill(s.copy(), FluidAction.EXECUTE);

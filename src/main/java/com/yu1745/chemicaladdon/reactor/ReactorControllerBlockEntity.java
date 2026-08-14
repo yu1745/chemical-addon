@@ -1347,7 +1347,8 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 						.append(Component.literal(stack.getAmount() + " mB")).withStyle(ChatFormatting.GOLD)
 						.append(Component.literal(" / " + tank.getTankCapacity(0) + " mB").withStyle(ChatFormatting.DARK_GRAY)));
 					if (ChemicalAddon.ASSAY_ON) {
-						// dev assay: full breakdown — dissolved molecular species, then ions
+						// dev assay: full breakdown — dissolved molecular species, then ions,
+						// then the two solid domains (suspended slurry / settled sediment)
 						for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveAmounts(stack).entrySet()) {
 							Fluid cf = ForgeRegistries.FLUIDS.getValue(e.getKey());
 							if (cf == null) {
@@ -1360,6 +1361,22 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 						for (Map.Entry<String, Integer> e : Mixture.deriveIonAmounts(stack).entrySet()) {
 							tooltip.add(Component.literal(spacing + "   • " + e.getKey() + "  " + e.getValue() + " u")
 								.withStyle(ChatFormatting.DARK_GRAY));
+						}
+						for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveSuspendedAmounts(stack).entrySet()) {
+							var item = ForgeRegistries.ITEMS.getValue(e.getKey());
+							String name = item != null ? new ItemStack(item).getHoverName().getString()
+								: e.getKey().toString();
+							tooltip.add(Component.literal(spacing + "   • " + name + "  " + e.getValue()
+									+ " mB " + Component.translatable("goggles.chemicaladdon.suspended").getString())
+								.withStyle(ChatFormatting.GRAY));
+						}
+						for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveSedimentAmounts(stack).entrySet()) {
+							var item = ForgeRegistries.ITEMS.getValue(e.getKey());
+							String name = item != null ? new ItemStack(item).getHoverName().getString()
+								: e.getKey().toString();
+							tooltip.add(Component.literal(spacing + "   • " + name + "  " + e.getValue()
+									+ " mB " + Component.translatable("goggles.chemicaladdon.sediment").getString())
+								.withStyle(ChatFormatting.GRAY));
 						}
 					}
 				} else {

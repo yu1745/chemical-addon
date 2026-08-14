@@ -57,7 +57,8 @@ import net.minecraftforge.fluids.FluidStack;
  *   Molecules: { "chemicaladdon:water": 10, ... }  // neutral molecular species → GCD-reduced parts
  *   Ions:      { "H+1": 2, "SO4-2": 1, ... }       // charge-neutral ion multiset → parts
  *   Suspended: { "chemicaladdon:gypsum": 5, ... }  // suspended solid species → parts (slurries)
- *   Color:  &lt;int ARGB&gt;          // cached blend of all namespaces, recomputed on write
+ *   Sediment:  { "chemicaladdon:ammonium_nitrate": 3, ... } // settled solid species → parts (crystals)
+ *   Color:  &lt;int ARGB&gt;          // cached blend of the fluid tint (molecules+ions+suspended), recomputed on write
  * </pre>
  */
 public final class Mixture {
@@ -65,6 +66,7 @@ public final class Mixture {
 	public static final String KEY_MOLECULES = "Molecules";
 	public static final String KEY_IONS = "Ions";
 	public static final String KEY_SUSPENDED = "Suspended";
+	public static final String KEY_SEDIMENT = "Sediment";
 	public static final String KEY_COLOR = "Color";
 
 	/** The aqueous solvent (water) species id — contributes no colour (see {@link #blendColor}). */
@@ -73,6 +75,7 @@ public final class Mixture {
 	private static final String MOLECULE_PREFIX = "M:";
 	private static final String ION_PREFIX = "I:";
 	private static final String SUSPENDED_PREFIX = "S:";
+	private static final String SEDIMENT_PREFIX = "D:";
 
 	private Mixture() {}
 
@@ -194,6 +197,38 @@ public final class Mixture {
 		recolor(stack);
 	}
 
+	// -------------------------------------------------------- settled solids domain
+
+	/** Read the settled-solid composition (solid species id → part). Empty map if none. */
+	public static Map<ResourceLocation, Integer> getSediment(FluidStack stack) {
+		Map<ResourceLocation, Integer> sediment = new LinkedHashMap<>();
+		CompoundTag tag = stack.getTag();
+		if (tag == null) {
+			return sediment;
+		}
+		CompoundTag c = tag.getCompound(KEY_SEDIMENT);
+		for (String key : c.getAllKeys()) {
+			sediment.put(new ResourceLocation(key), c.getInt(key));
+		}
+		return sediment;
+	}
+
+	/**
+	 * Write the settled-solid composition (uncharged solid species → part). No
+	 * charge-neutrality check — settled solids are electrically neutral. Unlike
+	 * {@link #setSuspended}, this does <b>not</b> recolor: sediment is a separate
+	 * bottom layer rendered with its own tint, not part of the fluid colour.
+	 */
+	public static void setSediment(FluidStack stack, Map<ResourceLocation, Integer> sediment) {
+		CompoundTag c = new CompoundTag();
+		for (Map.Entry<ResourceLocation, Integer> e : sediment.entrySet()) {
+			if (e.getValue() > 0) {
+				c.putInt(e.getKey().toString(), e.getValue());
+			}
+		}
+		stack.getOrCreateTag().put(KEY_SEDIMENT, c);
+	}
+
 	// ----------------------------------------------------- derived absolute amounts
 
 	/**
@@ -205,7 +240,8 @@ public final class Mixture {
 		Map<ResourceLocation, Integer> molecules = new LinkedHashMap<>();
 		Map<String, Integer> ions = new LinkedHashMap<>();
 		Map<ResourceLocation, Integer> suspended = new LinkedHashMap<>();
-		deriveJoint(stack, molecules, ions, suspended);
+		Map<ResourceLocation, Integer> sediment = new LinkedHashMap<>();
+		deriveJoint(stack, molecules, ions, suspended, sediment);
 		return molecules;
 	}
 
@@ -214,7 +250,8 @@ public final class Mixture {
 		Map<ResourceLocation, Integer> molecules = new LinkedHashMap<>();
 		Map<String, Integer> ions = new LinkedHashMap<>();
 		Map<ResourceLocation, Integer> suspended = new LinkedHashMap<>();
-		deriveJoint(stack, molecules, ions, suspended);
+		Map<ResourceLocation, Integer> sediment = new LinkedHashMap<>();
+		deriveJoint(stack, molecules, ions, suspended, sediment);
 		return ions;
 	}
 
@@ -223,29 +260,42 @@ public final class Mixture {
 		Map<ResourceLocation, Integer> molecules = new LinkedHashMap<>();
 		Map<String, Integer> ions = new LinkedHashMap<>();
 		Map<ResourceLocation, Integer> suspended = new LinkedHashMap<>();
-		deriveJoint(stack, molecules, ions, suspended);
+		Map<ResourceLocation, Integer> sediment = new LinkedHashMap<>();
+		deriveJoint(stack, molecules, ions, suspended, sediment);
 		return suspended;
+	}
+
+	/** Derive absolute per-component mB of the <b>settled-solid</b> domain (see {@link #deriveAmounts}). */
+	public static Map<ResourceLocation, Integer> deriveSedimentAmounts(FluidStack stack) {
+		Map<ResourceLocation, Integer> molecules = new LinkedHashMap<>();
+		Map<String, Integer> ions = new LinkedHashMap<>();
+		Map<ResourceLocation, Integer> suspended = new LinkedHashMap<>();
+		Map<ResourceLocation, Integer> sediment = new LinkedHashMap<>();
+		deriveJoint(stack, molecules, ions, suspended, sediment);
+		return sediment;
 	}
 
 	/**
 	 * Distribute the stack amount across the joint parts exactly once, so the
-	 * molecular + ionic + suspended amounts sum to the total with no double-counted
-	 * remainder. All three domains share one ratio space: the per-component share is
-	 * {@code total × part / Σ(all parts)}.
+	 * molecular + ionic + suspended + sediment amounts sum to the total with no
+	 * double-counted remainder. All four domains share one ratio space: the
+	 * per-component share is {@code total × part / Σ(all parts)}.
 	 */
 	private static void deriveJoint(FluidStack stack, Map<ResourceLocation, Integer> molOut,
-		Map<String, Integer> ionOut, Map<ResourceLocation, Integer> suspOut) {
+		Map<String, Integer> ionOut, Map<ResourceLocation, Integer> suspOut,
+		Map<ResourceLocation, Integer> sedOut) {
 		Map<ResourceLocation, Integer> molParts = getMolecules(stack);
 		Map<String, Integer> ionParts = getIons(stack);
 		Map<ResourceLocation, Integer> suspParts = getSuspended(stack);
+		Map<ResourceLocation, Integer> sedParts = getSediment(stack);
 		int total = stack.getAmount();
-		int sum = sumParts(molParts) + sumParts(ionParts) + sumParts(suspParts);
+		int sum = sumParts(molParts) + sumParts(ionParts) + sumParts(suspParts) + sumParts(sedParts);
 		if (total <= 0 || sum <= 0) {
 			return;
 		}
 
-		// joint parts with a namespace prefix (molecule vs ion vs suspended), inserted
-		// molecule-first
+		// joint parts with a namespace prefix (molecule vs ion vs suspended vs
+		// sediment), inserted molecule-first
 		Map<String, Integer> joint = new LinkedHashMap<>();
 		for (Map.Entry<ResourceLocation, Integer> e : molParts.entrySet()) {
 			joint.put(MOLECULE_PREFIX + e.getKey(), e.getValue());
@@ -256,6 +306,9 @@ public final class Mixture {
 		for (Map.Entry<ResourceLocation, Integer> e : suspParts.entrySet()) {
 			joint.put(SUSPENDED_PREFIX + e.getKey(), e.getValue());
 		}
+		for (Map.Entry<ResourceLocation, Integer> e : sedParts.entrySet()) {
+			joint.put(SEDIMENT_PREFIX + e.getKey(), e.getValue());
+		}
 
 		Map<String, Integer> amounts = distribute(total, joint, sum);
 		for (Map.Entry<String, Integer> e : amounts.entrySet()) {
@@ -263,8 +316,10 @@ public final class Mixture {
 				molOut.put(new ResourceLocation(e.getKey().substring(MOLECULE_PREFIX.length())), e.getValue());
 			} else if (e.getKey().startsWith(ION_PREFIX)) {
 				ionOut.put(e.getKey().substring(ION_PREFIX.length()), e.getValue());
-			} else {
+			} else if (e.getKey().startsWith(SUSPENDED_PREFIX)) {
 				suspOut.put(new ResourceLocation(e.getKey().substring(SUSPENDED_PREFIX.length())), e.getValue());
+			} else {
+				sedOut.put(new ResourceLocation(e.getKey().substring(SEDIMENT_PREFIX.length())), e.getValue());
 			}
 		}
 	}
@@ -352,7 +407,7 @@ public final class Mixture {
 			accumulate(acc, SolidColors.of(e.getKey()), e.getValue());
 		}
 		if (total <= 0) {
-			return 0xFFFFFFFF; // white = no tint (pure solvent / no coloured contents)
+			return IonColors.CLEAR_TINT; // faint white = no tint (pure solvent / colourless contents)
 		}
 		return ((int) (acc[0] / total) << 24)
 			| ((int) (acc[1] / total) << 16)
@@ -379,19 +434,25 @@ public final class Mixture {
 
 	// ------------------------------------------------------------------ construct
 
-	/** Build a new mixture FluidStack from a molecular ratio map and a total mB (no ions/suspended). */
+	/** Build a new mixture FluidStack from a molecular ratio map and a total mB (no ions/suspended/sediment). */
 	public static FluidStack create(Map<ResourceLocation, Integer> molecules, int total) {
-		return create(molecules, Map.of(), Map.of(), total);
+		return create(molecules, Map.of(), Map.of(), Map.of(), total);
 	}
 
 	/** Build a new mixture FluidStack from joint (molecules + ions) ratios and a total mB. */
 	public static FluidStack create(Map<ResourceLocation, Integer> molecules, Map<String, Integer> ions, int total) {
-		return create(molecules, ions, Map.of(), total);
+		return create(molecules, ions, Map.of(), Map.of(), total);
 	}
 
 	/** Build a new mixture FluidStack from joint (molecules + ions + suspended) ratios and a total mB. */
 	public static FluidStack create(Map<ResourceLocation, Integer> molecules, Map<String, Integer> ions,
 		Map<ResourceLocation, Integer> suspended, int total) {
+		return create(molecules, ions, suspended, Map.of(), total);
+	}
+
+	/** Build a new mixture FluidStack from joint (molecules + ions + suspended + sediment) ratios and a total mB. */
+	public static FluidStack create(Map<ResourceLocation, Integer> molecules, Map<String, Integer> ions,
+		Map<ResourceLocation, Integer> suspended, Map<ResourceLocation, Integer> sediment, int total) {
 		int g = 0;
 		for (int v : molecules.values()) {
 			g = gcd(g, v);
@@ -402,12 +463,16 @@ public final class Mixture {
 		for (int v : suspended.values()) {
 			g = gcd(g, v);
 		}
+		for (int v : sediment.values()) {
+			g = gcd(g, v);
+		}
 		FluidStack stack = new FluidStack(fluid(), total);
 		setMolecules(stack, g > 1 ? divideMolecules(molecules, g) : molecules);
 		if (!setIons(stack, g > 1 ? divideIons(ions, g) : ions)) {
 			ChemicalAddon.LOGGER.error("Mixture.create dropped a non-charge-neutral ion set: {}", ions);
 		}
 		setSuspended(stack, g > 1 ? divideMolecules(suspended, g) : suspended);
+		setSediment(stack, g > 1 ? divideMolecules(sediment, g) : sediment);
 		return stack;
 	}
 
