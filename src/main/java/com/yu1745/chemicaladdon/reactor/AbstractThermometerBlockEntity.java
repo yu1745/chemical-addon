@@ -45,10 +45,10 @@ import net.minecraft.world.phys.BlockHitResult;
 public abstract class AbstractThermometerBlockEntity extends SmartBlockEntity implements IHaveGoggleInformation {
 
 	public static final int AMBIENT_TEMP = 20;
-	public static final int THRESHOLD_STEP = 2;            // °C per scroll unit
-	public static final int THRESHOLD_MAX_STEPS = 500;     // 1000°C / 2
-	public static final int THRESHOLD_MILESTONE = 50;      // a tick every 100°C on the board
-	public static final int DEFAULT_THRESHOLD_STEPS = 200; // 400°C (Create HEATED tier)
+	public static final int THRESHOLD_STEP = 3;            // °C per scroll unit
+	public static final int THRESHOLD_MAX_STEPS = 333;     // ~1000°C / 3
+	public static final int THRESHOLD_MILESTONE = 50;      // a tick every 150°C on the board
+	public static final int DEFAULT_THRESHOLD_STEPS = 133; // ~400°C (Create HEATED tier)
 
 	protected ScrollValueBehaviour threshold;
 	private boolean attached = false;
@@ -65,7 +65,7 @@ public abstract class AbstractThermometerBlockEntity extends SmartBlockEntity im
 		threshold = new ScrollValueBehaviour(Component.translatable("thermometer.chemicaladdon.threshold"), this, slot) {
 			@Override
 			public ValueSettingsBoard createBoard(Player player, BlockHitResult hitResult) {
-				// show °C (rescaled) on the board instead of the raw 0..500 unit index
+				// show °C (rescaled) on the board instead of the raw 0..333 unit index
 				return new ValueSettingsBoard(label, THRESHOLD_MAX_STEPS, THRESHOLD_MILESTONE,
 					ImmutableList.of(Component.literal("°C")),
 					new ValueSettingsFormatter(v -> Component.literal((v.value() * THRESHOLD_STEP) + "°C")));
