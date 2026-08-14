@@ -352,7 +352,16 @@ public class ReactorTank implements IFluidHandler {
 
 		List<FluidStack> settled = new ArrayList<>();
 		for (List<FluidStack> members : liquidGroups.values()) {
-			FluidStack merged = mergeGroup(members);
+			FluidStack merged;
+			if (members.size() == 1) {
+				// Already settled: keep the stack verbatim. Rebuilding a mixture here
+				// (derive amounts -> Mixture.create GCD-reduce) would churn its ratio tag
+				// whenever the total isn't divisible by the ratio sum, breaking Create's
+				// isFluidEqual flow identity and stalling the pump.
+				merged = members.get(0);
+			} else {
+				merged = mergeGroup(members);
+			}
 			if (!merged.isEmpty()) {
 				settled.add(merged);
 			}
@@ -362,9 +371,29 @@ public class ReactorTank implements IFluidHandler {
 		settled.sort((a, b) -> Integer.compare(Miscibility.densityOf(b), Miscibility.densityOf(a)));
 		settled.addAll(gases);
 
+		// Only rewrite + notify when something actually changed — a settled multi-phase
+		// tank would otherwise mark itself dirty and re-sync every tick.
+		if (sameContents(settled, fluids)) {
+			return;
+		}
 		fluids.clear();
 		fluids.addAll(settled);
 		onChanged.run();
+	}
+
+	/** True when two phase lists carry the same fluid + amount in the same order. */
+	private static boolean sameContents(List<FluidStack> a, List<FluidStack> b) {
+		if (a.size() != b.size()) {
+			return false;
+		}
+		for (int i = 0; i < a.size(); i++) {
+			FluidStack x = a.get(i);
+			FluidStack y = b.get(i);
+			if (x.getAmount() != y.getAmount() || !x.isFluidEqual(y)) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/**

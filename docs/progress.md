@@ -1,6 +1,6 @@
 # 开发进度
 
-> 最后更新：2026-08（M0–M2 完成，规则引擎 v1 + v2 离子基底 S1–S3f + D18 互溶性分相 + D18.5 分液速通档，47/47 GameTest 通过）
+> 最后更新：2026-08（M0–M2 完成，规则引擎 v1 + v2 离子基底 S1–S3f + D18 互溶性分相 + D18.5 分液口，48/48 GameTest 通过）
 > 里程碑定义见 `plans/11-content-scope.md`；设计计划书主索引 `plans/README.md`。
 
 ## 状态总览
@@ -13,7 +13,7 @@
 | M2.5 | 釜可玩性改造：世界内交互基调落地（护目镜 HUD/诊断/槽位 GUI/成型反馈） | ✅ 完成 |
 | M3+ | 电解/索尔维/高压/零排放 | ⏳ 未开始 |
 
-**自动化测试**：`./gradlew runGameTestServer` → **47/47 通过**。
+**自动化测试**：`./gradlew runGameTestServer` → **48/48 通过**。
 
 ## 已完成明细
 
@@ -182,6 +182,7 @@
 | 溶液桶倒不进反应釜 | 创造栏 `output.accept(item)` 生成的是无 NBT 的 `new ItemStack(item)`，`getDefaultInstance()` 的预填混合物没带出来 → 桶是空的 | 创造栏改 `output.accept(item.getDefaultInstance())`，预填容器直接携带流体 NBT |
 | 溶液/浆料桶启动期空 | `SpeciesManager` 只在世界数据包重载时填充，创造栏/JEI 构建更早 → 桶空 | `SpeciesManager.loadBuiltin()` 启动期从自身资源预读 21 个内置物种 |
 | 溶液/浆料桶全渲染成蓝水、无法区分 | 无色离子+水的混合色恒为淡蓝 | 物种加 `color` 字段（沿用注销前各自流体色），桶打包时写进 mixture 的 `Color` 键；悬停加 tooltip（`1000 mB`/`空`）诊断 |
+| 抽分层流体釜停停走走、很慢 | `collapseIfNeeded` 每 tick 重建单成员相（derive 绝对量 → `Mixture.create` GCD 还原），总量不被比例和整除时 ratio tag 抖动，Create `isFluidEqual` 流身份被打破、流每 tick 被切断重启 | 单成员组分相**原样保留**（不重建）；`sameContents` 对比，无变化则跳过重写 + sync |
 
 ## 待办 / 下一步
 

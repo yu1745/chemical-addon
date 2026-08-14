@@ -612,6 +612,31 @@ public class ChemicalAddonGameTests {
 	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void collapseDoesNotChurnMixtureRatio(GameTestHelper helper) {
+		// regression: collapseIfNeeded on a multi-phase tank used to rebuild the
+		// mixture every tick (derive amounts -> Mixture.create GCD-reduce), churning
+		// its ratio tag whenever the total isn't divisible by the ratio sum — which
+		// broke Create's isFluidEqual flow identity and stalled the pump. A settled
+		// phase must be left verbatim.
+		ReactorTank tank = new ReactorTank(10000, () -> {});
+		ResourceLocation water = Solution.WATER;
+		// ratio {5:2:1} (sum 8) with a total (1601) that 8 does NOT divide -> any
+		// rebuild would re-derive + GCD-reduce into a different tag
+		FluidStack mix = Mixture.create(Map.of(water, 1000), Map.of("H+1", 400, "SO4-2", 200), 1601);
+		tank.fill(mix, FluidAction.EXECUTE);
+		tank.fill(new FluidStack(AllFluids.THERMAL_OIL.get().getSource(), 500), FluidAction.EXECUTE);
+		tank.collapseIfNeeded();
+
+		net.minecraft.nbt.CompoundTag before = tank.getFluids().get(0).getOrCreateTag().copy();
+		tank.collapseIfNeeded();
+		net.minecraft.nbt.CompoundTag after = tank.getFluids().get(0).getOrCreateTag();
+
+		helper.assertTrue(before.equals(after),
+			"collapseIfNeeded must not churn a settled mixture's ratio tag (before=" + before + " after=" + after + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void solventWaterContributesNoColor(GameTestHelper helper) {
 		// water is the colourless solvent: it must not tint a mixture. The old
 		// saturated blue would dominate any blend and hide the solute's colour.
