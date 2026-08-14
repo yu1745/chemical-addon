@@ -710,6 +710,7 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 							}
 							boolean wasAssembled = assembled;
 							int oldSize = size;
+							int oldHeight = height;
 							assembled = true;
 							this.inward = inward;
 							this.open = topOpen;
@@ -721,8 +722,12 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 							if (wasAssembled) {
 								// re-bind: clear old-shell masters first so bricks that fell OUT
 								// of the (shrunk) shell stop proxying capabilities — bindBricks
-								// below re-binds the new shell (extension re-binds harmlessly)
-								clearShellMasters(Math.max(oldSize, w) + 1);
+								// below re-binds the new shell (extension re-binds harmlessly).
+								// The radius must cover the shell's vertical extent too (floor
+								// is ringLayer+1 below the controller, ceiling rings-ringLayer
+								// above): a footprint-only radius misses old floor/ceiling
+								// bricks on tall narrow vessels (height > size)
+								clearShellMasters(Math.max(Math.max(oldSize, w), Math.max(oldHeight, rings)) + 1);
 							} else {
 								// coming back from a break: the shell is intact again — stop
 								// any leftover trickle from the breach (a repaired vessel must
@@ -893,12 +898,11 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 	/**
 	 * Binds every structural shell block (any block in the vessel_walls tag —
 	 * brick, glass, ...) to this controller so it proxies capabilities and can
-	 * report breakage.
-	 */
-	/**
-	 * Binds every structural shell block (any block in the vessel_walls tag —
-	 * brick, glass, ...) to this controller so it proxies capabilities and can
-	 * report breakage.
+	 * report breakage. The y range is controller-RELATIVE and must follow the
+	 * controller's ring layer k: floor at -k-1, ceiling at rings-k. A hard-coded
+	 * -1..rings (k=0 assumption) leaves the floor unbound when the controller is
+	 * mounted higher — the decant hose scans down the interior column and falls
+	 * through the unbound floor, never finding the vessel.
 	 */
 	private void bindBricks(BlockPos masterPos, Direction inward, Direction side, int w, int rings) {
 		if (level == null) {
@@ -912,7 +916,7 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 				if (s == 0 && d == 0) {
 					continue; // the controller itself
 				}
-				for (int y = -1; y <= rings; y++) {
+				for (int y = -ringLayer - 1; y <= rings - ringLayer; y++) {
 					bindBrick(cell(s, d, y, side, inward), masterPos);
 				}
 			}
@@ -1019,7 +1023,9 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 			spillTimer = 4; // first source appears almost immediately
 			SpillLogic.tryPlaceOne(level, breach, pendingSpill);
 			// clear master pointers on nearby shell blocks so they stop proxying
-			clearShellMasters(oldSize + 1);
+			// (radius covers the vertical extent too — height is retained as
+			// lastGeometry here, so a tall vessel's floor/ceiling bricks are reached)
+			clearShellMasters(Math.max(oldSize, height) + 1);
 			setChanged();
 			sync();
 		}
