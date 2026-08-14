@@ -84,6 +84,8 @@ BLOCKS = [
     ("electrolyzer",      "电解槽", "Electrolyzer",     0x5E7A8A),
     ("thermometer",       "温度计", "Thermometer",      0x5A5A62),
     ("thermometer_panel",  "温度计面板", "Thermometer Panel", 0x6A6A72),
+    ("pressure_gauge",     "压力表", "Pressure Gauge",      0x5A6272),
+    ("pressure_gauge_panel", "压力表面板", "Pressure Gauge Panel", 0x6A7282),
 ]
 
 # Solution modes ("species = mode", plans/03 §4): NOT registered fluids — only a
@@ -374,6 +376,21 @@ def gen_bucket_models():
         with open(os.path.join(d, f"{sid}_bucket.json"), "w", encoding="utf-8") as f:
             _json.dump(model, f, indent=2)
             f.write("\n")
+    # the mixture meta-fluid's auto-registered bucket item needs a model too
+    # (creative-only: the mixture fluid has no block, so it can never be scooped;
+    # the .bucket() build in gen_fluids_java suppresses registrate's default
+    # item/generated model, which would demand a hand-drawn texture)
+    with open(os.path.join(d, "mixture_bucket.json"), "w", encoding="utf-8") as f:
+        _json.dump({
+            "parent": "forge:item/default",
+            "loader": "forge:fluid_container",
+            "textures": {
+                "base": "minecraft:item/bucket",
+                "fluid": "forge:item/mask/bucket_fluid"
+            },
+            "fluid": "chemicaladdon:mixture"
+        }, f, indent=2)
+        f.write("\n")
 
 def gen_solution_bucket_models():
     """Write the per-solution creative "packed mixture" bucket models. They use
@@ -475,9 +492,10 @@ def make_open_panel_texture(rgb):
     return rows
 
 
-def make_thermometer_texture(rgb):
-    """Thermometer dial: a light circular gauge face with a red needle and a
-    dark tick ring, on a metallic panel."""
+def make_dial_texture(rgb, needle=(196, 44, 44), dial=(236, 238, 242)):
+    """Circular gauge dial: a light face with a needle and a dark tick ring,
+    on a metallic panel. The thermometer uses the red-needle default; the
+    pressure gauge passes a steel-blue needle."""
     r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
     rows = []
     for y in range(16):
@@ -487,14 +505,38 @@ def make_thermometer_texture(rgb):
             dy = y - 7.5
             d2 = dx * dx + dy * dy
             if abs(dx) <= 0.6 and -5.0 <= dy <= 0.5:
-                row += [196, 44, 44, 255]          # red needle (centre, pointing up)
+                row += list(needle) + [255]        # needle (centre, pointing up)
             elif d2 <= 6.5 * 6.5:
                 if d2 >= 4.5 * 4.5:
                     row += [40, 42, 48, 255]       # tick ring (rim)
                 else:
-                    row += [236, 238, 242, 255]    # dial face
+                    row += list(dial) + [255]      # dial face
             else:
                 row += [int(r * 0.75), int(g * 0.75), int(b * 0.75), 255]  # panel
+        rows.append(row)
+    return rows
+
+
+def make_coil_texture(rgb):
+    """Decant hose block placeholder: concentric coil rings of hose on a dark
+    mounting plate (the visible block is mostly the BE renderer's 3D coil;
+    this is the fallback blockitem / world face)."""
+    r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
+    rows = []
+    for y in range(16):
+        row = []
+        for x in range(16):
+            dx = x - 7.5
+            dy = y - 7.5
+            d = (dx * dx + dy * dy) ** 0.5
+            if d <= 1.6:
+                row += [30, 30, 34, 255]          # hose bore
+            elif d <= 6.4 and int(d * 2) % 2 == 0:
+                row += [int(r * 0.8), int(g * 0.8), int(b * 0.8), 255]  # coil shadow side
+            elif d <= 6.4:
+                row += [r, g, b, 255]              # coil lit side
+            else:
+                row += [64, 60, 58, 255]           # mounting plate
         rows.append(row)
     return rows
 
@@ -509,8 +551,13 @@ def gen_block_textures():
     write_png(os.path.join(d, "filter_press.png"), make_panel_texture(0x7A7A8A))
     write_png(os.path.join(d, "settling_basin.png"), make_panel_texture(0x5E6E7A))
     write_png(os.path.join(d, "electrolyzer.png"), make_panel_texture(0x5E7A8A))
-    write_png(os.path.join(d, "thermometer.png"), make_thermometer_texture(0x5A5A62))
-    write_png(os.path.join(d, "thermometer_panel.png"), make_thermometer_texture(0x6A6A72))
+    write_png(os.path.join(d, "thermometer.png"), make_dial_texture(0x5A5A62))
+    write_png(os.path.join(d, "thermometer_panel.png"), make_dial_texture(0x6A6A72))
+    write_png(os.path.join(d, "pressure_gauge.png"), make_dial_texture(0x5A6272, needle=(72, 108, 188), dial=(226, 232, 244)))
+    write_png(os.path.join(d, "pressure_gauge_panel.png"), make_dial_texture(0x6A7282, needle=(72, 108, 188), dial=(226, 232, 244)))
+    # decant_hose was missing from here since D18.5 — runData's blockstate
+    # provider for it failed on the absent texture (U1 fix)
+    write_png(os.path.join(d, "decant_hose.png"), make_coil_texture(0xB87333))
 
 
 # Extra lang keys added by hand (GUIs, goggles, diagnostics, assemble messages).
@@ -534,7 +581,13 @@ EXTRA_LANG_ZH = {
     "goggles.chemicaladdon.thermometer_threshold": "报警阈值：%s°C",
     "goggles.chemicaladdon.thermometer_alarm": "报警：超温",
     "goggles.chemicaladdon.thermometer_no_vessel": "未连接反应釜",
+    "goggles.chemicaladdon.pressure": "压力：%s kPa",
+    "goggles.chemicaladdon.pressure_ambient": "开口容器 · 常压",
+    "goggles.chemicaladdon.pressure_gauge_threshold": "报警阈值：%s kPa",
+    "goggles.chemicaladdon.pressure_gauge_alarm": "报警：超压",
+    "goggles.chemicaladdon.pressure_gauge_no_vessel": "未连接反应釜",
     "thermometer.chemicaladdon.threshold": "报警阈值",
+    "pressure_gauge.chemicaladdon.threshold": "报警阈值",
     "status.chemicaladdon.not_assembled": "未成型",
     "status.chemicaladdon.reacting": "反应中",
     "status.chemicaladdon.temperature": "温度不满足",
@@ -572,7 +625,13 @@ EXTRA_LANG_EN = {
     "goggles.chemicaladdon.thermometer_threshold": "Threshold: %s°C",
     "goggles.chemicaladdon.thermometer_alarm": "ALARM",
     "goggles.chemicaladdon.thermometer_no_vessel": "Not attached to a reactor",
+    "goggles.chemicaladdon.pressure": "Pressure: %s kPa",
+    "goggles.chemicaladdon.pressure_ambient": "Open vessel — ambient pressure",
+    "goggles.chemicaladdon.pressure_gauge_threshold": "Threshold: %s kPa",
+    "goggles.chemicaladdon.pressure_gauge_alarm": "ALARM",
+    "goggles.chemicaladdon.pressure_gauge_no_vessel": "Not attached to a reactor",
     "thermometer.chemicaladdon.threshold": "Alarm Threshold",
+    "pressure_gauge.chemicaladdon.threshold": "Alarm Threshold",
     "status.chemicaladdon.not_assembled": "Not assembled",
     "status.chemicaladdon.reacting": "Reacting",
     "status.chemicaladdon.temperature": "Temperature not met",
@@ -648,7 +707,8 @@ def gen_fluids_java():
         parts.append(fluid_entry(sid, en_name, density, viscosity, temp, gas))
     # the mixture meta-fluid: a single registered Forge fluid whose FluidStack
     # NBT carries the component composition + blended colour (see Mixture /
-    # MixtureFluidType). No block/bucket — it lives in tanks/pipes only.
+    # MixtureFluidType). No block — it lives in tanks/pipes only; the auto bucket
+    # item stays (suppressed default model, see gen_bucket_models).
     parts.append(
         "\n\tpublic static final FluidEntry<ForgeFlowingFluid.Flowing> MIXTURE = REGISTRATE.standardFluid(\"mixture\",\n"
         "\t\t\t(props, still, flow) -> new MixtureFluidType(props, still, flow))\n"
@@ -657,6 +717,7 @@ def gen_fluids_java():
         "\t\t\t.viscosity(1000)\n"
         "\t\t\t.temperature(300))\n"
         "\t\t.source(ForgeFlowingFluid.Source::new)\n"
+        "\t\t.bucket().lang(\"Mixture Bucket\").model((ctx, prov) -> {}).build()\n"
         "\t\t.register();")
     parts += ["", "\tpublic static void register() {", "\t}", "}", ""]
     with open(os.path.join(JAVA, "AllFluids.java"), "w", encoding="utf-8") as f:

@@ -1,6 +1,3 @@
 {
-  "parent": "minecraft:item/generated",
-  "textures": {
-    "layer0": "chemicaladdon:block/thermometer_panel"
-  }
+  "parent": "chemicaladdon:block/thermometer_panel"
 }

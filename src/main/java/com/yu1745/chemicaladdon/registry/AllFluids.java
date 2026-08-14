@@ -200,6 +200,7 @@ public class AllFluids {
 			.viscosity(1000)
 			.temperature(300))
 		.source(ForgeFlowingFluid.Source::new)
+		.bucket().lang("Mixture Bucket").model((ctx, prov) -> {}).build()
 		.register();
 
 	public static void register() {

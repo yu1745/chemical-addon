@@ -4,6 +4,7 @@
     "chemicaladdon:chemical_brick",
     "chemicaladdon:chemical_glass",
     "chemicaladdon:decant_port",
-    "chemicaladdon:thermometer"
+    "chemicaladdon:thermometer",
+    "chemicaladdon:pressure_gauge"
   ]
 }

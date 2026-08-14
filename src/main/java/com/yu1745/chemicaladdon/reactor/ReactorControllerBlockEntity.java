@@ -17,6 +17,7 @@ import com.simibubi.create.foundation.fluid.FluidIngredient;
 import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.composition.Species;
 import com.yu1745.chemicaladdon.composition.SpeciesManager;
+import com.yu1745.chemicaladdon.fluid.Miscibility;
 import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.fluid.Temperature;
 import com.yu1745.chemicaladdon.recipe.AllRecipeTypes;
@@ -126,6 +127,12 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 	private Direction inward = null; // direction from the controller into the vessel (for item rendering)
 	/** Debug temperature pin (-1 = unpinned; when ≥0 the vessel is held at this °C regardless of the burner). */
 	private int pinnedTemperature = -1;
+	/**
+	 * Stirring (mass-transfer) rate coefficient — the hook kept when MixDegree
+	 * was deleted: a kinetic whisk will map its RPM onto 0.3–1.0. Placeholder
+	 * 1.0 in U1 (plans/11 §2.1) so batch rhythm tuning lands in U5.
+	 */
+	private float stirringCoefficient = 1.0f;
 
 	/**
 	 * Client-side fluid surface animation: chases the ABSOLUTE surface height in
@@ -289,20 +296,41 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 			case SEETHING -> 900;
 			default -> AMBIENT_TEMP;
 		};
-		// the vessel's contents carry the temperature; relax the settled stack
-		// toward the burner's target (or back to ambient when unheated)
-		List<FluidStack> fluids = tank.getFluids();
-		if (fluids.size() != 1) {
-			return; // empty, or transiently multi-entry before collapse
+		// U1/G1: the contents carry the temperature, and EVERY phase relaxes
+		// toward the burner's target (or back to ambient when unheated). After
+		// D18 a gas bystander phase is permanent, so the old "exactly one stack"
+		// early-return left it stuck at whatever temperature it entered with;
+		// vessel-level reads ({@link #getTemperature}) are amount-weighted.
+		boolean changed = false;
+		for (FluidStack stack : tank.getFluids()) {
+			int current = Temperature.get(stack);
+			int next = current + (target - current) / 10;
+			if (next != current) {
+				Temperature.set(stack, next);
+				changed = true;
+			}
 		}
-		FluidStack stack = fluids.get(0);
-		int current = Temperature.get(stack);
-		int next = current + (target - current) / 10;
-		if (next != current) {
-			Temperature.set(stack, next);
+		if (changed) {
 			setChanged();
 			sync();
 		}
+	}
+
+	/**
+	 * Progress-rate multiplier for a running recipe (U1): temperature-window
+	 * bonus × stirring. Running hotter than the recipe's minimum accelerates it
+	 * up to 2×; exactly at the threshold the factor is 1.0 — matching
+	 * temperature always means full speed, so existing timing behaviour never
+	 * slows down (the 64-test baseline is the safety net).
+	 */
+	private float rateCoefficient(ChemicalReactionRecipe recipe) {
+		int min = switch (recipe.getRequiredHeat()) {
+			case HEATED -> 400;
+			case SUPERHEATED -> 800;
+			default -> AMBIENT_TEMP;
+		};
+		float window = Math.min(1.0f, Math.max(0.0f, (getTemperature() - min) / 400.0f));
+		return (1.0f + window) * stirringCoefficient;
 	}
 
 	/** Debug/dev: hold the vessel at {@code t} °C, or {@code -1} to resume normal heating. */
@@ -345,7 +373,7 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 			return;
 		}
 		setStatus(ReactorStatus.REACTING);
-		float next = progress + (float) REACTION_TICK / recipe.getProcessingDuration();
+		float next = progress + (float) REACTION_TICK / recipe.getProcessingDuration() * rateCoefficient(recipe);
 		if (next >= 1.0f) {
 			completeRecipe(recipe);
 			setProgress(0, recipe.getId());
@@ -532,11 +560,13 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 			Temperature.set(mix, vesselTemp);
 			tank.fill(mix, IFluidHandler.FluidAction.EXECUTE);
 		}
-		// heat effect (exothermic raises temperature)
+		// heat effect (exothermic raises temperature) — U1/G2: the reaction
+		// happens throughout the fluid body, so every phase takes the delta
+		// (per-stack +Δ keeps phase temperature differences intact and lifts the
+		// amount-weighted vessel average by exactly Δ)
 		if (recipe.getDeltaHeat() != 0) {
 			tank.collapseIfNeeded();
-			if (!tank.getFluids().isEmpty()) {
-				FluidStack stack = tank.getFluids().get(0);
+			for (FluidStack stack : tank.getFluids()) {
 				int t = Math.max(AMBIENT_TEMP, Math.min(MAX_TEMP, Temperature.get(stack) + recipe.getDeltaHeat()));
 				Temperature.set(stack, t);
 			}
@@ -1221,12 +1251,57 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		return floorY + levelHeight * liquidAmount / total;
 	}
 
-	/** The vessel's temperature = the settled contents' temperature (°C); ambient when empty. */
+	/**
+	 * The vessel's temperature (°C): the amount-weighted average across ALL
+	 * phases (U1/G2 — a hot liquid under a cool gas head reads as the mix, not
+	 * as whichever stack happens to be entry 0); ambient when empty. Storage
+	 * stays per-stack NBT so transport keeps its proven identity.
+	 */
 	public int getTemperature() {
-		if (tank.getFluids().isEmpty()) {
-			return AMBIENT_TEMP;
+		long weighted = 0;
+		int total = 0;
+		for (FluidStack stack : tank.getFluids()) {
+			weighted += (long) Temperature.get(stack) * stack.getAmount();
+			total += stack.getAmount();
 		}
-		return Temperature.get(tank.getFluids().get(0));
+		return Temperature.fromWeightedSum(weighted, total);
+	}
+
+	/** Ambient absolute pressure (kPa) — the 1-atm baseline of the linear vessel model. */
+	public static final int ATMOSPHERE_KPA = 101;
+
+	/**
+	 * Vessel gauge pressure in kPa (U1/G3). Linear sealed-vessel model:
+	 * {@code P_abs = 1 atm × (gas volume fraction) × (T / T_ambient)} — pumping
+	 * more gas in or heating the contents raises it; an open-topped (or
+	 * disassembled) vessel vents to ambient so the gauge reads 0. Sealing
+	 * itself stays binary in U1; material pressure ratings arrive in U11.
+	 *
+	 * <p>Derived on read from the already-synced tank contents / structure
+	 * state (the same trust model as {@link #getFillState}) rather than
+	 * persisted: a stored copy could silently drift from the contents on any
+	 * missed update path, while a derivation cannot.
+	 */
+	public int getPressure() {
+		if (!assembled || open) {
+			return 0; // open top / broken shell: no pressure builds
+		}
+		int cap = tank.getTankCapacity(0);
+		if (cap <= 0) {
+			return 0;
+		}
+		int gas = 0;
+		for (FluidStack stack : tank.getFluids()) {
+			if (Miscibility.isGas(stack)) {
+				gas += stack.getAmount();
+			}
+		}
+		if (gas <= 0) {
+			return 0;
+		}
+		double kelvin = getTemperature() + 273.15;
+		double pAbs = ATMOSPHERE_KPA * gas / (double) cap * (kelvin / 293.15);
+		return Math.max(0, (int) Math.round(pAbs - ATMOSPHERE_KPA));
 	}
 
 	public ReactorTank getTank() {
@@ -1350,6 +1425,13 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		tooltip.add(Component.literal(spacing).append(Component.translatable("goggles.chemicaladdon.temperature", temperature))
 			.withStyle(ChatFormatting.WHITE));
 		tooltip.add(Component.literal(spacing).append(Component.translatable(heatTierKey())).withStyle(heatColor));
+
+		// pressure (sealed builds up, open-topped vents to ambient)
+		tooltip.add(open
+			? Component.literal(spacing).append(Component.translatable("goggles.chemicaladdon.pressure_ambient"))
+				.withStyle(ChatFormatting.GRAY)
+			: Component.literal(spacing).append(Component.translatable("goggles.chemicaladdon.pressure", getPressure()))
+				.withStyle(ChatFormatting.AQUA));
 
 		// status (why it is / is not reacting)
 		ChatFormatting statusColor = switch (status) {

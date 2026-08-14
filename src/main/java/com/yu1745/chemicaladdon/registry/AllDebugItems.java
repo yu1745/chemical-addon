@@ -19,6 +19,10 @@ public class AllDebugItems {
 	public static final ItemEntry<TemperatureDebugItem> TEMPERATURE_DEBUG =
 		REGISTRATE.item("temperature_debug", TemperatureDebugItem::new)
 			.lang("Temperature Debug Stick")
+			// the model is hand-written in main resources (custom layers); suppress
+			// registrate's default item/generated model or it collides on the
+			// runtime classpath once datagen has run
+			.model((ctx, prov) -> {})
 			.register();
 
 	public static void register() {

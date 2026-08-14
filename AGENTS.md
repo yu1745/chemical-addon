@@ -1,6 +1,6 @@
 # AGENTS.md - chemical-addon（Create 化学附属）
 
-本仓库是 **Create Forge 6.0.8 的无机化工附属**（Forge 1.20.1，Java 17），设计计划书在 `plans/`（主索引 `plans/README.md`，生态盘点与平台决策 `plans/00-ecosystem-recon.md`），**开发进度在 `docs/progress.md`**（M0–M2.5 完成，v2 离子基底 S1–S3g + D18/D18.5 + S02 温度计，64/64 GameTest 通过；**M3+ 开工顺序以 `plans/11-content-scope.md` §2 为唯一定义**；改代码前先看它了解现状）。
+本仓库是 **Create Forge 6.0.8 的无机化工附属**（Forge 1.20.1，Java 17），设计计划书在 `plans/`（主索引 `plans/README.md`，生态盘点与平台决策 `plans/00-ecosystem-recon.md`），**开发进度在 `docs/progress.md`**（M0–M2.5 + **U1 容器状态层** 完成（多相加热/放热全体/压力模型/S03 压力表），71/71 GameTest 通过；**M3+ 开工顺序以 `plans/11-content-scope.md` §2 为唯一定义**；改代码前先看它了解现状）。
 
 ## 核心架构（改动前必读 plans/03-substance-model.md）
 
@@ -17,7 +17,7 @@
 ./run-server.sh          # 冒烟测试：启动 dev 服务器、输出透传，识别到 "Done (" 后
                          # 三级关闭（组 SIGTERM → 轮询 → SIGKILL）并退出 0；
                          # 环境变量 WAIT_DONE_TIMEOUT / SHUTDOWN_GRACE_SECONDS
-./gradlew runGameTestServer   # 跑 GameTest（chemicaladdon/gametest/，64 个测试，需先 build）
+./gradlew runGameTestServer   # 跑 GameTest（chemicaladdon/gametest/，71 个测试，需先 build）
 ```
 
 > ⚠️ runServer 永不自行返回：不要用 `cmd | script` 或 `cmd && script` 形式调用；`run-server.sh` 自行负责启动与收尾。关闭策略为纯 PID 方案（`$!` → PGID → 整组信号），**禁止**在脚本里用进程名/路径匹配（会误伤容器内的生产服 forge1 JVM）。

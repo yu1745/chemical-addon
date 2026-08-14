@@ -17,7 +17,13 @@
   "goggles.chemicaladdon.thermometer_threshold": "报警阈值：%s°C",
   "goggles.chemicaladdon.thermometer_alarm": "报警：超温",
   "goggles.chemicaladdon.thermometer_no_vessel": "未连接反应釜",
+  "goggles.chemicaladdon.pressure": "压力：%s kPa",
+  "goggles.chemicaladdon.pressure_ambient": "开口容器 · 常压",
+  "goggles.chemicaladdon.pressure_gauge_threshold": "报警阈值：%s kPa",
+  "goggles.chemicaladdon.pressure_gauge_alarm": "报警：超压",
+  "goggles.chemicaladdon.pressure_gauge_no_vessel": "未连接反应釜",
   "thermometer.chemicaladdon.threshold": "报警阈值",
+  "pressure_gauge.chemicaladdon.threshold": "报警阈值",
   "status.chemicaladdon.not_assembled": "未成型",
   "status.chemicaladdon.reacting": "反应中",
   "status.chemicaladdon.temperature": "温度不满足",
@@ -106,5 +112,7 @@
   "block.chemicaladdon.settling_basin": "沉淀池控制器",
   "block.chemicaladdon.electrolyzer": "电解槽",
   "block.chemicaladdon.thermometer": "温度计",
-  "block.chemicaladdon.thermometer_panel": "温度计面板"
+  "block.chemicaladdon.thermometer_panel": "温度计面板",
+  "block.chemicaladdon.pressure_gauge": "压力表",
+  "block.chemicaladdon.pressure_gauge_panel": "压力表面板"
 }

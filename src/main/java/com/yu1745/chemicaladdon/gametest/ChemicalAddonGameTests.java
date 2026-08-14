@@ -14,6 +14,8 @@ import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlock;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlockEntity;
 import com.yu1745.chemicaladdon.reactor.DecantHoseBlockEntity;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlockEntity;
+import com.yu1745.chemicaladdon.reactor.PressureGaugeBlockEntity;
+import com.yu1745.chemicaladdon.reactor.PressureGaugePanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlock;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ReactorTank;
@@ -1142,6 +1144,187 @@ public class ChemicalAddonGameTests {
 		helper.assertTrue(be.isAlarm(), "500°C must trip the alarm");
 		helper.assertTrue(be.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.EAST).isPresent(),
 			"wall thermometer must proxy FLUID_HANDLER to the reactor");
+		helper.succeed();
+	}
+
+	// ------------------------------------------------------- U1 vessel state layer
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void reactorHeatsAndReadsAllPhases(GameTestHelper helper) {
+		// U1/G1+G2: in a multi-phase vessel EVERY phase relaxes toward the burner
+		// target (the old updateHeat early-returned on fluids.size() != 1, so after
+		// D18 a bystander phase sat at its entry temperature forever), and the
+		// vessel-level reading is the amount-weighted average of all phases.
+		buildReactor(helper);
+		ReactorControllerBlockEntity be = reactor(helper);
+		FluidStack hot = new FluidStack(Fluids.WATER, 500);
+		Temperature.set(hot, 800);
+		FluidStack warm = new FluidStack(AllFluids.THERMAL_OIL.get().getSource(), 500);
+		Temperature.set(warm, 400);
+		be.getTank().fill(hot, FluidAction.EXECUTE);
+		be.getTank().fill(warm, FluidAction.EXECUTE);
+		be.getTank().collapseIfNeeded();
+		helper.assertTrue(be.getTank().getFluids().size() == 2,
+			"water + thermal oil must stay two phases (got " + be.getTank().getFluids().size() + ")");
+		helper.assertTrue(be.getTemperature() == 600,
+			"vessel temperature must be the amount-weighted average 600°C (got " + be.getTemperature() + ")");
+		helper.startSequence()
+			.thenIdle(TICKS * 3) // 3 heat cycles (HEAT_TICK = 20), no burner -> ambient target
+			.thenExecute(() -> {
+				int t0 = Temperature.get(be.getTank().getFluids().get(0));
+				int t1 = Temperature.get(be.getTank().getFluids().get(1));
+				helper.assertTrue(t0 < 800, "the water phase must relax toward ambient (got " + t0 + "°C)");
+				helper.assertTrue(t1 < 400, "the oil phase must relax too (got " + t1 + "°C)");
+			})
+			.thenSucceed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 40)
+	public static void exothermicDeltaHeatsAllPhases(GameTestHelper helper) {
+		// U1/G2: an exothermic whitelist recipe heats EVERY phase — the SO2
+		// absorption (deltaHeat +100) must warm the inert oil bystander as well,
+		// not just whichever stack happens to be entry 0.
+		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
+		be.getTank().fill(new FluidStack(Fluids.WATER, 1000), FluidAction.EXECUTE);
+		be.getTank().fill(new FluidStack(AllFluids.THERMAL_OIL.get().getSource(), 1000), FluidAction.EXECUTE);
+		be.getTank().fill(new FluidStack(AllFluids.SULFUR_DIOXIDE.get().getSource(), 1000), FluidAction.EXECUTE);
+		helper.startSequence()
+			.thenIdle(TICKS * 25) // so2_absorption: 200 ticks + slack
+			.thenExecute(() -> {
+				// the absorption product lands in the ion domain (the same expansion
+				// reactorAbsorbsSulfurDioxide asserts on)
+				helper.assertTrue(hasIon(be.getTank(), "H+1", 200),
+					"the absorption reaction should have run");
+				helper.assertTrue(hasIon(be.getTank(), "SO4-2", 100),
+					"the absorption reaction should have run (sulfate)");
+				for (FluidStack stack : be.getTank().getFluids()) {
+					helper.assertTrue(Temperature.get(stack) > 20,
+						"every phase must carry the exotherm (a stack is still at 20°C)");
+				}
+			})
+			.thenSucceed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void sealedVesselBuildsPressure(GameTestHelper helper) {
+		// U1/G3: linear sealed-vessel model P_abs = 1 atm × (gas fraction) × (T/T_amb).
+		// A vessel full of gas at ambient reads 0 gauge; heating it pressurises it:
+		// 27000/27000 gas at 900°C -> 101 × (1173.15/293.15) − 101 ≈ 303 kPa gauge.
+		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
+		be.getTank().fill(new FluidStack(AllFluids.OXYGEN.get().getSource(), 27000), FluidAction.EXECUTE);
+		be.setPinnedTemperature(20);
+		helper.assertTrue(be.getPressure() == 0,
+			"a full gas charge at ambient must read 0 gauge (got " + be.getPressure() + " kPa)");
+		be.setPinnedTemperature(900);
+		int pressure = be.getPressure();
+		helper.assertTrue(pressure >= 300 && pressure <= 306,
+			"heating the sealed gas charge must build ~303 kPa (got " + pressure + " kPa)");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void liquidFullVesselStaysAtZeroPressure(GameTestHelper helper) {
+		// pressure comes from the gas phase only: a vessel completely full of hot
+		// LIQUID must read 0 gauge however hot (liquids are effectively
+		// incompressible in the linear model)
+		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
+		be.getTank().fill(new FluidStack(Fluids.WATER, 27000), FluidAction.EXECUTE);
+		be.setPinnedTemperature(900);
+		helper.assertTrue(be.getTank().getTotalAmount() == 27000, "the vessel should be liquid-full");
+		helper.assertTrue(be.getPressure() == 0,
+			"a liquid-full vessel must not pressurise (got " + be.getPressure() + " kPa)");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void openVesselKeepsAmbientPressure(GameTestHelper helper) {
+		// U1/G3: an open-topped vessel vents — the gauge stays at ambient no matter
+		// how much hot gas sits in it.
+		ReactorControllerBlockEntity be = buildReactor3x3x5HighController(helper); // open top
+		helper.assertTrue(be.isOpen(), "the test vessel must be open-topped");
+		be.getTank().fill(new FluidStack(AllFluids.OXYGEN.get().getSource(), 3000), FluidAction.EXECUTE);
+		be.setPinnedTemperature(900);
+		helper.assertTrue(be.getPressure() == 0,
+			"an open vessel must never build pressure (got " + be.getPressure() + " kPa)");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void pressureGaugePanelReadsAndAlarms(GameTestHelper helper) {
+		// S03 pressure gauge (薄板): mounted on a SHELL BRICK it reads the vessel
+		// pressure through the brick's master pointer, trips the redstone alarm
+		// past the threshold (default 250 kPa), and the comparator maps the
+		// reading onto 0..15 of the 1500 kPa full scale.
+		ReactorControllerBlockEntity reactor = buildReactor5x5x5(helper);
+		reactor.getTank().fill(new FluidStack(AllFluids.OXYGEN.get().getSource(), 27000), FluidAction.EXECUTE);
+		reactor.setPinnedTemperature(900);
+		int expected = reactor.getPressure();
+
+		// mounted on the east wall brick at (4,2,2) — behind it is the brick,
+		// not the controller, so the read goes panel -> brick.getValidMaster -> reactor
+		BlockState gauge = AllBlocks.PRESSURE_GAUGE_PANEL.get().defaultBlockState()
+			.setValue(BlockStateProperties.FACING, Direction.EAST);
+		helper.setBlock(new BlockPos(5, 2, 2), gauge);
+		PressureGaugePanelBlockEntity be = (PressureGaugePanelBlockEntity) helper.getBlockEntity(new BlockPos(5, 2, 2));
+		helper.assertTrue(be != null, "pressure gauge panel should have a block entity");
+		be.tick();
+		helper.assertTrue(be.getPressure() == expected,
+			"panel must read the vessel through the shell brick (got " + be.getPressure() + " kPa)");
+		helper.assertTrue(be.getThreshold() == 250,
+			"default threshold must be 250 kPa (got " + be.getThreshold() + " kPa)");
+		helper.assertTrue(be.isAlarm(), expected + " kPa must trip the default 250 kPa threshold");
+
+		BlockPos abs = helper.absolutePos(new BlockPos(5, 2, 2));
+		BlockState state = helper.getBlockState(new BlockPos(5, 2, 2));
+		helper.assertTrue(state.getSignal(helper.getLevel(), abs, Direction.EAST) == 15,
+			"the alarm must emit a strong redstone signal");
+		helper.assertTrue(state.getAnalogOutputSignal(helper.getLevel(), abs) == expected * 15 / 1500,
+			"comparator signal should be " + expected + "/1500 × 15");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void wallPressureGaugeReadsOwnReactor(GameTestHelper helper) {
+		// S03 pressure gauge (方块): a shell block filling a wall position — accepted
+		// by the structure (vessel_walls tag), bound to the controller, proxies
+		// fluid like a brick, and reads its own vessel's pressure.
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		BlockState gaugeBlock = AllBlocks.PRESSURE_GAUGE.get().defaultBlockState();
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick); // floor
+				helper.setBlock(new BlockPos(x, 3, z), brick); // roof (sealed)
+			}
+		}
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				if (x == 2 && z == 2) {
+					continue; // interior
+				}
+				BlockPos p = new BlockPos(x, 2, z);
+				BlockState st = (x == 2 && z == 1) ? controller : (x == 3 && z == 1) ? gaugeBlock : brick;
+				helper.setBlock(p, st);
+			}
+		}
+		helper.setBlock(new BlockPos(2, 2, 2), Blocks.AIR.defaultBlockState());
+		ReactorControllerBlockEntity reactor = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 1));
+		helper.assertTrue(reactor.tryAssemble().ok(), "reactor with a pressure gauge wall should assemble");
+
+		reactor.getTank().fill(new FluidStack(AllFluids.OXYGEN.get().getSource(), 1000), FluidAction.EXECUTE);
+		reactor.setPinnedTemperature(900);
+		int expected = reactor.getPressure();
+		helper.assertTrue(expected > 0, "the sealed hot gas charge must be under pressure");
+
+		PressureGaugeBlockEntity be = (PressureGaugeBlockEntity) helper.getBlockEntity(new BlockPos(3, 2, 1));
+		helper.assertTrue(be != null, "wall pressure gauge should have a block entity");
+		be.tick();
+		helper.assertTrue(be.getMasterPos() != null, "wall pressure gauge must be bound to the controller");
+		helper.assertTrue(be.getPressure() == expected,
+			"wall pressure gauge must read its own reactor (got " + be.getPressure() + " kPa)");
+		helper.assertTrue(be.isAlarm(), "the hot charge must trip the alarm");
+		helper.assertTrue(be.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.EAST).isPresent(),
+			"wall pressure gauge must proxy FLUID_HANDLER to the reactor");
 		helper.succeed();
 	}
 

@@ -5,6 +5,8 @@ import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlockEntity;
 import com.yu1745.chemicaladdon.reactor.DecantHoseBlockEntity;
 import com.yu1745.chemicaladdon.reactor.DecantPortBlockEntity;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlockEntity;
+import com.yu1745.chemicaladdon.reactor.PressureGaugeBlockEntity;
+import com.yu1745.chemicaladdon.reactor.PressureGaugePanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.SettlingBasinBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ThermometerBlockEntity;
@@ -60,6 +62,16 @@ public class AllBlockEntities {
 	public static final RegistryObject<BlockEntityType<ThermometerPanelBlockEntity>> THERMOMETER_PANEL =
 		REGISTER.register("thermometer_panel",
 			() -> BlockEntityType.Builder.of(ThermometerPanelBlockEntity::new, AllBlocks.THERMOMETER_PANEL.get())
+				.build(null));
+
+	public static final RegistryObject<BlockEntityType<PressureGaugeBlockEntity>> PRESSURE_GAUGE =
+		REGISTER.register("pressure_gauge",
+			() -> BlockEntityType.Builder.of(PressureGaugeBlockEntity::new, AllBlocks.PRESSURE_GAUGE.get())
+				.build(null));
+
+	public static final RegistryObject<BlockEntityType<PressureGaugePanelBlockEntity>> PRESSURE_GAUGE_PANEL =
+		REGISTER.register("pressure_gauge_panel",
+			() -> BlockEntityType.Builder.of(PressureGaugePanelBlockEntity::new, AllBlocks.PRESSURE_GAUGE_PANEL.get())
 				.build(null));
 
 	public static void register(IEventBus modEventBus) {
