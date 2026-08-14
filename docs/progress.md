@@ -1,6 +1,6 @@
 # 开发进度
 
-> 最后更新：2026-08（M0–M2 完成，规则引擎 v1 + v2 离子基底 S1–S3f + D18 互溶性分相 + D18.5 分液口/软管 + S02 温度计（双形态），63/63 GameTest 通过）
+> 最后更新：2026-08（M0–M2 完成，规则引擎 v1 + v2 离子基底 S1–S3f + D18 互溶性分相 + D18.5 分液口/软管 + S02 温度计（双形态），64/64 GameTest 通过）
 > 里程碑定义见 `plans/11-content-scope.md`；设计计划书主索引 `plans/README.md`。
 
 ## 状态总览
@@ -13,7 +13,7 @@
 | M2.5 | 釜可玩性改造：世界内交互基调落地（护目镜 HUD/诊断/槽位 GUI/成型反馈） | ✅ 完成 |
 | M3+ | 电解/索尔维/高压/零排放 | ⏳ 未开始 |
 
-**自动化测试**：`./gradlew runGameTestServer` → **63/63 通过**。
+**自动化测试**：`./gradlew runGameTestServer` → **64/64 通过**。
 
 ## 已完成明细
 
@@ -160,9 +160,10 @@
 - **两种形式**：①`ThermometerBlock`（方块，`extends ChemicalBrickBlock`）——可填入釜壳墙位（进 `vessel_walls` 标签），成型时像砖一样被绑定、代理 FLUID/ITEM、拆砖报破口，读**自己所在釜**的温度；②`ThermometerPanelBlock`（薄板，`DirectionalBlock`）——2px 厚贴墙仪表，读**贴附面后方**的砖/控制器/墙温度计（经 `IMasterBound`）。共享基类 `AbstractThermometerBlockEntity`。
 - **`IMasterBound` 接口**：把「绑定到多方块 master」从 `ChemicalBrickBlockEntity` 抽成接口（砖/玻璃/分液口/墙温度计都实现），装配绑定/解绑/拆砖报破口/软管寻釜统一走接口，墙温度计因此能作为一等壳块。
 - **护目镜 HUD**：温度（带热级配色）+ 报警阈值 + 报警/未连接状态（`IHaveGoggleInformation`）。
-- **世界内调阈值（缩放修复）**：`ScrollValueBehaviour` 阈值存**粗粒度单位**（25°C/格，0–40 格 = 0–1000°C，默认 400°C = 16 格）——原先 0–1000 逐度会让 Create 数值板 ~1400px 宽**溢出屏幕**（最左只能拉到 320°、最右 640°）；改粗步后数值板/世界内浮层都换算回 °C 显示，板子窄到能完整放下。
+- **世界内调阈值（缩放修复）**：`ScrollValueBehaviour` 阈值存**粗粒度单位**（2°C/格，0–500 格 = 0–1000°C，默认 400°C = 200 格，刻度每 100°C）——原先 0–1000 逐度会让 Create 数值板 ~1400px 宽**溢出屏幕**（最左只能拉到 320°、最右 640°）；改用 2°C 步后数值板 ~546px 宽、完整放下且刻度清晰，数值板/世界内浮层都换算回 °C 显示。
+- **读数服务端算、同步到客户端**：温度/连接状态由**服务端** `tick()` 求解（服务端有完整的砖 → master → 反应釜链），`attached`/`temperature` 入 NBT 同步；护目镜 HUD 直接读同步值，**不再客户端重新解析 master 链**——修复「薄板贴在壳砖上（而非控制器）时客户端判为未连接」的问题。
 - **红石**：比较器读模拟温度信号（0–1000°C → 0–15）；温度达阈值时输出强信号 15（报警）。
-- **GameTest（63/63）**：`thermometerPanelReadsReactorTemperature`（薄板读控制器 500°C、报警、强信号+比较器）、`wallThermometerReadsOwnReactor`（墙温度计作壳块：成型绑定、读自身釜温、代理 FLUID_HANDLER）。
+- **GameTest（64/64）**：`thermometerPanelReadsReactorTemperature`（薄板读控制器 500°C、报警、强信号+比较器）、`wallThermometerReadsOwnReactor`（墙温度计作壳块：成型绑定、读自身釜温、代理 FLUID_HANDLER）。
 - 这是 S02–S04/S11 贴面仪表族的第一个实例（且是双形态范本），S03 压力表 / S04 浓度计 / S11 液位计照此复制。
 
 ### 反应釜结构生命周期（自动扩展 / 破口分级洒漏 / 残液可见 / 缩小溢流）
@@ -184,7 +185,9 @@
 - **渲染**：物品+流体两个 pass 统一 `translate(0, -ringLayer, 0)` 从内腔底起绘，光照采样点同步下移到内腔中心；`ringLayer=0`（控制器在底层环）时行为不变。
 - **液面数学**：`getLiquidSurfaceY` 改为内腔底起算的世界 Y（空釜=内腔底、有液=底+绝对液面高×液相占比），分液软管跟踪恢复到真实表面。
 - **吸收轮询**：`absorbFromWorld` 的 y 范围从「控制器层 .. 高度+1」改为「内腔底 .. 顶沿+1」（`getRoofRelY()+1`），AABB 同步——控制器以下内腔层的流体/物品恢复吸收。
-- **GameTest +2（62/62）**：`reactorSurfaceMeasuredFromInteriorFloor`（控制器在中环：空釜液面=内腔底 y2 而非控制器 y3；半釜绝对液面 1.5 格 → 世界 3.5）、`openVesselAbsorbsFluidBelowControllerRing`（控制器以下内腔层/以上内腔层/顶沿三处倒入全部吸收）。
+- **GameTest +3（64/64）**：`reactorSurfaceMeasuredFromInteriorFloor`（控制器在中环：空釜液面=内腔底而非控制器层；半釜绝对液面 1.5 格 → 控制器+0.5）、`openVesselAbsorbsFluidBelowControllerRing`（控制器以下内腔层/以上内腔层/顶沿三处倒入全部吸收）、`decantHoseFindsVesselWithHighController`（实机抓到的回归：底砖绑定与软管查找，见下）。
+
+**实机回归（控制器抬高即软管失效）**：ringLayer 修复实测时发现 `bindBricks` 的绑定 y 范围写死了控制器在底层环（`-1..rings`，即底=`-1`、盖=`rings`）。控制器抬到第 k 环后底砖在 `-k-1`、盖在 `rings-k`：**底砖不被绑定** → 分液软管 `findReactorBelow` 沿开口内腔柱下扫、穿过未绑定底砖一路扫到釜底之下，永远找不到釜（软管不下垂）；同时范围上端越过真实顶盖一层，会把顶盖上方的游离砖错误绑定。修复：y 范围改 `-ringLayer-1 .. rings-ringLayer`（与 k 无关）；顺带 `clearShellMasters` 半径从只按底宽改为 `max(底宽, 环数)+1`（高瘦釜重绑/失效时够得到旧底旧盖，不再残留脏绑定）。
 
 ### 质量与工具
 - **GameTest 7/7**：成型/拒错/硫磺燃烧（含加热）/SO₂ 吸收/过滤/能力暴露/砖代理
@@ -219,6 +222,7 @@
 | 重建变小后釜永久 OUTPUT_FULL 卡死 | `setCapacity` 只改数值不裁剪内容，`total > capacity` 时 `canFitOutputs` 恒 false | 重建装配时按比例抽出超量走 `SpillLogic` 渐进溢出（漏点=新内腔顶中心），釜恢复可反应 |
 | 破坏/放回液面以上的墙砖时液面抽搐（总量明明不变） | `renderedLevel` 追的是**填充比例**，渲染高度=比例×内腔高：拆上方环砖釜缩层（高度/容量**瞬间**变）而总量不变 → 比例目标跳变，LerpedFloat 过渡帧渲染「旧比例×新高度」≠真实表面，液面先跌/先冲再回弹（Create FluidTank 追比例无此问题，因其几何永不变） | 改追**绝对液面高度**（fill×内腔高）：环数变化时目标恒为 `总量/(1000·(w−2)²)` 与高度无关，目标不动即零动画，只有真实进出料才缓动；渲染器/`getLiquidSurfaceY` 直接用绝对值；并按 FluidTank 模式首帧 `startWithValue` 定位真表面，消除区块加载从 0 升起的假动画 |
 | 控制器装在非底层环时：液面/漂浮物偏高 `ringLayer` 格、软管悬在真实液面之上、控制器以下内腔层倒入的水不被吸收 | 渲染/液面数学/吸收轮询三处都以控制器自身层为 y=0 基准，而内腔底在控制器下方 `ringLayer` 格（Tinkers 式任意环层装配） | 新增统一基准 `getInteriorBottomRelY()=-ringLayer`：渲染两 pass `translate` 下移到内腔底（光照采样同步）、`getLiquidSurfaceY` 内腔底起算世界 Y、`absorbFromWorld` 轮询范围改 `[内腔底, 顶沿+1]` |
+| 控制器抬高到非底层环后分液软管彻底不下垂（找不到釜） | `bindBricks` 绑定 y 范围写死 `-1..rings`（控制器在底层环的假设）：控制器在第 k 环时底砖在 `-k-1` 不被绑定，`findReactorBelow` 沿开口内腔柱下扫穿过未绑定底砖扫到釜底之下，永远找不到釜；上端还越过真实顶盖一层、错绑顶盖上方的游离砖 | y 范围改 `-ringLayer-1 .. rings-ringLayer`（与 k 无关）；`clearShellMasters` 半径改 `max(底宽, 环数)+1`（高瘦釜重绑/失效够得到旧底旧盖） |
 
 ## 待办 / 下一步
 
@@ -228,14 +232,14 @@
 4. **M4 旗舰**：索尔维制碱闭环（吸收塔氨盐水 → 碳化 → 煅烧 → 氨回收）
 5. **基础设施**：流体桶（S08）、GUI 美化、datagen 接入（配方/模型 provider）、Jade 集成（流体显示/温度/进度 tooltip）、JEI 配方展示
 6. **混合物流体系统（Mixture）**：✅ 互溶性（D18）已落地——`miscibilityGroup` 声明式溶剂族、按组合并、按密度分相抽出。**剩余**：液-液分离手段见新增 **D18.5 分液软管** 条目；给 M9 加「不互溶共管=混液炸管」的输送约束
-7. **已知限制**：沉淀池/过滤机无 GUI；方块纹理为程序生成色块；砖无连接纹理（多变体方案待做）；底面尺寸固定 3×3（参数化待做）；压力/相态/催化未实现（计划 M3+）；分相抽出目前只有底口重相（D18 `drain(int)`），轻相需 D18.5 分液软管
+7. **已知限制**：沉淀池/过滤机无 GUI；方块纹理为程序生成色块；砖无连接纹理（多变体方案待做）；压力/相态/催化未实现（计划 M3+）。（底面尺寸已参数化为任意 W×W×H 3..7；轻相抽出已由 D18.5 分液软管落地）
 8. **D18.5 分液（分液口 + 软管滑轮）**：✅ **已实现**——`decant_port`（壁块，只抽最重相，锁相）+ `decant_hose`（Create 软管滑轮装**开口釜上方** → Forge `EntityPlaceEvent` 转化为分液软管；`FLUID_HANDLER` 只抽最轻相/锁相，扳手切「只抽上层/全部抽」，敲掉/中键掉回原版 `create:hose_pulley`）。**视觉已实现**：`DecantHoseRenderer` 照抄 Create `AbstractPulleyRenderer`（coil 滚动 + 下垂 rope + magnet，复用 Create 的 hose_pulley 部分模型与 `HOSE_PULLEY_COIL` sprite shift），块体直接引用 `create:block/hose_pulley/block` 模型（占位贴图废弃）；软管 `offset`（BE 内 `LerpedFloat`，客户端 tick 用 `Chaser.EXP` 缓动追 `ReactorControllerBlockEntity.getLiquidSurfaceY`）从 0 **慢慢下放**到液面、液面升降自动跟随、无手动收放；转化瞬间播**铁砧放置音**（`SoundEvents.ANVIL_PLACE`）提示。**剩余**：Ponder 提示。详见 plans/05 §M7。
 
 ## 常用命令
 
 ```bash
 ./gradlew build              # 构建
-./gradlew runGameTestServer  # 41/41 自动化测试
+./gradlew runGameTestServer  # 64/64 自动化测试
 ./run-server.sh              # 服务端冒烟（自动关闭）
 ./gradlew runClient          # 客户端（自动进 "New World"，-PquickPlayWorld= 覆盖）
 python3 tools/gen_species.py # 改物种后重新生成资源/注册代码

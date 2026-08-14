@@ -16,6 +16,7 @@ import com.simibubi.create.foundation.blockEntity.behaviour.scrollValue.ScrollVa
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.BlockGetter;
@@ -30,23 +31,29 @@ import net.minecraft.world.phys.BlockHitResult;
  * a world-in alarm threshold (scrollable, no GUI), the temperature reading, the
  * alarm state, the goggles HUD and the redstone signal helpers.
  *
+ * <p>The reading is computed <b>server-side</b> (where the full brick → master →
+ * reactor chain is available) and the {@code attached}/{@code temperature} fields
+ * are synced to the client, so the goggles HUD never has to re-resolve the master
+ * chain client-side (which broke when the panel was mounted on a shell brick).
+ *
  * <p>The alarm threshold is stored in <b>coarse units</b> ({@link #THRESHOLD_STEP} °C
- * each) so the Create value-settings board stays small enough to fit on screen —
- * a 0–1000°C range with 1° steps would build a ~1400px-wide board that overflows
- * the viewport. The board and the in-world value box both re-scale the raw unit
- * back to °C for display.
+ * each) so the Create value-settings board stays small enough to fit on screen — a
+ * 0–1000°C range with 1° steps builds a ~1400px-wide board that overflows the
+ * viewport. The board and the in-world value box both re-scale the raw unit back
+ * to °C for display.
  */
 public abstract class AbstractThermometerBlockEntity extends SmartBlockEntity implements IHaveGoggleInformation {
 
 	public static final int AMBIENT_TEMP = 20;
-	public static final int THRESHOLD_STEP = 25;          // °C per scroll unit
-	public static final int THRESHOLD_MAX_STEPS = 40;     // 1000°C / 25
-	public static final int THRESHOLD_MILESTONE = 4;      // a tick every 100°C on the board
-	public static final int DEFAULT_THRESHOLD_STEPS = 16; // 400°C (Create HEATED tier)
+	public static final int THRESHOLD_STEP = 2;            // °C per scroll unit
+	public static final int THRESHOLD_MAX_STEPS = 500;     // 1000°C / 2
+	public static final int THRESHOLD_MILESTONE = 50;      // a tick every 100°C on the board
+	public static final int DEFAULT_THRESHOLD_STEPS = 200; // 400°C (Create HEATED tier)
 
 	protected ScrollValueBehaviour threshold;
+	private boolean attached = false;
 	private int temperature = AMBIENT_TEMP;
-	private boolean alarm = false;
+	private boolean lastAlarm = false; // server-side, redstone transition tracking
 
 	protected AbstractThermometerBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
 		super(type, pos, state);
@@ -58,7 +65,7 @@ public abstract class AbstractThermometerBlockEntity extends SmartBlockEntity im
 		threshold = new ScrollValueBehaviour(Component.translatable("thermometer.chemicaladdon.threshold"), this, slot) {
 			@Override
 			public ValueSettingsBoard createBoard(Player player, BlockHitResult hitResult) {
-				// show °C (rescaled) on the board instead of the raw 0..40 unit index
+				// show °C (rescaled) on the board instead of the raw 0..500 unit index
 				return new ValueSettingsBoard(label, THRESHOLD_MAX_STEPS, THRESHOLD_MILESTONE,
 					ImmutableList.of(Component.literal("°C")),
 					new ValueSettingsFormatter(v -> Component.literal((v.value() * THRESHOLD_STEP) + "°C")));
@@ -73,7 +80,7 @@ public abstract class AbstractThermometerBlockEntity extends SmartBlockEntity im
 	/** On which face(s) the scroll value box appears (form-specific). */
 	protected abstract boolean isValueBoxSide(BlockState state, Direction side);
 
-	/** The reactor this thermometer reads, or null when not attached to one. */
+	/** The reactor this thermometer reads, or null when not attached to one (server-side). */
 	@Nullable
 	protected abstract ReactorControllerBlockEntity findReactor();
 
@@ -89,24 +96,45 @@ public abstract class AbstractThermometerBlockEntity extends SmartBlockEntity im
 
 	/** true when the vessel is hot enough to trip the alarm (temperature ≥ threshold). */
 	public boolean isAlarm() {
-		return alarm;
+		return attached && temperature >= getThreshold();
 	}
 
 	@Override
 	public void tick() {
 		super.tick();
-		if (level == null) {
-			return;
+		if (level == null || level.isClientSide) {
+			return; // reading is server-side only; the client gets it via write/read
 		}
 		ReactorControllerBlockEntity reactor = findReactor();
-		temperature = reactor != null ? reactor.getTemperature() : AMBIENT_TEMP;
-		boolean newAlarm = reactor != null && temperature >= getThreshold();
-		if (newAlarm != alarm) {
-			alarm = newAlarm;
-			if (!level.isClientSide) {
-				level.updateNeighborsAt(worldPosition, getBlockState().getBlock());
-			}
+		boolean newAttached = reactor != null;
+		int newTemp = newAttached ? reactor.getTemperature() : AMBIENT_TEMP;
+		boolean changed = newAttached != attached || newTemp != temperature;
+		attached = newAttached;
+		temperature = newTemp;
+
+		boolean newAlarm = isAlarm();
+		if (newAlarm != lastAlarm) {
+			lastAlarm = newAlarm;
+			level.updateNeighborsAt(worldPosition, getBlockState().getBlock());
 		}
+		if (changed) {
+			setChanged();
+			sendData();
+		}
+	}
+
+	@Override
+	protected void write(CompoundTag tag, boolean clientPacket) {
+		super.write(tag, clientPacket);
+		tag.putBoolean("attached", attached);
+		tag.putInt("temperature", temperature);
+	}
+
+	@Override
+	protected void read(CompoundTag tag, boolean clientPacket) {
+		super.read(tag, clientPacket);
+		attached = tag.getBoolean("attached");
+		temperature = tag.contains("temperature") ? tag.getInt("temperature") : AMBIENT_TEMP;
 	}
 
 	@Override
@@ -123,11 +151,11 @@ public abstract class AbstractThermometerBlockEntity extends SmartBlockEntity im
 			.append(Component.translatable("goggles.chemicaladdon.thermometer_threshold", getThreshold()))
 			.withStyle(ChatFormatting.GRAY));
 
-		if (findReactor() == null) {
+		if (!attached) {
 			tooltip.add(Component.literal(spacing)
 				.append(Component.translatable("goggles.chemicaladdon.thermometer_no_vessel"))
 				.withStyle(ChatFormatting.RED));
-		} else if (alarm) {
+		} else if (isAlarm()) {
 			tooltip.add(Component.literal(spacing)
 				.append(Component.translatable("goggles.chemicaladdon.thermometer_alarm"))
 				.withStyle(ChatFormatting.RED));

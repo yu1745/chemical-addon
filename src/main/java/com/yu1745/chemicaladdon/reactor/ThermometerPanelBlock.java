@@ -30,13 +30,14 @@ import net.minecraft.world.phys.shapes.VoxelShape;
  */
 public class ThermometerPanelBlock extends DirectionalBlock implements EntityBlock {
 
+	// The plate sits flush against the wall it is mounted on (FACING.getOpposite()).
 	private static final Map<Direction, VoxelShape> SHAPES = Map.of(
-		Direction.NORTH, box(0, 0, 0, 16, 16, 2),
-		Direction.SOUTH, box(0, 0, 14, 16, 16, 16),
-		Direction.WEST, box(0, 0, 0, 2, 16, 16),
-		Direction.EAST, box(14, 0, 0, 16, 16, 16),
-		Direction.DOWN, box(0, 0, 0, 16, 2, 16),
-		Direction.UP, box(0, 14, 0, 16, 16, 16));
+		Direction.NORTH, box(0, 0, 14, 16, 16, 16), // wall to the south
+		Direction.SOUTH, box(0, 0, 0, 16, 16, 2),   // wall to the north
+		Direction.WEST, box(14, 0, 0, 16, 16, 16),  // wall to the east
+		Direction.EAST, box(0, 0, 0, 2, 16, 16),    // wall to the west
+		Direction.DOWN, box(0, 14, 0, 16, 16, 16),  // wall above
+		Direction.UP, box(0, 0, 0, 16, 2, 16));     // wall below
 
 	public ThermometerPanelBlock(Properties properties) {
 		super(properties);

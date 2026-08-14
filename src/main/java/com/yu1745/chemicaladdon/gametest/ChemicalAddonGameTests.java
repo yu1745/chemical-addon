@@ -10,6 +10,8 @@ import com.yu1745.chemicaladdon.fluid.FluidColors;
 import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.fluid.Temperature;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlock;
+import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlockEntity;
+import com.yu1745.chemicaladdon.reactor.DecantHoseBlockEntity;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlock;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlockEntity;
@@ -653,6 +655,33 @@ public class ChemicalAddonGameTests {
 	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void decantHoseFindsVesselWithHighController(GameTestHelper helper) {
+		// Regression (live-caught): bindBricks' y-range hard-coded the controller on
+		// the BOTTOM ring (floor at controller-relative -1). With the controller one
+		// ring up, the floor bricks (-2) were left UNBOUND — the decant hose scan
+		// (findReactorBelow) drops down the open interior column, falls through the
+		// unbound floor and never finds the vessel, so the hose never lowers to the
+		// liquid surface. The floor must be bound on every ring layer.
+		ReactorControllerBlockEntity be = buildReactor3x3x5HighController(helper);
+		helper.assertTrue(be.isOpen(), "open vessel should assemble");
+
+		// the floor brick under the interior column must point at the controller
+		helper.assertTrue(helper.getBlockEntity(new BlockPos(2, 1, 2)) instanceof ChemicalBrickBlockEntity floor
+			&& be.getBlockPos().equals(floor.getMasterPos()),
+			"the interior floor brick must be bound to the controller");
+
+		// and a hose scanning from directly above the open top finds the vessel
+		// through the interior column + bound floor (returns the SAME controller).
+		// NB: absolutePos — the static scan runs against the raw level (GameTest
+		// rel coords are structure-local).
+		BlockPos hosePos = helper.absolutePos(new BlockPos(2, 5, 2)); // one above the open rim
+		ReactorControllerBlockEntity found = DecantHoseBlockEntity.findReactorBelow(helper.getLevel(), hosePos);
+		helper.assertTrue(found == be,
+			"the decant hose scan must find the vessel below a high-mounted controller");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void reactorControllerBreakSpillsAll(GameTestHelper helper) {
 		// §B hard rule: breaking the controller destroys the NBT that would hold a
 		// retained remainder -> fall back to a full physical spill (no silent loss)
@@ -1034,9 +1063,10 @@ public class ChemicalAddonGameTests {
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void thermometerPanelReadsReactorTemperature(GameTestHelper helper) {
-		// S02 thermometer (薄板): mounted on the controller's face it reads the vessel
-		// temperature, and trips the redstone alarm once the temperature reaches the
-		// threshold (default 400°C). Comparator reads a temperature-proportional signal.
+		// S02 thermometer (薄板): mounted on a SHELL BRICK it reads the vessel
+		// temperature through the brick's master pointer, and trips the redstone alarm
+		// once the temperature reaches the threshold (default 400°C). Comparator reads
+		// a temperature-proportional signal.
 		buildReactor(helper);
 		ReactorControllerBlockEntity reactor = reactor(helper);
 
@@ -1045,20 +1075,22 @@ public class ChemicalAddonGameTests {
 		reactor.getTank().collapseIfNeeded();
 		Temperature.set(reactor.getTank().getFluids().get(0), 500);
 
+		// mounted on the north-west wall brick at (1,2,1) — behind it is the brick,
+		// not the controller, so the read goes panel -> brick.getValidMaster -> reactor
 		BlockState thermometer = AllBlocks.THERMOMETER_PANEL.get().defaultBlockState()
-			.setValue(BlockStateProperties.FACING, Direction.NORTH); // mounted on the controller at (2,2,1)
-		helper.setBlock(new BlockPos(2, 2, 0), thermometer);
-		ThermometerPanelBlockEntity be = (ThermometerPanelBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 0));
+			.setValue(BlockStateProperties.FACING, Direction.NORTH);
+		helper.setBlock(new BlockPos(1, 2, 0), thermometer);
+		ThermometerPanelBlockEntity be = (ThermometerPanelBlockEntity) helper.getBlockEntity(new BlockPos(1, 2, 0));
 		helper.assertTrue(be != null, "thermometer panel should have a block entity");
 		be.tick();
 		helper.assertTrue(be.getTemperature() == 500,
-			"thermometer must read the vessel temperature (got " + be.getTemperature() + ")");
+			"panel must read the vessel through the shell brick (got " + be.getTemperature() + ")");
 		helper.assertTrue(be.isAlarm(), "500°C must trip the default 400°C alarm threshold");
 
 		// strong redstone on alarm; comparator signal proportional to temperature.
 		// (getSignal/getAnalogOutputSignal take the ABSOLUTE pos; the helper's
 		// getBlockState is relative-aware but getLevel().getBlockState is not.)
-		BlockPos thermoPos = new BlockPos(2, 2, 0);
+		BlockPos thermoPos = new BlockPos(1, 2, 0);
 		BlockPos abs = helper.absolutePos(thermoPos);
 		BlockState thermoState = helper.getBlockState(thermoPos);
 		helper.assertTrue(thermoState.getSignal(helper.getLevel(), abs, Direction.NORTH) == 15,
