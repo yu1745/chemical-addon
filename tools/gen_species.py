@@ -76,7 +76,7 @@ SOLIDS = [
 # (id, cn, en, color)
 BLOCKS = [
     ("chemical_brick",    "化工砖", "Chemical Brick",    0x8E8478),
-    ("decant_port",       "分液口", "Decant Port",       0x9A7048),
+    ("decant_port",       "分液口", "Decant Port",       0x8E8478),
     ("reactor_controller", "反应釜控制器", "Reactor Controller", 0x6E6E6E),
     ("filter_press",      "过滤机", "Filter Press",      0x7A7A8A),
     ("settling_basin",    "沉淀池控制器", "Settling Basin", 0x5E6E7A),
@@ -413,6 +413,36 @@ def make_brick_texture(rgb):
     return rows
 
 
+def make_decant_port_texture(rgb):
+    """Decant port: a brick wall face with a central pipe fitting — a dark
+    circular bore ringed by a metallic flange (and an outer seam), so the block
+    reads as a drain tap on the vessel shell rather than a plain brick."""
+    r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
+    rows = []
+    for y in range(16):
+        row = []
+        for x in range(16):
+            dx = x - 7.5
+            dy = y - 7.5
+            d2 = dx * dx + dy * dy
+            if d2 <= 10.0:
+                row += [24, 26, 30, 255]    # bore (dark opening)
+            elif d2 <= 20.0:
+                row += [118, 124, 134, 255]  # flange (metallic ring)
+            elif d2 <= 28.0:
+                row += [78, 82, 90, 255]     # flange outer seam
+            else:
+                mortar_y = (y % 8) == 7
+                offset = 4 if (y // 8) % 2 else 0
+                mortar = mortar_y or (x + offset) % 8 == 7
+                if mortar:
+                    row += [int(r * 0.55), int(g * 0.55), int(b * 0.55), 255]
+                else:
+                    row += [r, g, b, 255]
+        rows.append(row)
+    return rows
+
+
 def make_panel_texture(rgb):
     """Machine panel: metal base, dark display strip, status lamp."""
     r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
@@ -446,7 +476,7 @@ def gen_block_textures():
     d = os.path.join(ASSETS, "textures/block")
     os.makedirs(d, exist_ok=True)
     write_png(os.path.join(d, "chemical_brick.png"), make_brick_texture(0x8E8478))
-    write_png(os.path.join(d, "decant_port.png"), make_brick_texture(0x9A7048))
+    write_png(os.path.join(d, "decant_port.png"), make_decant_port_texture(0x8E8478))
     write_png(os.path.join(d, "reactor_controller.png"), make_panel_texture(0x6E6E6E))
     write_png(os.path.join(d, "reactor_controller_open.png"), make_open_panel_texture(0x6E6E6E))
     write_png(os.path.join(d, "filter_press.png"), make_panel_texture(0x7A7A8A))
