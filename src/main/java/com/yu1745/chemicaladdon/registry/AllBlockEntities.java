@@ -7,6 +7,7 @@ import com.yu1745.chemicaladdon.reactor.DecantPortBlockEntity;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.SettlingBasinBlockEntity;
+import com.yu1745.chemicaladdon.reactor.ThermometerBlockEntity;
 
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -48,6 +49,11 @@ public class AllBlockEntities {
 	public static final RegistryObject<BlockEntityType<SettlingBasinBlockEntity>> SETTLING_BASIN =
 		REGISTER.register("settling_basin",
 			() -> BlockEntityType.Builder.of(SettlingBasinBlockEntity::new, AllBlocks.SETTLING_BASIN.get())
+				.build(null));
+
+	public static final RegistryObject<BlockEntityType<ThermometerBlockEntity>> THERMOMETER =
+		REGISTER.register("thermometer",
+			() -> BlockEntityType.Builder.of(ThermometerBlockEntity::new, AllBlocks.THERMOMETER.get())
 				.build(null));
 
 	public static void register(IEventBus modEventBus) {

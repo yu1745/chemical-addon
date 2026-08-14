@@ -16,6 +16,7 @@ import com.yu1745.chemicaladdon.reactor.ReactorControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ReactorTank;
 import com.yu1745.chemicaladdon.reactor.RulesEngine;
 import com.yu1745.chemicaladdon.reactor.SpillLogic;
+import com.yu1745.chemicaladdon.reactor.ThermometerBlockEntity;
 import com.yu1745.chemicaladdon.registry.AllBlocks;
 import com.yu1745.chemicaladdon.registry.AllContainers;
 import com.yu1745.chemicaladdon.registry.AllFluids;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.resources.ResourceLocation;
@@ -34,6 +36,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraftforge.event.RegisterGameTestsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -697,6 +700,42 @@ public class ChemicalAddonGameTests {
 		FluidStack drained = handler.drain(100, FluidAction.EXECUTE);
 		helper.assertTrue(drained.getFluid() == AllFluids.THERMAL_OIL.get().getSource(),
 			"the hose must still drain the lighter oil first after a reverse fill");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void thermometerReadsReactorTemperature(GameTestHelper helper) {
+		// S02 thermometer: mounted on the controller's face it reads the vessel
+		// temperature, and trips the redstone alarm once the temperature reaches the
+		// threshold (default 400°C). Comparator reads a temperature-proportional signal.
+		buildReactor(helper);
+		ReactorControllerBlockEntity reactor = reactor(helper);
+
+		// fill + fix the temperature so the reading is deterministic
+		reactor.getTank().fill(new FluidStack(Fluids.WATER, 1000), FluidAction.EXECUTE);
+		reactor.getTank().collapseIfNeeded();
+		Temperature.set(reactor.getTank().getFluids().get(0), 500);
+
+		BlockState thermometer = AllBlocks.THERMOMETER.get().defaultBlockState()
+			.setValue(BlockStateProperties.FACING, Direction.NORTH); // mounted on the controller at (2,2,1)
+		helper.setBlock(new BlockPos(2, 2, 0), thermometer);
+		ThermometerBlockEntity be = (ThermometerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 0));
+		helper.assertTrue(be != null, "thermometer should have a block entity");
+		be.tick();
+		helper.assertTrue(be.getTemperature() == 500,
+			"thermometer must read the vessel temperature (got " + be.getTemperature() + ")");
+		helper.assertTrue(be.isAlarm(), "500°C must trip the default 400°C alarm threshold");
+
+		// strong redstone on alarm; comparator signal proportional to temperature.
+		// (getSignal/getAnalogOutputSignal take the ABSOLUTE pos; the helper's
+		// getBlockState is relative-aware but getLevel().getBlockState is not.)
+		BlockPos thermoPos = new BlockPos(2, 2, 0);
+		BlockPos abs = helper.absolutePos(thermoPos);
+		BlockState thermoState = helper.getBlockState(thermoPos);
+		helper.assertTrue(thermoState.getSignal(helper.getLevel(), abs, Direction.NORTH) == 15,
+			"the alarm must emit a strong redstone signal");
+		helper.assertTrue(thermoState.getAnalogOutputSignal(helper.getLevel(), abs) == 7,
+			"comparator signal should be 500°C/1000°C * 15 = 7");
 		helper.succeed();
 	}
 

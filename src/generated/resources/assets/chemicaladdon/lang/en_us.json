@@ -50,6 +50,7 @@
   "block.chemicaladdon.sulfur_dioxide": "Sulfur Dioxide",
   "block.chemicaladdon.sulfur_trioxide": "Sulfur Trioxide",
   "block.chemicaladdon.thermal_oil": "Thermal Oil",
+  "block.chemicaladdon.thermometer": "Thermometer",
   "block.chemicaladdon.water": "Water",
   "fluid.chemicaladdon.air": "Air",
   "fluid.chemicaladdon.ammonia": "Ammonia",
@@ -97,6 +98,9 @@
   "goggles.chemicaladdon.progress": "Progress: %s%% (%s)",
   "goggles.chemicaladdon.status": "Status:",
   "goggles.chemicaladdon.temperature": "Temperature: %s°C",
+  "goggles.chemicaladdon.thermometer_alarm": "ALARM",
+  "goggles.chemicaladdon.thermometer_no_vessel": "Not attached to a reactor",
+  "goggles.chemicaladdon.thermometer_threshold": "Threshold: %s°C",
   "gui.chemicaladdon.hint": "Wear engineer goggles to see reactor state",
   "item.chemicaladdon.air_bucket": "Air Bucket",
   "item.chemicaladdon.alumina": "Alumina",
@@ -159,5 +163,6 @@
   "status.chemicaladdon.not_assembled": "Not assembled",
   "status.chemicaladdon.output_full": "Output full",
   "status.chemicaladdon.reacting": "Reacting",
-  "status.chemicaladdon.temperature": "Temperature not met"
+  "status.chemicaladdon.temperature": "Temperature not met",
+  "thermometer.chemicaladdon.threshold": "Alarm Threshold"
 }

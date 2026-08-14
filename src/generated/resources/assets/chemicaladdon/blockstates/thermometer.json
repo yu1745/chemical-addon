@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "facing=north": { "model": "chemicaladdon:block/thermometer" },
+    "facing=south": { "model": "chemicaladdon:block/thermometer" },
+    "facing=east": { "model": "chemicaladdon:block/thermometer" },
+    "facing=west": { "model": "chemicaladdon:block/thermometer" },
+    "facing=up": { "model": "chemicaladdon:block/thermometer" },
+    "facing=down": { "model": "chemicaladdon:block/thermometer" }
+  }
+}

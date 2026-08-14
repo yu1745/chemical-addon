@@ -82,6 +82,7 @@ BLOCKS = [
     ("filter_press",      "过滤机", "Filter Press",      0x7A7A8A),
     ("settling_basin",    "沉淀池控制器", "Settling Basin", 0x5E6E7A),
     ("electrolyzer",      "电解槽", "Electrolyzer",     0x5E7A8A),
+    ("thermometer",       "温度计", "Thermometer",      0x5A5A62),
 ]
 
 # Solution modes ("species = mode", plans/03 §4): NOT registered fluids — only a
@@ -473,6 +474,30 @@ def make_open_panel_texture(rgb):
     return rows
 
 
+def make_thermometer_texture(rgb):
+    """Thermometer dial: a light circular gauge face with a red needle and a
+    dark tick ring, on a metallic panel."""
+    r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
+    rows = []
+    for y in range(16):
+        row = []
+        for x in range(16):
+            dx = x - 7.5
+            dy = y - 7.5
+            d2 = dx * dx + dy * dy
+            if abs(dx) <= 0.6 and -5.0 <= dy <= 0.5:
+                row += [196, 44, 44, 255]          # red needle (centre, pointing up)
+            elif d2 <= 6.5 * 6.5:
+                if d2 >= 4.5 * 4.5:
+                    row += [40, 42, 48, 255]       # tick ring (rim)
+                else:
+                    row += [236, 238, 242, 255]    # dial face
+            else:
+                row += [int(r * 0.75), int(g * 0.75), int(b * 0.75), 255]  # panel
+        rows.append(row)
+    return rows
+
+
 def gen_block_textures():
     d = os.path.join(ASSETS, "textures/block")
     os.makedirs(d, exist_ok=True)
@@ -483,6 +508,7 @@ def gen_block_textures():
     write_png(os.path.join(d, "filter_press.png"), make_panel_texture(0x7A7A8A))
     write_png(os.path.join(d, "settling_basin.png"), make_panel_texture(0x5E6E7A))
     write_png(os.path.join(d, "electrolyzer.png"), make_panel_texture(0x5E7A8A))
+    write_png(os.path.join(d, "thermometer.png"), make_thermometer_texture(0x5A5A62))
 
 
 # Extra lang keys added by hand (GUIs, goggles, diagnostics, assemble messages).
@@ -500,6 +526,10 @@ EXTRA_LANG_ZH = {
     "goggles.chemicaladdon.items": "物品：",
     "goggles.chemicaladdon.progress": "进度：%s%%（%s）",
     "goggles.chemicaladdon.status": "状态：",
+    "goggles.chemicaladdon.thermometer_threshold": "报警阈值：%s°C",
+    "goggles.chemicaladdon.thermometer_alarm": "报警：超温",
+    "goggles.chemicaladdon.thermometer_no_vessel": "未连接反应釜",
+    "thermometer.chemicaladdon.threshold": "报警阈值",
     "status.chemicaladdon.not_assembled": "未成型",
     "status.chemicaladdon.reacting": "反应中",
     "status.chemicaladdon.temperature": "温度不满足",
@@ -532,6 +562,10 @@ EXTRA_LANG_EN = {
     "goggles.chemicaladdon.items": "Items:",
     "goggles.chemicaladdon.progress": "Progress: %s%% (%s)",
     "goggles.chemicaladdon.status": "Status:",
+    "goggles.chemicaladdon.thermometer_threshold": "Threshold: %s°C",
+    "goggles.chemicaladdon.thermometer_alarm": "ALARM",
+    "goggles.chemicaladdon.thermometer_no_vessel": "Not attached to a reactor",
+    "thermometer.chemicaladdon.threshold": "Alarm Threshold",
     "status.chemicaladdon.not_assembled": "Not assembled",
     "status.chemicaladdon.reacting": "Reacting",
     "status.chemicaladdon.temperature": "Temperature not met",

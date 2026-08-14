@@ -10,6 +10,7 @@ import com.yu1745.chemicaladdon.reactor.DecantPortBlock;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlock;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlock;
 import com.yu1745.chemicaladdon.reactor.SettlingBasinBlockEntity.SettlingBasinBlock;
+import com.yu1745.chemicaladdon.reactor.ThermometerBlock;
 
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
@@ -88,6 +89,16 @@ public class AllBlocks {
 		REGISTRATE.block("settling_basin", SettlingBasinBlock::new)
 			.properties(p -> p.mapColor(MapColor.METAL).strength(3.0f, 6.0f))
 			.lang("Settling Basin")
+			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
+				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
+			.simpleItem()
+			.register();
+
+	/** S02 thermometer (温度计): face-mounted temperature gauge reading the reactor it is attached to. */
+	public static final BlockEntry<ThermometerBlock> THERMOMETER =
+		REGISTRATE.block("thermometer", ThermometerBlock::new)
+			.properties(p -> p.mapColor(MapColor.METAL).strength(1.5f, 4.0f))
+			.lang("Thermometer")
 			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
 				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
 			.simpleItem()

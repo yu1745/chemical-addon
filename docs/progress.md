@@ -1,6 +1,6 @@
 # 开发进度
 
-> 最后更新：2026-08（M0–M2 完成，规则引擎 v1 + v2 离子基底 S1–S3f + D18 互溶性分相 + D18.5 分液口/软管，49/49 GameTest 通过）
+> 最后更新：2026-08（M0–M2 完成，规则引擎 v1 + v2 离子基底 S1–S3f + D18 互溶性分相 + D18.5 分液口/软管 + S02 温度计，51/51 GameTest 通过）
 > 里程碑定义见 `plans/11-content-scope.md`；设计计划书主索引 `plans/README.md`。
 
 ## 状态总览
@@ -13,7 +13,7 @@
 | M2.5 | 釜可玩性改造：世界内交互基调落地（护目镜 HUD/诊断/槽位 GUI/成型反馈） | ✅ 完成 |
 | M3+ | 电解/索尔维/高压/零排放 | ⏳ 未开始 |
 
-**自动化测试**：`./gradlew runGameTestServer` → **49/49 通过**。
+**自动化测试**：`./gradlew runGameTestServer` → **51/51 通过**。
 
 ## 已完成明细
 
@@ -155,6 +155,15 @@
 - **渲染**：气体相独立后，renderer 的「气体挂顶」分支（`isLighterThanAir`）成为活代码。
 - **GameTest +3（45/45）**：新增 `immiscibleLiquidsStaySeparate`/`drainPullsDenserPhaseFirst`/`gasStaysSeparateFromLiquid`/`miscibleAqueousMerge`；3 个旧 water+oil「混合物」测试改写为离子混合物。
 
+### S02 · 温度计（贴面仪表，世界内化）
+
+- **方块/实体**：`ThermometerBlock`（`DirectionalBlock`，`FACING` 指向玩家、釜在 `FACING.getOpposite()`）+ `ThermometerBlockEntity`（`SmartBlockEntity`，读身后的砖/控制器 → `ReactorControllerBlockEntity.getTemperature()`）。
+- **护目镜 HUD**：温度 + 报警阈值 + 报警/未连接状态（`IHaveGoggleInformation`）。
+- **世界内调阈值**：`ScrollValueBehaviour`（对准表盘滚动调 0–1000°C，默认 400°C=HEATED，`CenteredSideValueBoxTransform` 定位在正面）——零 GUI。
+- **红石**：比较器读模拟温度信号（0–1000°C → 0–15）；温度达阈值时输出强信号 15（报警）。
+- **GameTest +1（51/51）**：`thermometerReadsReactorTemperature`（读温度 500°C、触发报警、强信号 + 比较器信号）。
+- 这是 S02–S04/S11 贴面仪表族的第一个实例，S03 压力表 / S04 浓度计 / S11 液位计照此模式复制。
+
 ### 质量与工具
 - **GameTest 7/7**：成型/拒错/硫磺燃烧（含加热）/SO₂ 吸收/过滤/能力暴露/砖代理
 - **run-server.sh**：冒烟脚本（透传输出、纯 PID 三级关闭、启动前截断日志防假阳性）
@@ -188,7 +197,7 @@
 ## 待办 / 下一步
 
 1. **客户端实机验证**（用户）：护目镜 HUD 显示、釜内物品渲染（开口釜）、成型失败提示、开口/闭口切换、quickPlay 自动进档
-2. **贴面仪表**：S02 温度计（Gauge 模式：贴面连接釜、温度/热级/红石阈值输出）——釜状态世界内化的下一步
+2. **贴面仪表**：✅ S02 温度计已落地（贴面连接釜、温度/红石阈值输出、世界内滚阈值）——剩余 S03 压力表 / S04 浓度计 / S11 液位计（照 S02 模式复制）
 3. **M3**：电解槽（FE）、吸收塔（塔式实例）、换热器、压缩机——氯碱 + 硫酸厂。电解槽拟要求**去离子水（纯净水）**投料（避免杂质副反应）；纯净水是**未来新物质**，判定在「浓度/杂质」层（非再注册一个 H₂O 流体物种），届时再落地
 4. **M4 旗舰**：索尔维制碱闭环（吸收塔氨盐水 → 碳化 → 煅烧 → 氨回收）
 5. **基础设施**：流体桶（S08）、GUI 美化、datagen 接入（配方/模型 provider）、Jade 集成（流体显示/温度/进度 tooltip）、JEI 配方展示
