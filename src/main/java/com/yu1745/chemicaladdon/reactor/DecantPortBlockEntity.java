@@ -4,6 +4,7 @@ import javax.annotation.Nullable;
 
 import com.yu1745.chemicaladdon.fluid.Miscibility;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
+import com.yu1745.chemicaladdon.vessel.VesselBlockEntity;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -76,16 +77,16 @@ public class DecantPortBlockEntity extends ChemicalBrickBlockEntity {
 	}
 
 	@Nullable
-	private ReactorTank reactorTank() {
+	private ReactorTank vesselTank() {
 		BlockEntity master = getValidMaster();
-		return master instanceof ReactorControllerBlockEntity reactor ? reactor.getTank() : null;
+		return master instanceof VesselBlockEntity vessel ? vessel.getTank() : null;
 	}
 
 	private void ensureLatched() {
 		if (!latched.isEmpty()) {
 			return;
 		}
-		ReactorTank tank = reactorTank();
+		ReactorTank tank = vesselTank();
 		if (tank == null) {
 			return;
 		}
@@ -115,7 +116,7 @@ public class DecantPortBlockEntity extends ChemicalBrickBlockEntity {
 
 		@Override
 		public FluidStack getFluidInTank(int tank) {
-			ReactorTank t = reactorTank();
+			ReactorTank t = vesselTank();
 			if (t == null) {
 				return FluidStack.EMPTY;
 			}
@@ -132,7 +133,7 @@ public class DecantPortBlockEntity extends ChemicalBrickBlockEntity {
 
 		@Override
 		public int getTankCapacity(int tank) {
-			ReactorTank t = reactorTank();
+			ReactorTank t = vesselTank();
 			return t == null ? 0 : t.getTankCapacity(0);
 		}
 
@@ -152,7 +153,7 @@ public class DecantPortBlockEntity extends ChemicalBrickBlockEntity {
 			if (latched.isEmpty() || !latched.isFluidEqual(resource)) {
 				return FluidStack.EMPTY;
 			}
-			ReactorTank t = reactorTank();
+			ReactorTank t = vesselTank();
 			return t == null ? FluidStack.EMPTY : t.drain(resource, action);
 		}
 
@@ -162,7 +163,7 @@ public class DecantPortBlockEntity extends ChemicalBrickBlockEntity {
 			if (latched.isEmpty()) {
 				return FluidStack.EMPTY;
 			}
-			ReactorTank t = reactorTank();
+			ReactorTank t = vesselTank();
 			if (t == null) {
 				return FluidStack.EMPTY;
 			}

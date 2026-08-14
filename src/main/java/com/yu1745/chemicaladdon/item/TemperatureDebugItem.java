@@ -1,6 +1,6 @@
 package com.yu1745.chemicaladdon.item;
 
-import com.yu1745.chemicaladdon.reactor.IMasterBound;
+import com.yu1745.chemicaladdon.vessel.IMasterBound;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlockEntity;
 
 import net.minecraft.core.BlockPos;

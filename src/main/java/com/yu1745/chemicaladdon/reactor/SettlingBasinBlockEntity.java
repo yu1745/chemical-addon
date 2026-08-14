@@ -3,15 +3,10 @@ package com.yu1745.chemicaladdon.reactor;
 import javax.annotation.Nullable;
 
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
-import com.yu1745.chemicaladdon.registry.AllBlocks;
+import com.yu1745.chemicaladdon.vessel.VesselBlockEntity;
 
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
@@ -23,229 +18,84 @@ import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
-import net.minecraftforge.common.capabilities.Capability;
-import net.minecraftforge.common.capabilities.ForgeCapabilities;
-import net.minecraftforge.common.util.LazyOptional;
-import net.minecraftforge.fluids.capability.IFluidHandler;
-import net.minecraftforge.items.IItemHandler;
-import net.minecraftforge.items.ItemStackHandler;
 
 /**
- * Settling basin (M2): pool-shaped instance of the vessel template — a 3x3
- * open pool (bottom layer + one wall layer, no roof). Settles slurries
- * slowly (1/4 of the filter press speed) into clear liquid + cake.
+ * Settling basin (M2): pool-shaped instance of the vessel template (U3: a
+ * {@link VesselBlockEntity}, no more hand-rolled structure copy) — a fixed
+ * 3x3 roofless pool (bottom layer + one wall ring) that settles slurries
+ * slowly (1/4 of the filter press speed) into clear liquid + cake. Wall
+ * validation now uses the shared {@code vessel_walls} tag, so glass/gauge
+ * wall blocks count for the pool exactly as they do for the reactor.
  */
-public class SettlingBasinBlockEntity extends BlockEntity {
+public class SettlingBasinBlockEntity extends VesselBlockEntity {
 
 	public static final int TANK_CAPACITY = 8000;
 
-	private final ReactorTank tank = new ReactorTank(TANK_CAPACITY, this::onChanged);
-	private final ItemStackHandler items = new ItemStackHandler(1) {
-		@Override
-		protected void onContentsChanged(int slot) {
-			onChanged();
-		}
-	};
 	private final FilteringLogic logic = new FilteringLogic();
-	private final LazyOptional<IFluidHandler> fluidCap = LazyOptional.of(() -> tank);
-	private final LazyOptional<IItemHandler> itemCap = LazyOptional.of(() -> items);
-
-	private boolean assembled = false;
 	private int tickCounter = 0;
-	// progressive fluid spill after structural breakage
-	private final java.util.List<net.minecraftforge.fluids.FluidStack> pendingSpill = new java.util.ArrayList<>();
-	@Nullable
-	private BlockPos spillLeakPos = null;
-	private int spillTimer = 0;
 
 	public SettlingBasinBlockEntity(BlockPos pos, BlockState state) {
-		super(AllBlockEntities.SETTLING_BASIN.get(), pos, state);
+		super(AllBlockEntities.SETTLING_BASIN.get(), pos, state, TANK_CAPACITY, 1);
 	}
 
-	public void serverTick() {
-		if (level == null || level.isClientSide) {
-			return;
-		}
-		if (!assembled) {
+	// ------------------------------------------------------------ shape hooks
+
+	@Override
+	protected int minSize() {
+		return 3;
+	}
+
+	@Override
+	protected int maxSize() {
+		return 3;
+	}
+
+	@Override
+	protected int minRings() {
+		return 1;
+	}
+
+	@Override
+	protected int maxRings() {
+		return 1;
+	}
+
+	@Override
+	protected RoofMode roofMode() {
+		return RoofMode.FORBIDDEN; // roofless pool: the layer above the rim is not part of the shape
+	}
+
+	@Override
+	protected int capacityFor(int w, int rings) {
+		return TANK_CAPACITY; // flat 8 buckets — the shallow pool holds more than its 1-block interior
+	}
+
+	@Override
+	protected void onAssembled() {
+		// no process state to set (the pool has no status machine)
+	}
+
+	@Override
+	protected void onStructureInvalidated() {
+		// no process state to reset
+	}
+
+	// ------------------------------------------------------------------ tick
+
+	@Override
+	protected void vesselTick() {
+		if (!isAssembled()) {
 			return;
 		}
 		if (++tickCounter % FilteringLogic.TICK_INTERVAL == 0) {
 			logic.tick(level, tank, tank, items, worldPosition, 0.25f);
 		}
-		// one source block trickles out of the breach every few ticks
-		if (!pendingSpill.isEmpty()) {
-			if (++spillTimer % 5 == 0) {
-				SpillLogic.tryPlaceOne(level, spillLeakPos != null ? spillLeakPos : worldPosition, pendingSpill);
-			}
-		}
 	}
 
-	/**
-	 * Validates the open pool: bottom 3x3 of bricks at y-1, wall ring of 8
-	 * bricks at y=0 (controller replaces one), interior air, no roof.
-	 */
-	public boolean tryAssemble() {
-		if (level == null || level.isClientSide) {
-			return false;
-		}
-		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
-		// bottom layer
-		for (int dx = -1; dx <= 1; dx++) {
-			for (int dz = -1; dz <= 1; dz++) {
-				if (!level.getBlockState(worldPosition.offset(dx, -1, dz)).is(brick.getBlock())) {
-					return false;
-				}
-			}
-		}
-		// wall ring at y=0, controller at own position, interior air
-		for (int dx = -1; dx <= 1; dx++) {
-			for (int dz = -1; dz <= 1; dz++) {
-				if (dx == 0 && dz == 0) {
-					if (!level.getBlockState(worldPosition).isAir()) {
-						return false;
-					}
-				} else if (!level.getBlockState(worldPosition.offset(dx, 0, dz)).is(brick.getBlock())) {
-					return false;
-				}
-			}
-		}
-		assembled = true;
-		bindBricks(worldPosition);
-		setChanged();
-		sync();
-		return true;
-	}
-
-	/** Points every structural brick of this basin at the controller (or clears it). */
-	private void bindBricks(@Nullable BlockPos masterPos) {
-		if (level == null) {
-			return;
-		}
-		for (int dx = -1; dx <= 1; dx++) {
-			for (int dz = -1; dz <= 1; dz++) {
-				if (dx == 0 && dz == 0) {
-					continue; // the controller itself
-				}
-				bindBrick(worldPosition.offset(dx, -1, dz), masterPos);
-				bindBrick(worldPosition.offset(dx, 0, dz), masterPos);
-			}
-		}
-	}
-
-	private void bindBrick(BlockPos pos, @Nullable BlockPos masterPos) {
-		if (level == null) {
-			return;
-		}
-		if (level.getBlockEntity(pos) instanceof IMasterBound bound) {
-			bound.setMaster(masterPos);
-		}
-	}
-
-	public void invalidateStructure(@Nullable BlockPos leakPos) {
-		if (assembled) {
-			assembled = false;
-			// contents become physical again: items drop, fluids pour out of the breach
-			BlockPos breach = leakPos != null ? leakPos : worldPosition;
-			SpillLogic.spillItems(level, breach, items);
-			pendingSpill.clear();
-			pendingSpill.addAll(SpillLogic.queueFluids(tank)); // sub-bucket remainder lost by design
-			spillLeakPos = breach;
-			spillTimer = 4;
-			SpillLogic.tryPlaceOne(level, breach, pendingSpill);
-			// clear master pointers on nearby bricks so they stop proxying
-			bindBricks(null);
-			setChanged();
-			sync();
-		}
-	}
-
-	public boolean isAssembled() {
-		return assembled;
-	}
-
-	public ReactorTank getTank() {
-		return tank;
-	}
-
-	public ItemStackHandler getItems() {
-		return items;
-	}
-
+	/** Settling progress toward the next cake (0..1). */
 	public float getProgress() {
 		return logic.getProgress();
 	}
-
-	private void onChanged() {
-		setChanged();
-		if (level != null && !level.isClientSide) {
-			sync();
-		}
-	}
-
-	private void sync() {
-		if (level != null && !level.isClientSide) {
-			level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), Block.UPDATE_CLIENTS);
-			if (level instanceof ServerLevel serverLevel) {
-				ClientboundBlockEntityDataPacket packet = ClientboundBlockEntityDataPacket.create(this);
-				serverLevel.getServer().getPlayerList()
-					.broadcast(null, worldPosition.getX(), worldPosition.getY(), worldPosition.getZ(), 64.0,
-						serverLevel.dimension(), packet);
-			}
-		}
-	}
-
-	@Override
-	public CompoundTag getUpdateTag() {
-		CompoundTag tag = super.getUpdateTag();
-		saveAdditional(tag);
-		return tag;
-	}
-
-	@Nullable
-	@Override
-	public ClientboundBlockEntityDataPacket getUpdatePacket() {
-		return ClientboundBlockEntityDataPacket.create(this);
-	}
-
-	@Override
-	public void onDataPacket(Connection net, ClientboundBlockEntityDataPacket pkt) {
-		handleUpdateTag(pkt.getTag());
-	}
-
-	@Override
-	public <T> LazyOptional<T> getCapability(Capability<T> cap, @Nullable Direction side) {
-		if (cap == ForgeCapabilities.FLUID_HANDLER) {
-			return fluidCap.cast();
-		}
-		if (cap == ForgeCapabilities.ITEM_HANDLER) {
-			return itemCap.cast();
-		}
-		return super.getCapability(cap, side);
-	}
-
-	@Override
-	public void invalidateCaps() {
-		super.invalidateCaps();
-		fluidCap.invalidate();
-		itemCap.invalidate();
-	}
-
-	@Override
-	protected void saveAdditional(CompoundTag tag) {
-		super.saveAdditional(tag);
-		tag.putBoolean("assembled", assembled);
-		tag.put("tank", tank.serializeNBT());
-		tag.put("items", items.serializeNBT());
-	}
-
-	@Override
-	public void load(CompoundTag tag) {
-		super.load(tag);
-		assembled = tag.getBoolean("assembled");
-		tank.deserializeNBT(tag.getCompound("tank"));
-		items.deserializeNBT(tag.getCompound("items"));
-	}
-
 
 	/** Controller block of the settling basin. */
 	public static class SettlingBasinBlock extends Block implements EntityBlock {
@@ -267,7 +117,7 @@ public class SettlingBasinBlockEntity extends BlockEntity {
 			}
 			return (lvl, pos, st, be) -> {
 				if (be instanceof SettlingBasinBlockEntity basin) {
-					basin.serverTick();
+					basin.tick();
 				}
 			};
 		}
@@ -279,7 +129,7 @@ public class SettlingBasinBlockEntity extends BlockEntity {
 			}
 			if (level.getBlockEntity(pos) instanceof SettlingBasinBlockEntity basin) {
 				if (!basin.isAssembled()) {
-					boolean ok = basin.tryAssemble();
+					boolean ok = basin.tryAssemble().ok();
 					player.displayClientMessage(Component.literal(ok
 						? "§a沉淀池成型！"
 						: "§c结构不完整：需要 3×3 化工砖池底 + 一圈池壁，控制器嵌在壁中"), false);

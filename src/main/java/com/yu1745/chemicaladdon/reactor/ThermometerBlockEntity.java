@@ -3,6 +3,8 @@ package com.yu1745.chemicaladdon.reactor;
 import javax.annotation.Nullable;
 
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
+import com.yu1745.chemicaladdon.vessel.IMasterBound;
+import com.yu1745.chemicaladdon.vessel.VesselBlockEntity;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -59,11 +61,8 @@ public class ThermometerBlockEntity extends AbstractThermometerBlockEntity imple
 			return null;
 		}
 		BlockEntity master = level.getBlockEntity(masterPos);
-		if (master instanceof ReactorControllerBlockEntity reactor && reactor.isAssembled()) {
-			return reactor;
-		}
-		if (master instanceof SettlingBasinBlockEntity basin && basin.isAssembled()) {
-			return basin;
+		if (master instanceof VesselBlockEntity vessel && vessel.isAssembled()) {
+			return vessel;
 		}
 		return null; // master missing or disassembled
 	}

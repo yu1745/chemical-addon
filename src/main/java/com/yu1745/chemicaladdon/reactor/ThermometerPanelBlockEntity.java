@@ -3,6 +3,7 @@ package com.yu1745.chemicaladdon.reactor;
 import javax.annotation.Nullable;
 
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
+import com.yu1745.chemicaladdon.vessel.IMasterBound;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;

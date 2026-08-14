@@ -15,6 +15,8 @@ import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.common.util.LazyOptional;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
+import com.yu1745.chemicaladdon.vessel.IMasterBound;
+import com.yu1745.chemicaladdon.vessel.VesselBlockEntity;
 
 /**
  * Lightweight BE for structural bricks of multiblock vessels (reactor /
@@ -74,18 +76,15 @@ public class ChemicalBrickBlockEntity extends BlockEntity implements IMasterBoun
 		return masterPos;
 	}
 
-	/** Returns the master controller BE if still valid (assembled), else null. */
+	/** Returns the master vessel controller BE if still valid (assembled), else null. */
 	@Nullable
 	public BlockEntity getValidMaster() {
 		if (masterPos == null || level == null) {
 			return null;
 		}
 		BlockEntity master = level.getBlockEntity(masterPos);
-		if (master instanceof ReactorControllerBlockEntity reactor && reactor.isAssembled()) {
-			return reactor;
-		}
-		if (master instanceof SettlingBasinBlockEntity basin && basin.isAssembled()) {
-			return basin;
+		if (master instanceof VesselBlockEntity vessel && vessel.isAssembled()) {
+			return vessel;
 		}
 		return null; // master missing or disassembled -> no capability
 	}

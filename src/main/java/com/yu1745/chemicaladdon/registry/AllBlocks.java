@@ -3,6 +3,7 @@ package com.yu1745.chemicaladdon.registry;
 import com.simibubi.create.foundation.data.CreateRegistrate;
 import com.tterrag.registrate.util.entry.BlockEntry;
 import com.yu1745.chemicaladdon.ChemicalAddon;
+import com.yu1745.chemicaladdon.client.connected.ConnectedModelBuilder;
 import com.yu1745.chemicaladdon.item.GaugeBlockItem;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlock;
 import com.yu1745.chemicaladdon.reactor.ChemicalGlassBlock;
@@ -40,7 +41,9 @@ public class AllBlocks {
 			.simpleItem()
 			.register();
 
-	/** Transparent shell block ("seared glass"): same structural series, lets you watch the fluid. */
+	/** Transparent shell block ("seared glass"): same structural series, lets you watch the fluid.
+	 *  Connected textures via the vendored Mantle {@code chemicaladdon:connected} loader, on
+	 *  Tinkers' clear_glass texture set (attribution in THIRD_PARTY.md). */
 	public static final BlockEntry<ChemicalGlassBlock> CHEMICAL_GLASS =
 		REGISTRATE.block("chemical_glass", ChemicalGlassBlock::new)
 			.properties(p -> p.mapColor(MapColor.NONE).strength(0.3f)
@@ -49,8 +52,17 @@ public class AllBlocks {
 				.isSuffocating((a, b, c) -> false)
 				.isViewBlocking((a, b, c) -> false))
 			.lang("Chemical Glass")
-			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(),
-				prov.models().cubeAll(ctx.getName(), prov.models().mcLoc("block/glass"))))
+			.blockstate((ctx, prov) -> {
+				// cube_all on our clear_glass texture + connected-texture custom loader
+				// ("cornerless_full": edges drop where neighbours of the same block connect).
+				// Concrete BlockModelBuilder (not ModelBuilder<?>): javac cannot infer the
+				// self-referential ConnectedModelBuilder<T extends ModelBuilder<T>> bound
+				// through a wildcard capture.
+				net.minecraftforge.client.model.generators.BlockModelBuilder model =
+					prov.models().cubeAll(ctx.getName(), prov.modLoc("block/clear_glass"));
+				model.customLoader(ConnectedModelBuilder::new).connected("all", "cornerless_full");
+				prov.simpleBlock(ctx.get(), model.renderType(prov.mcLoc("cutout")));
+			})
 			.addLayer(() -> RenderType::cutoutMipped)
 			.simpleItem()
 			.register();
@@ -115,7 +127,8 @@ public class AllBlocks {
 			// gaugeBlockItem: the icon is a custom-rendered itemstack (builtin/entity
 			// model + BEWLR drawing the block model with the needle at its zero position)
 			.item(GaugeBlockItem::new)
-			.model((ctx, prov) -> prov.withExistingParent(ctx.getName(), prov.mcLoc("builtin/entity")))
+			.model((ctx, prov) -> prov.getBuilder(ctx.getName())
+	.parent(new ModelFile.UncheckedModelFile("builtin/entity")))
 			.build()
 			.register();
 
@@ -132,7 +145,8 @@ public class AllBlocks {
 			// main resources (custom elements — datagen only links to it)
 			.blockstate((ctx, prov) -> plateVariants(prov, ctx.get(), ctx.getName()))
 			.item(GaugeBlockItem::new)
-			.model((ctx, prov) -> prov.withExistingParent(ctx.getName(), prov.mcLoc("builtin/entity")))
+			.model((ctx, prov) -> prov.getBuilder(ctx.getName())
+	.parent(new ModelFile.UncheckedModelFile("builtin/entity")))
 			.build()
 			.register();
 
@@ -145,7 +159,8 @@ public class AllBlocks {
 			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(),
 				prov.models().cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
 			.item(GaugeBlockItem::new)
-			.model((ctx, prov) -> prov.withExistingParent(ctx.getName(), prov.mcLoc("builtin/entity")))
+			.model((ctx, prov) -> prov.getBuilder(ctx.getName())
+	.parent(new ModelFile.UncheckedModelFile("builtin/entity")))
 			.build()
 			.register();
 
@@ -161,7 +176,8 @@ public class AllBlocks {
 			// same dual-form pattern as the thermometer panel (S02)
 			.blockstate((ctx, prov) -> plateVariants(prov, ctx.get(), ctx.getName()))
 			.item(GaugeBlockItem::new)
-			.model((ctx, prov) -> prov.withExistingParent(ctx.getName(), prov.mcLoc("builtin/entity")))
+			.model((ctx, prov) -> prov.getBuilder(ctx.getName())
+	.parent(new ModelFile.UncheckedModelFile("builtin/entity")))
 			.build()
 			.register();
 

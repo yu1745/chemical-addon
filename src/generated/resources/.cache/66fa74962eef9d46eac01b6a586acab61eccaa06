@@ -1,4 +1,4 @@
-// 1.20.1	2026-08-14T19:16:12.530468	Registrate Provider for chemicaladdon [Recipes, Advancements, Loot Tables, Tags (blocks), Tags (items), Tags (fluids), Tags (entity_types), Blockstates, Item models, Lang (en_us/en_ud)]
+// 1.20.1	2026-08-15T02:39:46.9495221	Registrate Provider for chemicaladdon [Recipes, Advancements, Loot Tables, Tags (blocks), Tags (items), Tags (fluids), Tags (entity_types), Blockstates, Item models, Lang (en_us/en_ud)]
 404f8d84274018255af4e6938f419a71dbabebf5 assets/chemicaladdon/blockstates/air.json
 5398f4a42a9384736e88ebf696b792477ed35819 assets/chemicaladdon/blockstates/ammonia.json
 d066bf91e072da1c0a7362b4f35e0d927f98f5e9 assets/chemicaladdon/blockstates/carbon_dioxide.json
@@ -32,7 +32,7 @@ a33d1c8ee8ca36ddd5c5deb034e10f9069825ad8 assets/chemicaladdon/blockstates/thermo
 2c3d0d026a5fbc723fc88baabdb31a5156e3f71a assets/chemicaladdon/models/block/carbon_dioxide.json
 560b919ca6fcb543e64569250d2092856af21d0f assets/chemicaladdon/models/block/carbon_monoxide.json
 0b131fd5bb3115ab0e4ebf136ae6f0084b75916a assets/chemicaladdon/models/block/chemical_brick.json
-75866a6265b5f8b477e629e270691571c2400cb2 assets/chemicaladdon/models/block/chemical_glass.json
+3807d754f320450ad3fc50f8d4d86c20f441c5fd assets/chemicaladdon/models/block/chemical_glass.json
 fcc5a6bf85300659c3a186341530d0fd38b4e0dc assets/chemicaladdon/models/block/chlorine.json
 fa28945f4dbf2edb90f23cd7ec83650a63394b77 assets/chemicaladdon/models/block/decant_port.json
 891236f35d4dbb35ccc9a4a93e54f0236ed97177 assets/chemicaladdon/models/block/filter_press.json
@@ -66,8 +66,8 @@ df3c5446f9104828ecc3c5639aaca1c8f5244a5a assets/chemicaladdon/models/item/gypsum
 e683ed9bd65e1dd82f33c83c625e5607cbdf771b assets/chemicaladdon/models/item/limestone.json
 51a55aca2b91e25d13340e41eceb8b469fe15596 assets/chemicaladdon/models/item/phosphate_rock.json
 4cc065c47ea0f76cc4ea2ec8dd5815f5f4d96c9b assets/chemicaladdon/models/item/phosphogypsum.json
-b3f7d88b6a9dc383d771a406215df193381240b0 assets/chemicaladdon/models/item/pressure_gauge.json
-46d3878e4b53d290080717cb6c7558dc0d99d51a assets/chemicaladdon/models/item/pressure_gauge_panel.json
+e0f7b66a84e6588f01abbbce75b1803ffe5d46e2 assets/chemicaladdon/models/item/pressure_gauge.json
+e0f7b66a84e6588f01abbbce75b1803ffe5d46e2 assets/chemicaladdon/models/item/pressure_gauge_panel.json
 dfe67189b552f9b699b4dcc9a127a210bad56b2e assets/chemicaladdon/models/item/quicklime.json
 70aafa49f7fd581212a9c761e45f1fcdc556dbfa assets/chemicaladdon/models/item/reactor_controller.json
 86d6aae26dd331797439ab1f076ab3f4c103bbf2 assets/chemicaladdon/models/item/rock_salt.json
@@ -76,8 +76,8 @@ dfe67189b552f9b699b4dcc9a127a210bad56b2e assets/chemicaladdon/models/item/quickl
 505775b1b4e231dde44ee4384026d320a3cf4256 assets/chemicaladdon/models/item/soda_ash.json
 e0d8ee22ce07d59f97c0fdc1a76937fc66aa6a6e assets/chemicaladdon/models/item/sodium_bicarbonate.json
 e874960bbe181d5a3d9a35b0df13a28c07d065a5 assets/chemicaladdon/models/item/sulfur.json
-9c04e73765bbff170d401b6c53702d2291818c4a assets/chemicaladdon/models/item/thermometer.json
-4e745b613982452706b469d22dba742707770a20 assets/chemicaladdon/models/item/thermometer_panel.json
+e0f7b66a84e6588f01abbbce75b1803ffe5d46e2 assets/chemicaladdon/models/item/thermometer.json
+e0f7b66a84e6588f01abbbce75b1803ffe5d46e2 assets/chemicaladdon/models/item/thermometer_panel.json
 f4f6711b590a33d96b93571fae2671a9886f0618 assets/chemicaladdon/models/item/urea.json
 69964cfc9d048fbc2bdd9ba1517b734351bc46d4 data/chemicaladdon/loot_tables/blocks/chemical_brick.json
 f017b989816241d3f43f121e96a00b6d8b80fb72 data/chemicaladdon/loot_tables/blocks/chemical_glass.json

@@ -5,9 +5,9 @@ import javax.annotation.Nullable;
 import com.simibubi.create.content.fluids.transfer.GenericItemEmptying;
 import com.simibubi.create.content.fluids.transfer.GenericItemFilling;
 import com.simibubi.create.foundation.fluid.FluidHelper;
-import com.yu1745.chemicaladdon.reactor.ReactorControllerBlockEntity.AssembleIssue;
-import com.yu1745.chemicaladdon.reactor.ReactorControllerBlockEntity.AssembleResult;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
+import com.yu1745.chemicaladdon.vessel.VesselBlockEntity.AssembleIssue;
+import com.yu1745.chemicaladdon.vessel.VesselBlockEntity.AssembleResult;
 
 import net.minecraftforge.items.ItemHandlerHelper;
 

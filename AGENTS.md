@@ -40,7 +40,8 @@
 |--------|------|---------|
 | **Create 本体** | `../create-forge_1.20.1/` | 多方块能力代理（FluidTank 的 `handlerForCapability` 惰性递归到 controller、每个结构方块都是 BE）；流体管道端点识别（`FluidPropagator.hasFluidCapability`）；ProcessingRecipe 配方管线；动能/热级/BoilerHeater 对接 |
 | **Create Crafts & Additions** | `../createaddition-forge_1.20.1/` | addon 工程模板（build.gradle 依赖、run 配置）、`BaseElectricBlockEntity` 耗电机器基类、电动马达/电网对接 |
-| **Tinkers Construct（匠魂）** | `../TinkersConstructForge/` | JSON 修饰器组合机制（数据驱动+可组合+可扩展，化学组合系统架构来源）；熔炼炉多流体罐（SmelteryTank List<FluidStack>）；多方块主仆（ServantTileEntity masterPos 模式，注意其结构件不代理能力，代理参考 Create） |
+| **Tinkers Construct（匠魂）** | `../TinkersConstructForge/` | JSON 修饰器组合机制（数据驱动+可组合+可扩展，化学组合系统架构来源）；熔炼炉多流体罐（SmelteryTank List<FluidStack>）；多方块主仆（ServantTileEntity masterPos 模式，注意其结构件不代理能力，代理参考 Create）；通透玻璃连接纹理（贴图已拷贝至 chemical_glass，归属见 THIRD_PARTY.md） |
+| **Mantle** | `../mantle-1.20.1/`（本地 clone，1.20 分支） | 连接纹理模型加载器（`ConnectedModel`：烘焙期按 6 bit 邻居连通位换后缀贴图、64 组合缓存）——精简版 vendor 在 `client/connected/`，MIT 归属见 THIRD_PARTY.md |
 | **Create TFMG** | `../create-tfmg-forge_1.20.1/` | 蒸馏塔/钢储罐/工业机器多方块结构参考 |
 
 > 规则：新增机制前先到上表找对应实现读一遍；若参考了新的 mod 实现，把参考源追加到本表。

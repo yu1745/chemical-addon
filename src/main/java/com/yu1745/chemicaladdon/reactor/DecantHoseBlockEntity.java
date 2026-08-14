@@ -4,6 +4,7 @@ import javax.annotation.Nullable;
 
 import com.yu1745.chemicaladdon.fluid.Miscibility;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
+import com.yu1745.chemicaladdon.vessel.IMasterBound;
 
 import net.createmod.catnip.animation.LerpedFloat;
 import net.minecraft.core.BlockPos;

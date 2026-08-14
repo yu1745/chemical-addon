@@ -20,6 +20,7 @@ import com.yu1745.chemicaladdon.reactor.ReactorControllerBlock;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ReactorTank;
 import com.yu1745.chemicaladdon.reactor.RulesEngine;
+import com.yu1745.chemicaladdon.reactor.SettlingBasinBlockEntity;
 import com.yu1745.chemicaladdon.reactor.SpillLogic;
 import com.yu1745.chemicaladdon.reactor.ThermometerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ThermometerPanelBlockEntity;
@@ -27,6 +28,7 @@ import com.yu1745.chemicaladdon.registry.AllBlocks;
 import com.yu1745.chemicaladdon.registry.AllContainers;
 import com.yu1745.chemicaladdon.registry.AllFluids;
 import com.yu1745.chemicaladdon.registry.AllItems;
+import com.yu1745.chemicaladdon.vessel.VesselBlockEntity;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -1988,6 +1990,134 @@ public class ChemicalAddonGameTests {
 			.thenSucceed();
 	}
 
+	// ------------------------------------------------------- settling basin (U3)
+	// The basin had ZERO test coverage before U3 — and its hand-rolled validation
+	// could never assemble at all (it required the controller's own cell to be
+	// air, SettlingBasinBlockEntity pre-U3). These tests pin the unified template.
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void basinAssemblesAndProxiesFluid(GameTestHelper helper) {
+		SettlingBasinBlockEntity be = buildBasin(helper);
+		helper.assertTrue(be.isAssembled(), "pool should assemble");
+		helper.assertTrue(be.getTank().getTankCapacity(0) == SettlingBasinBlockEntity.TANK_CAPACITY,
+			"pool capacity is flat 8 buckets");
+		helper.assertTrue(be.isOpen(), "pool is always open-topped");
+		// the floor brick proxies FLUID_HANDLER to the pool tank (Create FluidTank
+		// pattern; a side-less query — the UP face is deliberately excluded)
+		BlockEntity floor = helper.getBlockEntity(new BlockPos(2, 1, 2));
+		IFluidHandler handler = floor.getCapability(ForgeCapabilities.FLUID_HANDLER, null)
+			.orElse(null);
+		helper.assertTrue(handler != null, "floor brick should expose a fluid capability");
+		if (handler != null) {
+			handler.fill(new FluidStack(Fluids.WATER, 1000), FluidAction.EXECUTE);
+		}
+		helper.assertTrue(be.getTank().getTotalAmount() == 1000, "poured fluid lands in the pool tank");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void basinSettlesSlurry(GameTestHelper helper) {
+		SettlingBasinBlockEntity be = buildBasin(helper);
+		// same slurry as the filter press test: water + suspended sodium bicarbonate
+		FluidStack slurry = Mixture.create(
+			Map.of(Solution.WATER, 1000),
+			Map.of(),
+			Map.of(new ResourceLocation(ChemicalAddon.MODID, "sodium_bicarbonate"), 1000),
+			2000);
+		be.getTank().fill(slurry, FluidAction.EXECUTE);
+		helper.startSequence()
+			.thenIdle(TICKS) // generic suspended-separation resolves on the next 10-tick interval
+			.thenExecute(() -> {
+				helper.assertTrue(!be.getItems().getStackInSlot(0).isEmpty()
+					&& be.getItems().getStackInSlot(0).is(AllItems.SODIUM_BICARBONATE.get()),
+					"settled cake should be produced");
+				helper.assertTrue(hasSpecies(be.getTank(), "water", 900), "clear water should remain");
+			})
+			.thenSucceed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void brokenBasinSpillsContents(GameTestHelper helper) {
+		SettlingBasinBlockEntity be = buildBasin(helper);
+		be.getTank().fill(new FluidStack(Fluids.WATER, 1000), FluidAction.EXECUTE);
+		// break a wall-ring brick -> breach below the surface: everything pours out
+		BlockPos breach = new BlockPos(1, 2, 1);
+		helper.setBlock(breach, Blocks.AIR.defaultBlockState());
+		helper.assertFalse(be.isAssembled(), "pool should de-assemble when a wall brick breaks");
+		helper.assertTrue(helper.getBlockState(breach).getFluidState().is(Fluids.WATER),
+			"water should pour out as a real fluid block at the breach");
+		helper.assertTrue(be.getTank().getTotalAmount() == 0, "pool tank should drain fully");
+		helper.succeed();
+	}
+
+	// ------------------------------------------------------ vessel template (U3)
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void solidInteriorBlocksUntilAllowlisted(GameTestHelper helper) {
+		// same shell as buildReactor, but with a stone block inside the interior
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick);
+				helper.setBlock(new BlockPos(x, 3, z), brick);
+			}
+		}
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				if (x == 2 && z == 2) {
+					continue; // interior
+				}
+				BlockPos p = new BlockPos(x, 2, z);
+				helper.setBlock(p, x == 2 && z == 1 ? controller : brick);
+			}
+		}
+		helper.setBlock(new BlockPos(2, 2, 2), Blocks.STONE); // solid internal
+		ReactorControllerBlockEntity be = reactor(helper);
+		helper.assertFalse(be.tryAssemble().ok(),
+			"a solid block in the interior must block assembly (INTERIOR_BLOCKED)");
+		try {
+			// the U3 internals allowlist (empty in production until U4/U6 register internals)
+			VesselBlockEntity.INTERIOR_OVERRIDES.add(Blocks.STONE);
+			helper.assertTrue(be.tryAssemble().ok(), "an allowlisted internal may occupy the interior");
+			helper.assertTrue(be.isAssembled(), "vessel should be assembled with the allowlisted internal");
+		} finally {
+			VesselBlockEntity.INTERIOR_OVERRIDES.clear(); // never leak into other tests
+		}
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void glassBreakDisassemblesVessel(GameTestHelper helper) {
+		// U3 regression: chemical glass previously had no onPlace/onRemove lifecycle,
+		// so breaking a glass wall block left the vessel assembled with a hole
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState glass = AllBlocks.CHEMICAL_GLASS.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick);
+				helper.setBlock(new BlockPos(x, 3, z), brick);
+			}
+		}
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				if (x == 2 && z == 2) {
+					continue; // interior
+				}
+				BlockPos p = new BlockPos(x, 2, z);
+				BlockState wall = x == 2 && z == 1 ? controller : x == 1 && z == 1 ? glass : brick;
+				helper.setBlock(p, wall);
+			}
+		}
+		ReactorControllerBlockEntity be = reactor(helper);
+		helper.assertTrue(be.tryAssemble().ok(), "glass counts as a wall block (vessel_walls tag)");
+		helper.assertTrue(be.isAssembled(), "vessel should assemble with a glass wall block");
+		helper.setBlock(new BlockPos(1, 2, 1), Blocks.AIR.defaultBlockState()); // break the glass
+		helper.assertFalse(be.isAssembled(), "breaking a glass wall block must de-assemble the vessel");
+		helper.succeed();
+	}
+
 	// ------------------------------------------------------------------ helpers
 
 	private static void buildReactor(GameTestHelper helper) {
@@ -2016,6 +2146,30 @@ public class ChemicalAddonGameTests {
 
 	private static ReactorControllerBlockEntity reactor(GameTestHelper helper) {
 		return (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 1));
+	}
+
+	/** Builds a 3x3 open settling pool: brick floor at y=1, wall ring at y=2 with
+	 *  the controller on the north side (2,2,1), interior air. Assembles it. */
+	private static SettlingBasinBlockEntity buildBasin(GameTestHelper helper) {
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.SETTLING_BASIN.get().defaultBlockState();
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick); // floor
+			}
+		}
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				if (x == 2 && z == 2) {
+					continue; // interior of the ring layer stays air
+				}
+				BlockPos p = new BlockPos(x, 2, z);
+				helper.setBlock(p, x == 2 && z == 1 ? controller : brick);
+			}
+		}
+		SettlingBasinBlockEntity be = (SettlingBasinBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 1));
+		helper.assertTrue(be.tryAssemble().ok(), "pool should assemble");
+		return be;
 	}
 
 	/** Builds a 5×5×5 sealed reactor (interior 3×3×3 = 27 blocks = 27 buckets) with

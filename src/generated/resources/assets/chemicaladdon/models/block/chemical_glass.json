@@ -1,6 +1,13 @@
 {
   "parent": "minecraft:block/cube_all",
+  "connection": {
+    "textures": {
+      "all": "cornerless_full"
+    }
+  },
+  "loader": "chemicaladdon:connected",
+  "render_type": "minecraft:cutout",
   "textures": {
-    "all": "minecraft:block/glass"
+    "all": "chemicaladdon:block/clear_glass"
   }
 }

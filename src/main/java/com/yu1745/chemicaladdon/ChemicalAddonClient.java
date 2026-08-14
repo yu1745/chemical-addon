@@ -1,5 +1,6 @@
 package com.yu1745.chemicaladdon;
 
+import com.yu1745.chemicaladdon.client.connected.ConnectedModel;
 import com.yu1745.chemicaladdon.reactor.DecantHoseRenderer;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerRenderer;
 import com.yu1745.chemicaladdon.reactor.VesselGaugeRenderer;
@@ -17,6 +18,11 @@ import net.minecraftforge.registries.ForgeRegistries;
 
 /** Client-only initialisation. */
 public class ChemicalAddonClient {
+
+	/** Registers the connected-texture geometry loader (chemicaladdon:connected) on the mod bus. */
+	public static void registerGeometryLoaders(net.minecraftforge.client.event.ModelEvent.RegisterGeometryLoaders event) {
+		event.register("connected", ConnectedModel.LOADER);
+	}
 
 	public static void init() {
 		// render the vessel's item buffer + fluid surface inside the hollow interior

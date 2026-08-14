@@ -2,6 +2,9 @@ package com.yu1745.chemicaladdon.reactor;
 
 import javax.annotation.Nullable;
 
+import com.yu1745.chemicaladdon.vessel.IMasterBound;
+import com.yu1745.chemicaladdon.vessel.VesselBlockEntity;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -47,14 +50,12 @@ public class ChemicalBrickBlock extends Block implements EntityBlock {
 			for (int dy = -SEARCH_RADIUS; dy <= SEARCH_RADIUS; dy++) {
 				for (int dz = -SEARCH_RADIUS; dz <= SEARCH_RADIUS; dz++) {
 					BlockEntity be = level.getBlockEntity(pos.offset(dx, dy, dz));
-					if (be instanceof ReactorControllerBlockEntity controller) {
-						if (controller.isAssembled()) {
-							controller.tryExtend(pos);
+					if (be instanceof VesselBlockEntity vessel) {
+						if (vessel.isAssembled()) {
+							vessel.tryExtend(pos);
 						} else {
-							controller.tryAssemble();
+							vessel.tryAssemble();
 						}
-					} else if (be instanceof SettlingBasinBlockEntity basin && !basin.isAssembled()) {
-						basin.tryAssemble();
 					}
 				}
 			}
@@ -75,13 +76,8 @@ public class ChemicalBrickBlock extends Block implements EntityBlock {
 		if (!state.is(newState.getBlock()) && !level.isClientSide) {
 			if (level.getBlockEntity(pos) instanceof IMasterBound bound) {
 				BlockPos masterPos = bound.getMasterPos();
-				if (masterPos != null) {
-					BlockEntity be = level.getBlockEntity(masterPos);
-					if (be instanceof ReactorControllerBlockEntity controller) {
-						controller.handleStructuralBlockRemoved(pos);
-					} else if (be instanceof SettlingBasinBlockEntity basin) {
-						basin.invalidateStructure(pos);
-					}
+				if (masterPos != null && level.getBlockEntity(masterPos) instanceof VesselBlockEntity vessel) {
+					vessel.handleStructuralBlockRemoved(pos);
 				}
 				// masterPos == null → stray/unbound brick: no-op
 			}

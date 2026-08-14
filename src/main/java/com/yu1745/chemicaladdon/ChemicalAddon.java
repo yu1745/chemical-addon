@@ -78,6 +78,11 @@ public class ChemicalAddon {
 
 		// client: block entity renderers (runs after registries are populated)
 		modBus.addListener((FMLClientSetupEvent event) -> ChemicalAddonClient.init());
+		// client: connected-texture model loader for the chemical glass (Mantle-style, vendored);
+		// guarded because ModelEvent is client-only and would classload on a dedicated server
+		if (net.minecraftforge.fml.loading.FMLEnvironment.dist.isClient()) {
+			modBus.addListener(ChemicalAddonClient::registerGeometryLoaders);
+		}
 
 		// Datapack-driven species definitions (composition system, M0 skeleton)
 		MinecraftForge.EVENT_BUS.addListener((AddReloadListenerEvent event) -> event.addListener(SpeciesManager.RELOADER));

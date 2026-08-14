@@ -1,6 +1,6 @@
 # 开发进度
 
-> 最后更新：2026-08（M0–M2.5 完成，规则引擎 v1 + v2 离子基底 S1–S3g + D18 互溶性分相 + D18.5 分液口/软管 + S02 温度计（双形态）+ **U1 容器状态层**（多相加热/放热全体/压力模型/S03 压力表/datagen 修复）+ S02/S03 动态量程与 itemstack 指针，72/72 GameTest 通过）
+> 最后更新：2026-08（M0–M2.5 完成，规则引擎 v1 + v2 离子基底 S1–S3g + D18 互溶性分相 + D18.5 分液口/软管 + S02 温度计（双形态）+ **U1 容器状态层**（多相加热/放热全体/压力模型/S03 压力表/datagen 修复）+ S02/S03 动态量程与 itemstack 指针 + **U3 模板抽取**（vessel/ 结构层基类/沉淀池去拷贝/控制器拆类 573 行），77/77 GameTest 通过）
 > 里程碑定义见 `plans/11-content-scope.md`；设计计划书主索引 `plans/README.md`。
 
 ## 状态总览
@@ -12,9 +12,10 @@
 | M2 | 过滤机 + 沉淀池 + 釜高度参数化 | ✅ 完成 |
 | M2.5 | 釜可玩性改造：世界内交互基调落地（护目镜 HUD/诊断/槽位 GUI/成型反馈） | ✅ 完成 |
 | U1 容器状态层 | 多相加热 / 放热全体 / 压力模型 / S03 压力表 | ✅ 完成（M3 首单元） |
+| U3 模板抽取 | vessel/ 结构层基类 / 沉淀池去拷贝 / 控制器拆类 / 内部件 allowlist | ✅ 完成 |
 | M3+ 其余 | FE 接线 / 模板抽取 / 竖窑 / 索尔维 / 连续流 / 高压 / 零排放 | ⏳ 未开始（顺序见 plans/11 §2.1） |
 
-**自动化测试**：`./gradlew runGameTestServer` → **72/72 通过**。
+**自动化测试**：`./gradlew runGameTestServer` → **77/77 通过**。
 
 ## 已完成明细
 
@@ -233,6 +234,19 @@ M3 首单元（plans/11 §2.1）：修掉 G1/G2/G3 三条公共地基缺口，�
 - **datagen 修复（G7 旧账）**：`runData` 自 D18.5 起一直跑不通（decant_hose 贴图缺失→方块状态生成即炸）——本次修通并固化：gen_species.py 补 `decant_hose` 程序化线圈贴图 + 拨盘纹理参数化（`make_dial_texture`，温度计红针/压力表蓝针同源）+ BLOCKS 表收录压力表两形态 + 压力语言键；mixture 自动桶补 `.bucket().model(空)` 抑制与 `forge:fluid_container` 模型；温度调试棒补模型抑制；薄板 FACING 变体与 Create 软管模型引用改由注册处显式 provider 生成（`plateVariants` 北锚定 yaw；Create 是 `:slim` 无 assets，须 `UncheckedModelFile`）。顺带清掉 M0 时代过期溶液 blockstate（v2 后溶液不再是流体）。
 - **GameTest +7（71/71）**：`reactorHeatsAndReadsAllPhases`（水+油两相都松弛 + 加权读数 600）、`exothermicDeltaHeatsAllPhases`（SO₂ 吸收放热到达油旁观相）、`sealedVesselBuildsPressure`（满充气常压 0 → 900°C 约 303 kPa）、`liquidFullVesselStaysAtZeroPressure`、`openVesselKeepsAmbientPressure`、`pressureGaugePanelReadsAndAlarms`（读数/阈值 250/报警 15/比较器映射）、`wallPressureGaugeReadsOwnReactor`（成型绑定/读自身釜/代理能力）。
 
+### U3 · 模板抽取（vessel/ 结构层 / 沉淀池去拷贝 / 控制器拆类）
+
+修 G5（1429→1548 行控制器内联结构逻辑 + 沉淀池手写拷贝），解锁 U4 竖窑及全部塔式实例。纯迁移为主，77/77 全绿。
+
+- **`vessel/VesselBlockEntity`（951 行，新基类，Create FluidTank 层级模式）**：从釜控制器**逐段迁出**结构层——四面×W×环数成型引擎（`AssembleIssue`/`AssembleResult` 随迁，公开 API 经继承原样保留）、生长/收缩四级阶梯（`tryExtend`/`handleStructuralBlockRemoved`/`tryShrink`）、`IMasterBound` 绑定（`bindBricks` y 范围/`clearShellMasters`）、`invalidateStructure` 破口分级洒漏 + lastGeometry、洒漏滴流、几何访问器、渲染包围盒、LerpedFloat 液面数学、能力代理、SmartBlockEntity write/read（NBT 键名不变，釜存量兼容）。形状参数化钩子：`minSize/maxSize/minRings/maxRings/roofMode(OPTIONAL|FORBIDDEN)/capacityFor`。
+- **内部件 allowlist**：`isInteriorAllowed(state)` 钩子（默认空气/流体，行为不变）+ 静态 `INTERIOR_OVERRIDES`（生产恒空；U4 窑内件/U6 填料注册处，GameTest 用后即清）。`absorbInteriorOnAssemble` 跳过 allowlist 固体。
+- **釜纯迁移 + 拆类**：`ReactorControllerBlockEntity` 1548→**573 行**（<600 达标），只留热/压力/反应编排/HUD；配方匹配与结算（~250 行）抽 `reactor/ReactionLogic`（静态、`rateCoefficient` 随迁）。
+- **沉淀池去拷贝**：293→143 行，删全部手写样板（校验/绑定/洒漏/同步/NBT/能力），只留形状参数（3×3/单环/FORBIDDEN 屋顶/容量 8000 平）+ `FilteringLogic` 0.25 速挂钩；SmartBlockEntity 化（免费获得平滑液面/行为同步）。**修复真 bug**：旧校验要求控制器自身格是空气 → **沉淀池自 M2 起从未能成型**（零测试所以未暴露）；且改认 `vessel_walls` 标签（玻璃/仪表墙块对池生效，与釜一致）。池洒漏随统一基座修通（旧代码破拆后 pendingSpill 永不滴流）。
+- **绑定统一**：三处 `getValidMaster()` instanceof 阶梯（砖/温度计/压力表 BE）统一为 `instanceof VesselBlockEntity && isAssembled()`；`ChemicalBrickBlock.onPlace/onRemove` 同样按基类统一（未来塔式零改动即接入）；分液口 `vesselTank()` 改读任意容器（池上也可装分液口）。
+- **玻璃生命周期修复**：`ChemicalGlassBlock` 改继承 `ChemicalBrickBlock`——旧版无 onPlace/onRemove，**敲碎玻璃墙块后釜带洞保持成型**（潜在事故源），现有回归测试钉死。
+- **GameTest +5（72→77）**：`basinAssemblesAndProxiesFluid`（池成型/8000 容量/地砖代理）、`basinSettlesSlurry`（浆料沉降出碱饼+清水）、`brokenBasinSpillsContents`（破壁洒漏）、`solidInteriorBlocksUntilAllowlisted`（实心内腔拒装 + allowlist 放行，INTERIOR_BLOCKED 路径首次直测）、`glassBreakDisassemblesVessel`（玻璃破碎回归）。
+- 顺带修复（非 U3 范围、用户连接纹理工作被挡编译）：`AllBlocks` 玻璃 blockstate 的 `ModelBuilder<?>` 通配符捕获使 `ConnectedModelBuilder::new` 推断失败 → 改具体 `BlockModelBuilder`。
+
 ### 质量与工具
 - **GameTest 7/7**：成型/拒错/硫磺燃烧（含加热）/SO₂ 吸收/过滤/能力暴露/砖代理
 - **run-server.sh**：冒烟脚本（透传输出、纯 PID 三级关闭、启动前截断日志防假阳性）
@@ -285,7 +299,7 @@ M3 首单元（plans/11 §2.1）：修掉 G1/G2/G3 三条公共地基缺口，�
 
 ```bash
 ./gradlew build              # 构建
-./gradlew runGameTestServer  # 72/72 自动化测试
+./gradlew runGameTestServer  # 77/77 自动化测试
 ./run-server.sh              # 服务端冒烟（自动关闭）
 ./gradlew runClient          # 客户端（自动进 "New World"，-PquickPlayWorld= 覆盖）
 python3 tools/gen_species.py # 改物种后重新生成资源/注册代码
