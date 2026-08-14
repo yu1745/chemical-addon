@@ -73,8 +73,17 @@ public abstract class AbstractThermometerBlockEntity extends AbstractVesselGauge
 	}
 
 	@Override
-	protected int analogFullScale() {
-		return 1000; // comparator: 1000°C ↔ signal 15 (unchanged S02 behaviour)
+	protected int analogZero() {
+		// 12 o'clock = 0°C (freezing point) — NOT ambient: compressors and cooling
+		// crystallisation drive vessels below room temperature, and those readings
+		// sweep below 12 o'clock into the negative-angle segment. The dial's rest
+		// is a fixed physical zero; the threshold alone defines the full scale.
+		return 0;
+	}
+
+	@Override
+	protected int needleTint() {
+		return 0xFFC42C2C; // the baked dial art's red needle
 	}
 
 	/** The last-read vessel temperature (°C); ambient when not attached. */

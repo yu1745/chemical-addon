@@ -13,6 +13,7 @@ import com.simibubi.create.foundation.blockEntity.behaviour.ValueSettingsBoard;
 import com.simibubi.create.foundation.blockEntity.behaviour.ValueSettingsFormatter;
 import com.simibubi.create.foundation.blockEntity.behaviour.scrollValue.ScrollValueBehaviour;
 
+import net.createmod.catnip.animation.LerpedFloat;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
@@ -21,10 +22,12 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Shared guts of every S-series vessel gauge (S02 thermometer, S03 pressure
@@ -41,6 +44,13 @@ import net.minecraft.world.phys.BlockHitResult;
  * each) so the Create value-settings board stays small enough to fit on screen —
  * a fine-grained range builds a board that overflows the viewport. The board and
  * the in-world value box both re-scale the raw unit back for display.
+ *
+ * <p><b>Dynamic range:</b> the alarm threshold <i>is</i> the dial's full scale.
+ * The needle reaches full deflection exactly at the threshold and the comparator
+ * maps {@link #analogZero()}..threshold onto 0..15, so the whole range follows the
+ * scrollable threshold. The rest position ({@link #analogZero()}) is a fixed
+ * physical zero (0 °C / 0 kPa) — never ambient — so below-ambient readings
+ * (compressors, cooling crystallisation) sweep below 12 o'clock.
  */
 public abstract class AbstractVesselGaugeBlockEntity extends SmartBlockEntity implements IHaveGoggleInformation {
 
@@ -48,6 +58,18 @@ public abstract class AbstractVesselGaugeBlockEntity extends SmartBlockEntity im
 	private boolean attached = false;
 	private int value;
 	private boolean lastAlarm = false; // server-side, redstone transition tracking
+
+	/** Full dial sweep: the dynamic span ({@link #dynamicSpan()} = threshold − rest
+	 *  reading) maps to this many degrees clockwise from 12 o'clock
+	 *  ({@link VesselGaugeRenderer}). */
+	protected static final float NEEDLE_SWEEP = 270;
+	/** The needle never leaves this arc (rest = 12 o'clock, 0°). */
+	private static final float NEEDLE_MIN_ANGLE = -45;
+	private static final float NEEDLE_MAX_ANGLE = 270;
+
+	/** Client-side dial needle angle (°), chasing the synced reading (see {@link #tick}).
+	 *  Never serialised — it is a pure client animation of the already-synced {@code value}. */
+	private final LerpedFloat needleAngle = LerpedFloat.angular();
 
 	protected AbstractVesselGaugeBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
 		super(type, pos, state);
@@ -83,14 +105,57 @@ public abstract class AbstractVesselGaugeBlockEntity extends SmartBlockEntity im
 	/** The reading reported when not attached (ambient / zero). */
 	protected abstract int ambientValue();
 
-	/** Comparator full scale: the reading that maps onto signal 15. */
-	protected abstract int analogFullScale();
+	/** The reading at which the needle rests at 12 o'clock — the zero of the
+	 *  dynamic scale (the thermometer's ambient temperature, the pressure gauge's 0 kPa). */
+	protected abstract int analogZero();
+
+	/** The dynamic span = threshold − rest reading. The alarm threshold IS the full
+	 *  scale, so the whole dial range follows the scrollable threshold. */
+	protected int dynamicSpan() {
+		return getThreshold() - analogZero();
+	}
+
+	/** Target dial needle angle (° clockwise from 12 o'clock) for the current reading.
+	 *  Full deflection (270°) is reached exactly at the alarm threshold — the gauge's
+	 *  range is dynamic and defined entirely by the set threshold. A non-positive span
+	 *  collapses the range: the needle sits at rest or pegs full-scale when alarming. */
+	protected float needleTargetAngle() {
+		int span = dynamicSpan();
+		if (span <= 0) {
+			return isAlarm() ? NEEDLE_SWEEP : 0;
+		}
+		return (getValue() - analogZero()) * NEEDLE_SWEEP / span;
+	}
+
+	/** The needle's resting tint (ARGB) — the dial art's needle colour for this gauge type. */
+	protected abstract int needleTint();
+
+	/** The dial face's offset from the block centre along the FACING/face normal:
+	 *  a full-cube wall gauge draws on the block surface ({@code +0.5}), a thin
+	 *  panel hangs 2px inside the cell ({@code -3/8}). Shared by the needle renderer
+	 *  and the value-box placement so the two stay on the same plane. */
+	protected abstract float dialOffset();
 
 	// ---------------------------------------------------------------- behaviour
 
 	@Override
 	public void addBehaviours(List<BlockEntityBehaviour> behaviours) {
-		CenteredSideValueBoxTransform slot = new CenteredSideValueBoxTransform(this::isValueBoxSide);
+		// The value box is pinned to the BOTTOM of the dial face (not the centre):
+		// the needle sweeps from the face centre and would be occluded by a centred
+		// label. It also sits on the SAME plane as the dial — a thin panel's dial is
+		// inset 3/8 inside the cell, so a centred value box would float a full block
+		// off the wall. dialOffset() keeps it flush with the baked dial art.
+		CenteredSideValueBoxTransform slot = new CenteredSideValueBoxTransform(this::isValueBoxSide) {
+			@Override
+			public Vec3 getLocalOffset(LevelAccessor level, BlockPos pos, BlockState state) {
+				Direction side = getSide();
+				double along = dialOffset() - 0.5 / 16.0;
+				double x = 0.5 + side.getStepX() * along;
+				double y = 2.0 / 16.0;
+				double z = 0.5 + side.getStepZ() * along;
+				return new Vec3(x, y, z);
+			}
+		};
 		threshold = new ScrollValueBehaviour(Component.translatable(thresholdLabelKey()), this, slot) {
 			@Override
 			public ValueSettingsBoard createBoard(Player player, BlockHitResult hitResult) {
@@ -121,6 +186,11 @@ public abstract class AbstractVesselGaugeBlockEntity extends SmartBlockEntity im
 		return value;
 	}
 
+	/** The dial needle angle (°), smoothed client-side — 0 = 12 o'clock. */
+	public float getNeedleAngle(float partialTicks) {
+		return needleAngle.getValue(partialTicks);
+	}
+
 	/** true when the reading reached the alarm threshold (attached vessels only). */
 	public boolean isAlarm() {
 		return attached && value >= getThreshold();
@@ -134,8 +204,17 @@ public abstract class AbstractVesselGaugeBlockEntity extends SmartBlockEntity im
 	@Override
 	public void tick() {
 		super.tick();
-		if (level == null || level.isClientSide) {
-			return; // reading is server-side only; the client gets it via write/read
+		if (level == null) {
+			return;
+		}
+		if (level.isClientSide) {
+			// chase the last-synced reading (write/read pushes it to the client): the
+			// needle eases toward the target instead of snapping — the same chased-anim
+			// pattern as the reactor's fluid surface (ReactorControllerBlockEntity)
+			needleAngle.chase(Mth.clamp(needleTargetAngle(), NEEDLE_MIN_ANGLE, NEEDLE_MAX_ANGLE),
+				0.06f, LerpedFloat.Chaser.EXP);
+			needleAngle.tickChaser();
+			return; // the reading itself is computed server-side; see the write/read pair
 		}
 		ReactorControllerBlockEntity reactor = findReactor();
 		boolean newAttached = reactor != null;
@@ -176,9 +255,14 @@ public abstract class AbstractVesselGaugeBlockEntity extends SmartBlockEntity im
 		return isAlarm() ? 15 : 0;
 	}
 
-	/** Comparator output: the reading scaled onto 0..15 (0 when not attached). */
+	/** Comparator output: the reading scaled onto 0..15 against the dynamic span
+	 *  (0 at the rest reading, 15 at the alarm threshold). */
 	public int analogSignal() {
-		return attached ? Mth.clamp(value * 15 / analogFullScale(), 0, 15) : 0;
+		if (!attached) {
+			return 0;
+		}
+		int span = dynamicSpan();
+		return span <= 0 ? 0 : Mth.clamp((value - analogZero()) * 15 / span, 0, 15);
 	}
 
 	/** The vessel gauge BE at {@code pos}, or null — shared redstone helper (all forms). */

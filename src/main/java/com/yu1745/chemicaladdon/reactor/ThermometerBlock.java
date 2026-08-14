@@ -62,6 +62,6 @@ public class ThermometerBlock extends ChemicalBrickBlock {
 	@Override
 	public int getAnalogOutputSignal(BlockState state, Level level, BlockPos pos) {
 		AbstractThermometerBlockEntity t = AbstractThermometerBlockEntity.at(level, pos);
-		return t != null ? Mth.clamp(t.getTemperature() * 15 / 1000, 0, 15) : 0;
+		return t != null ? t.analogSignal() : 0;
 	}
 }

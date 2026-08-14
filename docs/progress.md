@@ -1,6 +1,6 @@
 # 开发进度
 
-> 最后更新：2026-08（M0–M2.5 完成，规则引擎 v1 + v2 离子基底 S1–S3g + D18 互溶性分相 + D18.5 分液口/软管 + S02 温度计（双形态）+ **U1 容器状态层**（多相加热/放热全体/压力模型/S03 压力表/datagen 修复），71/71 GameTest 通过）
+> 最后更新：2026-08（M0–M2.5 完成，规则引擎 v1 + v2 离子基底 S1–S3g + D18 互溶性分相 + D18.5 分液口/软管 + S02 温度计（双形态）+ **U1 容器状态层**（多相加热/放热全体/压力模型/S03 压力表/datagen 修复）+ S02/S03 动态量程与 itemstack 指针，72/72 GameTest 通过）
 > 里程碑定义见 `plans/11-content-scope.md`；设计计划书主索引 `plans/README.md`。
 
 ## 状态总览
@@ -14,7 +14,7 @@
 | U1 容器状态层 | 多相加热 / 放热全体 / 压力模型 / S03 压力表 | ✅ 完成（M3 首单元） |
 | M3+ 其余 | FE 接线 / 模板抽取 / 竖窑 / 索尔维 / 连续流 / 高压 / 零排放 | ⏳ 未开始（顺序见 plans/11 §2.1） |
 
-**自动化测试**：`./gradlew runGameTestServer` → **71/71 通过**。
+**自动化测试**：`./gradlew runGameTestServer` → **72/72 通过**。
 
 ## 已完成明细
 
@@ -145,7 +145,7 @@
 - **归属按生成规则**（不靠 JSON 手标）：`Solution` 单一 `precipitates` 拆成 `suspended()`（`precipitate()` Ksp 快速双置换 → 混悬）+ `sediment()`（`crystallise()` 溶解度降温 → 沉底）。
 - **`RulesEngine`** 读/写两个固相域（`beforeSuspended`/`beforeSediment`，`setContents` 5 参）；`ReactorTank` 的 `setContents`/`collapseIfNeeded`/`mergeGroup`/`extractSuspended` 全程携带 `Sediment`；**`drainIngredient`/`drainSolution` 重建时保留全部四域**（顺带修掉既有的「消耗组分丢 Suspended」隐性丢料）。
 - **渲染**：沉底层 = 脱色纹理（`mixture_still`）× 固相色 tint 的底部盒子（`renderTintedBox`，高度 ∝ 沉积量，非纯色平涂）；混悬 = 流体 tint 换成悬浮固相色并强制不透明（CaCO₃ → 不透明白）；化验 HUD 补「混悬/沉底」两行明细。
-- **颜色修正**：无色离子/纯水 tint 从 `0xFFFFFFFF`（不透明白）→ `IonColors.CLEAR_TINT = 0x28FFFFFF`（淡白 ~16%）——纯水与 CaCO₃ 混悬白可分辨，且液面仍可见（非全透明）。
+- **颜色修正**：无色离子/纯水 tint 从 `0xFFFFFFFF`（不透明白）→ `IonColors.CLEAR_TINT = 0x48FFFFFF`（淡白 ~28%，后由 `0x28FFFFFF` 上调）——纯水与 CaCO₃ 混悬白可分辨，且液面仍可见（非全透明）。
 - **GameTest**：析晶断言迁 `deriveSedimentAmounts`；沉淀测试补「快速沉淀不沉底」；`solventWaterContributesNoColor` 断言改 `CLEAR_TINT`。
 
 ### 溶解度量纲约定（降温结晶，替代 S2 固定浓度）
@@ -183,6 +183,20 @@
 - **红石**：比较器读模拟温度信号（0–1000°C → 0–15）；温度达阈值时输出强信号 15（报警）。
 - **GameTest（64/64）**：`thermometerPanelReadsReactorTemperature`（薄板读控制器 500°C、报警、强信号+比较器）、`wallThermometerReadsOwnReactor`（墙温度计作壳块：成型绑定、读自身釜温、代理 FLUID_HANDLER）。
 - 这是 S02–S04/S11 贴面仪表族的第一个实例（且是双形态范本），S03 压力表 / S04 浓度计 / S11 液位计照此复制。
+
+### S02/S03 · 表盘活指针（渲染增强，Create Gauge / TFMG VoltMeter 模式）
+
+- **问题**：表盘指针烘在贴图里（温度计红针 / 压力表蓝针，x7-8、y3-8，指向 12 点），渲染是死的——读数只走护目镜 HUD 和红石，指针不动（S02/S03 同病）。
+- **活指针**：新 `VesselGaugeRenderer`（4 个 BE 共用：墙块/薄板 × 温度计/压力表），partial model `block/gauge_needle`（白色 2×5px 针，枢轴在底端，12 点 = +Y），按 `SuperByteBuffer` tint 上色（温度计红 `C42C2C` / 压力表蓝 `486CBC`，**报警时变亮红**）。
+- **读值→角度**：`AbstractVesselGaugeBlockEntity` 新增客户端 `LerpedFloat.angular()` 追 `value`（0.06 EXP，与釜内液面同款追逐动画，不序列化）；角度映射：温度计 20°C=12 点、1000°C=满偏 270°；压力表 0 kPa=12 点、1500 kPa=满偏 270°（`needleTargetAngle()` 每子类实现）。
+- **朝向框架（关键推导）**：面板表盘面 = 块中心 − 3/8·FACING（薄板 2px 挂在格内、VoxelShape 佐证），墙块表盘面 = 中心 + 1/2·FACING（贴齐面）；12 点 = 水平面 +Y、朝上=南、朝下=北（由 `BlockModelRotation` 的 `rotateYXZ(-y,-x,0)` 负向旋转约定推出，与烘贴图逐面吻合）；扫掠 = 绕面法线 −角度（从表盘正视顺时针）。
+- **贴图去死针**：`tools/gen_gauge_needle.py` 生成白色针贴图，并把 4 张表盘贴图的烘死针剥掉（按色值校验 12 像素条后回填表盘面色），避免活针离开 12 点后露出底下死针。
+
+### S02/S03 · 动态量程 + itemstack 表盘渲染（BEWLR）
+
+- **动态量程（取代上文固定映射）**：报警阈值 = 表盘满量程。`needleTargetAngle()` 收敛进 `AbstractVesselGaugeBlockEntity`：`(读数 − analogZero()) × 270° / (阈值 − analogZero())`，满偏 270° 恰在阈值处，比较器按同一动态 span 映射 0..15；量程随世界内滚轮阈值整体缩放。**零点 = 物理零**（温度计 0°C / 压力表 0 kPa，`analogZero()`），不再假定最小位置是室温——压缩机/冷却结晶低于室温的读数扫进 12 点以下的负角度段。span ≤ 0（阈值低于零点）时表盘塌缩：未报警针停 12 点、报警针打满偏。
+- **itemstack 指针（Forge BEWLR 机制）**：物品栏/手中/掉落物图标此前只有表盘没有指针。修复走 Forge 专门处理「BE 渲染进 itemstack」的通道：item 模型改 `builtin/entity` 父级（烘焙为 `BuiltInModel`，`isCustomRenderer()==true`），`GaugeBlockItem#initializeClient` 注入 `IClientItemExtensions.getCustomRenderer()` → 新 `VesselGaugeItemRenderer`（`BlockEntityWithoutLevelRenderer`）在 `ItemRenderer` 应用完显示变换+居中后画：①原块模型（`getBlockModel(defaultState)`，与原 block 父级 item 图标逐像素一致）②`VesselGaugeRenderer.renderNeedle` 停在**零位**（12 点，南面 +½ 处，1px 浮于表盘面，GUI 相机看到的正是 +Z 面未镜像表盘）。渲染器惰性单例（`initializeClient` 在注册期触发，早于 Minecraft 实例）。接线照 Create `WrenchItem#initializeClient` 同款模式；datagen 同步改 `withExistingParent(builtin/entity)`，旧生成 item 模型删除。
+- **墙温度计绑定修复**：`bindBricks` 曾跳过控制器所在的整个 s/d 列（`if (s==0 && d==0) continue`），控制器正上/正下的壳块（含墙温度计）成型成功却从不绑定 → 改为只跳过控制器自身格 `(s==0 && d==0 && y==0)`；回归测试 `wallThermometerAboveControllerBinds`（**72/72**）。
 
 ### 反应釜结构生命周期（自动扩展 / 破口分级洒漏 / 残液可见 / 缩小溢流）
 
@@ -271,7 +285,7 @@ M3 首单元（plans/11 §2.1）：修掉 G1/G2/G3 三条公共地基缺口，�
 
 ```bash
 ./gradlew build              # 构建
-./gradlew runGameTestServer  # 71/71 自动化测试
+./gradlew runGameTestServer  # 72/72 自动化测试
 ./run-server.sh              # 服务端冒烟（自动关闭）
 ./gradlew runClient          # 客户端（自动进 "New World"，-PquickPlayWorld= 覆盖）
 python3 tools/gen_species.py # 改物种后重新生成资源/注册代码

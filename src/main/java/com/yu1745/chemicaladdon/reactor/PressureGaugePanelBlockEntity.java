@@ -28,6 +28,11 @@ public class PressureGaugePanelBlockEntity extends AbstractPressureGaugeBlockEnt
 	}
 
 	@Override
+	protected float dialOffset() {
+		return -3f / 8f; // thin panel: the dial hangs 2px inside the cell
+	}
+
+	@Override
 	@Nullable
 	protected ReactorControllerBlockEntity findReactor() {
 		if (level == null) {

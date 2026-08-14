@@ -17,7 +17,7 @@ public final class IonColors {
 	 * opaque) reads clearly against it, but non-zero so the liquid surface stays
 	 * visible. Tune this one alpha to shift "clear" vs "turbid" contrast.
 	 */
-	public static final int CLEAR_TINT = 0x28FFFFFF; // ~16% opacity faint white
+	public static final int CLEAR_TINT = 0x48FFFFFF; // ~28% opacity faint white
 
 	private IonColors() {}
 

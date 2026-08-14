@@ -81,6 +81,11 @@ public class ThermometerBlockEntity extends AbstractThermometerBlockEntity imple
 	}
 
 	@Override
+	protected float dialOffset() {
+		return 0.5f; // full cube: the dial is drawn on the block surface
+	}
+
+	@Override
 	protected void write(CompoundTag tag, boolean clientPacket) {
 		super.write(tag, clientPacket);
 		if (masterPos != null) {

@@ -17,17 +17,16 @@ import net.minecraft.ChatFormatting;
  * The S03 pressure gauge: a {@link AbstractVesselGaugeBlockEntity} reading the
  * vessel's gauge pressure (kPa, see {@link ReactorControllerBlockEntity#getPressure()}).
  * Threshold steps are coarse (25 kPa) so the value-settings board fits on
- * screen; the full scale (1500 kPa) doubles as the comparator mapping and
- * leaves headroom for the U11 high-pressure line (compressor, relief valve,
- * material ratings) without rescaling existing installations.
+ * screen. The alarm threshold IS the dial's full scale — the needle pegs at
+ * full deflection exactly at the threshold, and the comparator maps
+ * 0 kPa..threshold onto 0..15 (dynamic range).
  */
 public abstract class AbstractPressureGaugeBlockEntity extends AbstractVesselGaugeBlockEntity {
 
 	public static final int THRESHOLD_STEP = 25;           // kPa per scroll unit
-	public static final int THRESHOLD_MAX_STEPS = 60;      // 1500 kPa full scale
+	public static final int THRESHOLD_MAX_STEPS = 60;      // 1500 kPa board headroom (the dial range itself is dynamic = threshold)
 	public static final int THRESHOLD_MILESTONE = 4;       // a tick every 100 kPa on the board
 	public static final int DEFAULT_THRESHOLD_STEPS = 10;  // 250 kPa — comfortable chemical-brick service
-	public static final int FULL_SCALE_KPA = THRESHOLD_MAX_STEPS * THRESHOLD_STEP;
 
 	protected AbstractPressureGaugeBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
 		super(type, pos, state);
@@ -74,8 +73,13 @@ public abstract class AbstractPressureGaugeBlockEntity extends AbstractVesselGau
 	}
 
 	@Override
-	protected int analogFullScale() {
-		return FULL_SCALE_KPA;
+	protected int analogZero() {
+		return 0; // 12 o'clock = 0 kPa gauge
+	}
+
+	@Override
+	protected int needleTint() {
+		return 0xFF486CBC; // the baked dial art's blue needle
 	}
 
 	/** The last-read vessel gauge pressure (kPa); 0 when not attached. */

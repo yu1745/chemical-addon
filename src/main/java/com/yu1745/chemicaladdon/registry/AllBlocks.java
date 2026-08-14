@@ -3,6 +3,7 @@ package com.yu1745.chemicaladdon.registry;
 import com.simibubi.create.foundation.data.CreateRegistrate;
 import com.tterrag.registrate.util.entry.BlockEntry;
 import com.yu1745.chemicaladdon.ChemicalAddon;
+import com.yu1745.chemicaladdon.item.GaugeBlockItem;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlock;
 import com.yu1745.chemicaladdon.reactor.ChemicalGlassBlock;
 import com.yu1745.chemicaladdon.reactor.DecantHoseBlock;
@@ -111,7 +112,11 @@ public class AllBlocks {
 			.lang("Thermometer")
 			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
 				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
-			.simpleItem()
+			// gaugeBlockItem: the icon is a custom-rendered itemstack (builtin/entity
+			// model + BEWLR drawing the block model with the needle at its zero position)
+			.item(GaugeBlockItem::new)
+			.model((ctx, prov) -> prov.withExistingParent(ctx.getName(), prov.mcLoc("builtin/entity")))
+			.build()
 			.register();
 
 	/** S02 thermometer (温度计, 薄板形式): a thin face-mounted plate reading the reactor behind it. */
@@ -126,7 +131,9 @@ public class AllBlocks {
 			// FACING-aware variants; the 2px plate model itself is hand-written in
 			// main resources (custom elements — datagen only links to it)
 			.blockstate((ctx, prov) -> plateVariants(prov, ctx.get(), ctx.getName()))
-			.simpleItem()
+			.item(GaugeBlockItem::new)
+			.model((ctx, prov) -> prov.withExistingParent(ctx.getName(), prov.mcLoc("builtin/entity")))
+			.build()
 			.register();
 
 	/** S03 pressure gauge (压力表, 方块形式): a full-cube shell block that doubles as a pressure gauge.
@@ -137,7 +144,9 @@ public class AllBlocks {
 			.lang("Pressure Gauge")
 			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(),
 				prov.models().cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
-			.simpleItem()
+			.item(GaugeBlockItem::new)
+			.model((ctx, prov) -> prov.withExistingParent(ctx.getName(), prov.mcLoc("builtin/entity")))
+			.build()
 			.register();
 
 	/** S03 pressure gauge (压力表, 薄板形式): a thin face-mounted plate reading the reactor behind it. */
@@ -151,7 +160,9 @@ public class AllBlocks {
 			.lang("Pressure Gauge Panel")
 			// same dual-form pattern as the thermometer panel (S02)
 			.blockstate((ctx, prov) -> plateVariants(prov, ctx.get(), ctx.getName()))
-			.simpleItem()
+			.item(GaugeBlockItem::new)
+			.model((ctx, prov) -> prov.withExistingParent(ctx.getName(), prov.mcLoc("builtin/entity")))
+			.build()
 			.register();
 
 	public static void register() {

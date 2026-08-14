@@ -2,6 +2,7 @@ package com.yu1745.chemicaladdon;
 
 import com.yu1745.chemicaladdon.reactor.DecantHoseRenderer;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerRenderer;
+import com.yu1745.chemicaladdon.reactor.VesselGaugeRenderer;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
 import com.yu1745.chemicaladdon.registry.AllContainers;
 
@@ -22,6 +23,15 @@ public class ChemicalAddonClient {
 		BlockEntityRenderers.register(AllBlockEntities.REACTOR_CONTROLLER.get(), ReactorControllerRenderer::new);
 		// render the decant hose's coil + hanging rope (Create hose-pulley look, surface-tracking)
 		BlockEntityRenderers.register(AllBlockEntities.DECANT_HOSE.get(), DecantHoseRenderer::new);
+		// render the S02/S03 gauge dial needles (both forms: full-cube wall block + thin panel),
+		// chasing the synced reading — one renderer for all four block entities
+		// (must run before ModelEvent.RegisterAdditional so the gauge_needle partial
+		// model gets registered & baked; a bare method reference stays lazy)
+		VesselGaugeRenderer.init();
+		BlockEntityRenderers.register(AllBlockEntities.THERMOMETER.get(), VesselGaugeRenderer::new);
+		BlockEntityRenderers.register(AllBlockEntities.THERMOMETER_PANEL.get(), VesselGaugeRenderer::new);
+		BlockEntityRenderers.register(AllBlockEntities.PRESSURE_GAUGE.get(), VesselGaugeRenderer::new);
+		BlockEntityRenderers.register(AllBlockEntities.PRESSURE_GAUGE_PANEL.get(), VesselGaugeRenderer::new);
 
 		// per-stack fluid tint for every DynamicFluidContainerModel item: the sample
 		// vial (any fluid with NBT) and every species bucket (still sprite + tint).

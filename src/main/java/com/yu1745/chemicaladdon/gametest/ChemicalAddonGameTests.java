@@ -1098,8 +1098,8 @@ public class ChemicalAddonGameTests {
 		BlockState thermoState = helper.getBlockState(thermoPos);
 		helper.assertTrue(thermoState.getSignal(helper.getLevel(), abs, Direction.NORTH) == 15,
 			"the alarm must emit a strong redstone signal");
-		helper.assertTrue(thermoState.getAnalogOutputSignal(helper.getLevel(), abs) == 7,
-			"comparator signal should be 500°C/1000°C * 15 = 7");
+		helper.assertTrue(thermoState.getAnalogOutputSignal(helper.getLevel(), abs) == 15,
+			"comparator signal should saturate at 15 once the reading reaches the 400°C threshold (dynamic 0°C..threshold scale)");
 		helper.succeed();
 	}
 
@@ -1144,6 +1144,41 @@ public class ChemicalAddonGameTests {
 		helper.assertTrue(be.isAlarm(), "500°C must trip the alarm");
 		helper.assertTrue(be.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.EAST).isPresent(),
 			"wall thermometer must proxy FLUID_HANDLER to the reactor");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void wallThermometerAboveControllerBinds(GameTestHelper helper) {
+		// Regression: a shell block sitting directly ABOVE (or below) the controller
+		// shares the controller's s/d column. bindBricks used to skip that whole
+		// column, so a thermometer in the ceiling over the controller validated fine
+		// but never got bound. Only the controller cell itself must be skipped.
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		BlockState thermo = AllBlocks.THERMOMETER.get().defaultBlockState();
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick); // floor
+				helper.setBlock(new BlockPos(x, 3, z), (x == 2 && z == 1) ? thermo : brick); // ceiling, gauge above controller
+			}
+		}
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				if (x == 2 && z == 2) {
+					continue; // interior
+				}
+				BlockPos p = new BlockPos(x, 2, z);
+				helper.setBlock(p, x == 2 && z == 1 ? controller : brick);
+			}
+		}
+		helper.setBlock(new BlockPos(2, 2, 2), Blocks.AIR.defaultBlockState());
+		ReactorControllerBlockEntity reactor = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 1));
+		helper.assertTrue(reactor.tryAssemble().ok(),
+			"sealed reactor with a ceiling thermometer above the controller should assemble");
+		ThermometerBlockEntity be = (ThermometerBlockEntity) helper.getBlockEntity(new BlockPos(2, 3, 1));
+		helper.assertTrue(be != null, "ceiling thermometer should have a block entity");
+		helper.assertTrue(be.getMasterPos() != null,
+			"ceiling thermometer above the controller must be bound (got " + be.getMasterPos() + ")");
 		helper.succeed();
 	}
 
@@ -1278,8 +1313,8 @@ public class ChemicalAddonGameTests {
 		BlockState state = helper.getBlockState(new BlockPos(5, 2, 2));
 		helper.assertTrue(state.getSignal(helper.getLevel(), abs, Direction.EAST) == 15,
 			"the alarm must emit a strong redstone signal");
-		helper.assertTrue(state.getAnalogOutputSignal(helper.getLevel(), abs) == expected * 15 / 1500,
-			"comparator signal should be " + expected + "/1500 × 15");
+		helper.assertTrue(state.getAnalogOutputSignal(helper.getLevel(), abs) == 15,
+			"comparator signal should saturate at 15 once the reading reaches the 250 kPa threshold (dynamic 0..threshold scale)");
 		helper.succeed();
 	}
 

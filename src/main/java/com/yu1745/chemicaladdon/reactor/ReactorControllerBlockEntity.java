@@ -975,10 +975,13 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		int sEnd = sStart + w - 1;
 		for (int s = sStart; s <= sEnd; s++) {
 			for (int d = 0; d <= w - 1; d++) {
-				if (s == 0 && d == 0) {
-					continue; // the controller itself
-				}
 				for (int y = -ringLayer - 1; y <= rings - ringLayer; y++) {
+					// skip only the controller cell itself — the shell blocks directly
+					// above/below the controller (same s/d column, y != 0) are real wall
+					// blocks and must be bound too (a gauge mounted there read nothing)
+					if (s == 0 && d == 0 && y == 0) {
+						continue;
+					}
 					bindBrick(cell(s, d, y, side, inward), masterPos);
 				}
 			}
