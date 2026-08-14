@@ -124,6 +124,8 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 	private ResourceLocation activeRecipe = null;
 	@Nullable
 	private Direction inward = null; // direction from the controller into the vessel (for item rendering)
+	/** Debug temperature pin (-1 = unpinned; when ≥0 the vessel is held at this °C regardless of the burner). */
+	private int pinnedTemperature = -1;
 
 	/**
 	 * Client-side fluid surface animation: chases the ABSOLUTE surface height in
@@ -267,6 +269,18 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 	}
 
 	private void updateHeat() {
+		// debug pin: hold the contents at a fixed temperature (the debug item sets
+		// this to take control away from the Blaze Burner / ambient relaxation)
+		if (pinnedTemperature >= 0) {
+			for (FluidStack stack : tank.getFluids()) {
+				if (Temperature.get(stack) != pinnedTemperature) {
+					Temperature.set(stack, pinnedTemperature);
+					setChanged();
+					sync();
+				}
+			}
+			return;
+		}
 		// heating from a Blaze Burner directly below the vessel's bottom layer
 		// (controller sits on the first wall layer; bottom is one below, burner two)
 		BlockState below = level.getBlockState(worldPosition.below(2));
@@ -289,6 +303,24 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 			setChanged();
 			sync();
 		}
+	}
+
+	/** Debug/dev: hold the vessel at {@code t} °C, or {@code -1} to resume normal heating. */
+	public void setPinnedTemperature(int t) {
+		int clamped = t < 0 ? -1 : Math.max(AMBIENT_TEMP, Math.min(MAX_TEMP, t));
+		this.pinnedTemperature = clamped;
+		if (clamped >= 0) {
+			for (FluidStack stack : tank.getFluids()) {
+				Temperature.set(stack, clamped);
+			}
+		}
+		setChanged();
+		sync();
+	}
+
+	/** The debug temperature pin, or -1 when unpinned. */
+	public int getPinnedTemperature() {
+		return pinnedTemperature;
 	}
 
 	private void tickReaction() {
@@ -1258,6 +1290,7 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		// status drives the goggles HUD (addToGoggleTooltip reads it client-side);
 		// it must be in the sync tag or the client BE keeps its default NOT_ASSEMBLED forever
 		tag.putString("status", status.name());
+		tag.putInt("pinnedTemperature", pinnedTemperature);
 	}
 
 	@Override
@@ -1293,6 +1326,7 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		} else {
 			status = ReactorStatus.NOT_ASSEMBLED;
 		}
+		pinnedTemperature = tag.contains("pinnedTemperature") ? tag.getInt("pinnedTemperature") : -1;
 		// a sync packet may have changed structure geometry (size/height/inward/
 		// assembled) — drop the cached render bounding box so createRenderBoundingBox
 		// recomputes it against the new dimensions (Create FluidTank pattern).

@@ -518,6 +518,7 @@ def gen_block_textures():
 EXTRA_LANG_ZH = {
     "itemGroup.chemicaladdon": "化学附属",
     "item.chemicaladdon.fluid_vial": "样品瓶",
+    "item.chemicaladdon.temperature_debug": "温度调试棒",
     "goggles.chemicaladdon.temperature": "温度：%s°C",
     "goggles.chemicaladdon.heat.none": "无热级",
     "goggles.chemicaladdon.heat.heated": "加热",
