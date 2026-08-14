@@ -31,7 +31,8 @@ import net.minecraftforge.fluids.FluidStack;
  * and the item buffer floating ON the surface, half-submerged with a gentle
  * bobbing. Handles any n x n x n shell size (interior (n-2)^3). Fluid rendering
  * reuses Create's catnip FluidRenderHelper, animated by a client-side LerpedFloat
- * chasing the synced fill state.
+ * chasing the synced ABSOLUTE surface height (fill × interior height, so a
+ * capacity change with the amount unchanged never twitches the surface).
  */
 public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorControllerBlockEntity> {
 
@@ -48,8 +49,15 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 		super.renderSafe(reactor, partialTicks, ms, buffer, light, overlay);
 
 		Direction inward = reactor.getInward();
-		if (inward == null || !reactor.isAssembled()) {
-			return; // not assembled (or client hasn't received the structure yet)
+		if (inward == null) {
+			return; // client hasn't received the structure yet
+		}
+		// §C: while the vessel is de-assembled (a wall brick broke) the remaining
+		// lower shell still stands — keep rendering the residual surface at its
+		// lowered level. Empty vessels (or a client that hasn't learned of the
+		// residual yet) skip.
+		if (!reactor.isAssembled() && reactor.getTank().getTotalAmount() <= 0) {
+			return;
 		}
 		int size = reactor.getSize();
 		int height = reactor.getHeight();
@@ -85,8 +93,11 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 		// --- fluid-surface height: compute WITHOUT drawing yet. Items must render
 		// before the fluid so their submerged parts show through the translucent
 		// fluid (the fluid writes depth; rendering it first would depth-cull every
-		// item fragment behind its front faces). ---
-		float levelHeight = reactor.getRenderedLevel(partialTicks) * height;
+		// item fragment behind its front faces). getRenderedLevel is already the
+		// ABSOLUTE surface height in blocks — the vessel's height/capacity may
+		// change (brick break/place) while the amount stays put, and an animated
+		// fraction × an instantly-new height would twitch the surface. ---
+		float levelHeight = reactor.getRenderedLevel(partialTicks);
 		float liquidSurface = liquidSurfaceHeight(reactor, levelHeight);
 
 		// --- item pass: float on the fluid surface, half-submerged, bobbing ---

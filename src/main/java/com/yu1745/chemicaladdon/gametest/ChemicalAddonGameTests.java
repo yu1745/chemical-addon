@@ -431,6 +431,271 @@ public class ChemicalAddonGameTests {
 	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void reactorAutoExtendsWhenGrownTaller(GameTestHelper helper) {
+		// §A: placing vessel-wall blocks next to an ASSEMBLED vessel re-validates and
+		// grows it (strictly larger only, contents preserved). Open 3x3x3 -> sealed 3x3x5.
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick); // floor
+			}
+		}
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				if (x == 2 && z == 2) {
+					continue; // interior
+				}
+				BlockPos p = new BlockPos(x, 2, z);
+				helper.setBlock(p, x == 2 && z == 1 ? controller : brick);
+			}
+		}
+		ReactorControllerBlockEntity be = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 1));
+		helper.assertTrue(be.tryAssemble().ok() && be.isOpen(), "open 3x3x3 should assemble");
+		be.getTank().fill(new FluidStack(Fluids.WATER, 1000), FluidAction.EXECUTE);
+
+		// grow taller: two more ring layers + a sealed ceiling — each placement may
+		// trigger an extension, the last ceiling brick seals the top
+		for (int y = 3; y <= 4; y++) {
+			for (int x = 1; x <= 3; x++) {
+				for (int z = 1; z <= 3; z++) {
+					if (x == 2 && z == 2) {
+						continue; // interior column
+					}
+					helper.setBlock(new BlockPos(x, y, z), brick);
+				}
+			}
+		}
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 5, z), brick); // ceiling
+			}
+		}
+		helper.assertTrue(be.isAssembled(), "placing bricks around an assembled vessel should keep it assembled");
+		helper.assertTrue(be.getSize() == 3 && be.getHeight() == 3,
+			"vessel should have grown to 3 rings (got " + be.getSize() + "x" + be.getHeight() + ")");
+		helper.assertTrue(be.getTank().getTankCapacity(0) == 3000,
+			"capacity should scale with the grown height (got " + be.getTank().getTankCapacity(0) + ")");
+		helper.assertTrue(be.getTank().getTotalAmount() == 1000, "contents must survive the extension");
+		helper.assertTrue(!be.isOpen(), "sealing the top must flip the open flag");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void reactorKeepsFluidBelowBreach(GameTestHelper helper) {
+		// §B: a mid-wall breach spills only the fluid ABOVE the breach; the portion
+		// below stays in the tank (recovered on rebuild). §C: size/height/inward are
+		// retained as lastGeometry so the residual surface keeps rendering.
+		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
+		be.getTank().fill(new FluidStack(Fluids.WATER, 27000), FluidAction.EXECUTE);
+		helper.assertTrue(be.getTank().getTotalAmount() == 27000, "5x5x5 should hold 27 buckets");
+
+		// break a wall brick on ring 1 (y=3, controller on ring 0): interior ring 1 of 3
+		helper.setBlock(new BlockPos(0, 3, 2), Blocks.AIR.defaultBlockState());
+		helper.assertFalse(be.isAssembled(), "breaking a wall brick should de-assemble");
+		helper.assertTrue(be.getTank().getTotalAmount() == 9000,
+			"fluid below the breach must stay in the tank (got " + be.getTank().getTotalAmount() + ")");
+		helper.assertTrue(be.getPendingSpillAmount() == 17000,
+			"fluid above the breach must be queued (got " + be.getPendingSpillAmount() + ")");
+		// §C: last geometry retained for rendering the residual in the remaining shell
+		helper.assertTrue(be.getSize() == 5 && be.getHeight() == 3 && be.getInward() != null,
+			"last geometry must be retained while de-assembled");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void reactorBottomBreachSpillsAll(GameTestHelper helper) {
+		// §B: a floor breach has no fluid below it -> everything pours out
+		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
+		be.getTank().fill(new FluidStack(Fluids.WATER, 27000), FluidAction.EXECUTE);
+		helper.setBlock(new BlockPos(2, 1, 2), Blocks.AIR.defaultBlockState()); // floor brick under the core
+		helper.assertFalse(be.isAssembled(), "floor brick is structural");
+		helper.assertTrue(be.getTank().getTotalAmount() == 0, "bottom breach must drain the tank");
+		helper.assertTrue(be.getPendingSpillAmount() == 26000,
+			"all 27 buckets queued (one source already placed) (got " + be.getPendingSpillAmount() + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void reactorCeilingBrickOpensVessel(GameTestHelper helper) {
+		// Removing a CEILING brick must NOT lower or destroy the vessel — the height
+		// of a vessel is its ring count, not its lid. The lid layer is discarded
+		// (its bricks become stray) and the vessel simply opens up: same 5x5x5,
+		// same capacity, no overflow. This is the mirror of sealing.
+		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
+		be.getTank().fill(new FluidStack(Fluids.WATER, 27000), FluidAction.EXECUTE);
+		helper.setBlock(new BlockPos(0, 5, 0), Blocks.AIR.defaultBlockState()); // ceiling corner
+		helper.assertTrue(be.isAssembled(), "removing a ceiling brick must keep the vessel assembled");
+		helper.assertTrue(be.getSize() == 5 && be.getHeight() == 3,
+			"the height must stay (got " + be.getSize() + "x" + be.getHeight() + ")");
+		helper.assertTrue(be.isOpen(), "the vessel should become open-topped");
+		helper.assertTrue(be.getTank().getTankCapacity(0) == 27000,
+			"capacity must stay (got " + be.getTank().getTankCapacity(0) + ")");
+		helper.assertTrue(be.getTank().getTotalAmount() == 27000, "contents must be untouched");
+		helper.assertTrue(be.getPendingSpillAmount() == 0, "nothing should spill");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void reactorSmallestCeilingOpensVessel(GameTestHelper helper) {
+		// even the smallest vessel (3x3x3, a single ring) survives a ceiling brick
+		// removal: it becomes open-topped at the SAME height instead of de-assembling
+		buildReactor(helper);
+		ReactorControllerBlockEntity be = reactor(helper);
+		be.getTank().fill(new FluidStack(Fluids.WATER, 1000), FluidAction.EXECUTE);
+		helper.setBlock(new BlockPos(1, 3, 1), Blocks.AIR.defaultBlockState()); // ceiling brick
+		helper.assertTrue(be.isAssembled(), "the smallest vessel must stay assembled");
+		helper.assertTrue(be.isOpen() && be.getHeight() == 1, "it should simply open up");
+		helper.assertTrue(be.getTank().getTotalAmount() == 1000, "contents must be kept");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void reactorTopRingShrinkLowersVessel(GameTestHelper helper) {
+		// removing a TOP RING brick lowers the vessel one ring: open 3x3x5 (3 rings)
+		// -> open 3x3x4 (2 rings), contents overflow down to the new capacity
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick);
+			}
+		}
+		for (int y = 2; y <= 4; y++) {
+			for (int x = 1; x <= 3; x++) {
+				for (int z = 1; z <= 3; z++) {
+					if (x == 2 && z == 2) {
+						continue; // interior column
+					}
+					helper.setBlock(new BlockPos(x, y, z), x == 2 && z == 1 && y == 2 ? controller : brick);
+				}
+			}
+		}
+		ReactorControllerBlockEntity be = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 1));
+		helper.assertTrue(be.tryAssemble().ok() && be.isOpen() && be.getHeight() == 3,
+			"open 3x3x5 should assemble at 3 rings");
+		be.getTank().fill(new FluidStack(Fluids.WATER, 3000), FluidAction.EXECUTE);
+
+		helper.setBlock(new BlockPos(1, 4, 1), Blocks.AIR.defaultBlockState()); // top ring (y=4) wall brick
+		helper.assertTrue(be.isAssembled(), "removing a top ring brick must keep the vessel assembled");
+		helper.assertTrue(be.getHeight() == 2,
+			"vessel should lower one ring (got " + be.getHeight() + ")");
+		helper.assertTrue(be.isOpen(), "still open-topped");
+		helper.assertTrue(be.getTank().getTankCapacity(0) == 2000,
+			"capacity should shrink to 2000 (got " + be.getTank().getTankCapacity(0) + ")");
+		helper.assertTrue(be.getTank().getTotalAmount() == 2000,
+			"over-capacity after lowering must overflow down to the new capacity");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void reactorControllerBreakSpillsAll(GameTestHelper helper) {
+		// §B hard rule: breaking the controller destroys the NBT that would hold a
+		// retained remainder -> fall back to a full physical spill (no silent loss)
+		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
+		be.getTank().fill(new FluidStack(Fluids.WATER, 27000), FluidAction.EXECUTE);
+		helper.setBlock(new BlockPos(2, 2, 0), Blocks.AIR.defaultBlockState()); // the controller itself
+		helper.assertTrue(be.getTank().getTotalAmount() == 0,
+			"controller break must spill everything (retained remainder would be lost)");
+		helper.assertTrue(be.getPendingSpillAmount() == 26000,
+			"full spill queued (got " + be.getPendingSpillAmount() + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void reactorSealingDoesNotShrinkHeight(GameTestHelper helper) {
+		// Regression (build flicker): sealing a built-up open vessel must NOT
+		// momentarily match a shorter open shell while the ceiling is half-finished
+		// — a placement may only extend or keep the current height, never shrink it.
+		// The height must stay at 3 rings the whole way to the sealed 3x3x5.
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		// open 3x3x5: floor y=1, rings y=2..4, open top y=5
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick);
+			}
+		}
+		for (int y = 2; y <= 4; y++) {
+			for (int x = 1; x <= 3; x++) {
+				for (int z = 1; z <= 3; z++) {
+					if (x == 2 && z == 2) {
+						continue; // interior column
+					}
+					helper.setBlock(new BlockPos(x, y, z), x == 2 && z == 1 && y == 2 ? controller : brick);
+				}
+			}
+		}
+		ReactorControllerBlockEntity be = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 1));
+		helper.assertTrue(be.tryAssemble().ok() && be.isOpen(), "open 3x3x5 should assemble");
+		helper.assertTrue(be.getHeight() == 3, "open 3x3x5 should be 3 rings tall");
+
+		// seal the ceiling brick by brick — the height must stay at 3 throughout
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 5, z), brick);
+				helper.assertTrue(be.getHeight() == 3,
+					"placing a ceiling brick must not shrink the height (got " + be.getHeight() + ")");
+			}
+		}
+		helper.assertTrue(be.isAssembled() && !be.isOpen(), "fully sealed 3x3x5");
+		helper.assertTrue(be.getTank().getTankCapacity(0) == 3000, "capacity should stay 3000");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void reactorRebuildSmallerOverflowsExcess(GameTestHelper helper) {
+		// §D: rebuilding smaller than the retained contents overflows the excess as
+		// physical fluid — the vessel never sits wedged in an over-capacity state.
+		// Break a mid-wall brick (keeps the 9000 mB below the breach), reshape the
+		// shell to a 3x3x3 and let the last brick re-assemble it: 9000 > 1000
+		// capacity -> 8000 mB overflow.
+		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
+		be.getTank().fill(new FluidStack(Fluids.WATER, 27000), FluidAction.EXECUTE);
+		// mid-wall breach (ring 1 of 3): keeps the fluid below the breach (9000)
+		helper.setBlock(new BlockPos(0, 3, 2), Blocks.AIR.defaultBlockState());
+		helper.assertFalse(be.isAssembled(), "mid-wall breach should de-assemble");
+		helper.assertTrue(be.getTank().getTotalAmount() == 9000,
+			"9000 mB retained below the breach (got " + be.getTank().getTotalAmount() + ")");
+
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		// reshape the shell to a 3x3x3 (controller stays at (2,2,0) on the north wall):
+		// clear everything outside x=1..3, y=1..3, z=0..2 (unbound by the breach, so
+		// clearing them cannot re-trigger invalidation)
+		for (int x = 0; x <= 4; x++) {
+			for (int y = 1; y <= 5; y++) {
+				for (int z = 0; z <= 4; z++) {
+					if (x >= 1 && x <= 3 && y >= 1 && y <= 3 && z >= 0 && z <= 2) {
+						continue;
+					}
+					helper.setBlock(new BlockPos(x, y, z), Blocks.AIR.defaultBlockState());
+				}
+			}
+		}
+		// fill in the 3x3x3 walls the 5x5x5 left hollow: ring y=2 then ceiling y=3 —
+		// the last placement completes the shell and re-assembles
+		helper.setBlock(new BlockPos(1, 2, 1), brick);
+		helper.setBlock(new BlockPos(3, 2, 1), brick);
+		helper.setBlock(new BlockPos(1, 2, 2), brick);
+		helper.setBlock(new BlockPos(2, 2, 2), brick);
+		helper.setBlock(new BlockPos(3, 2, 2), brick);
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 0; z <= 2; z++) {
+				helper.setBlock(new BlockPos(x, 3, z), brick); // ceiling (completes the shell)
+			}
+		}
+		helper.assertTrue(be.isAssembled(), "the smaller shell should re-assemble automatically");
+		helper.assertTrue(be.getTank().getTankCapacity(0) == 1000,
+			"new capacity should be 1000 (got " + be.getTank().getTankCapacity(0) + ")");
+		helper.assertTrue(be.getTank().getTotalAmount() == 1000,
+			"tank must hold exactly the new capacity, not more (got " + be.getTank().getTotalAmount() + ")");
+		int pending = be.getPendingSpillAmount();
+		helper.assertTrue(pending > 0 && pending <= 8000,
+			"the overflow (8 buckets) must be queued as physical fluid (got " + pending + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void reactorAssemblesOverFluid(GameTestHelper helper) {
 		// Build a 3x3x3 shell leaving the controller slot as a brick, pre-fill the
 		// interior with water, THEN swap the controller in (closing the shell last).

@@ -125,8 +125,19 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 	@Nullable
 	private Direction inward = null; // direction from the controller into the vessel (for item rendering)
 
-	/** Client-side fluid surface animation (chases the real fill state). */
-	private final LerpedFloat renderedLevel = LerpedFloat.linear().startWithValue(0);
+	/**
+	 * Client-side fluid surface animation: chases the ABSOLUTE surface height in
+	 * blocks (fill × interior height), NOT the fill fraction. Create's FluidTank
+	 * can chase the fraction because its geometry never changes — this vessel's
+	 * height/capacity changes on brick break/place (shrink/extend) while the
+	 * amount stays put, and a fraction chase would blend the old fraction with
+	 * the new height mid-transition, twitching a surface that never physically
+	 * moved (the true surface is total / (TANK_CAPACITY · (w-2)²), independent
+	 * of the ring count). Null until first client use so the animation starts
+	 * AT the true surface instead of rising from the floor on chunk load
+	 * (FluidTankBlockEntity's {@code fluidLevel == null} pattern).
+	 */
+	private LerpedFloat renderedLevel;
 
 	@Override
 	public void addBehaviours(List<BlockEntityBehaviour> behaviours) {
@@ -144,8 +155,16 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 			return;
 		}
 		if (level.isClientSide) {
-			// chase the fluid surface toward the synced fill state (FluidTank-style easing)
-			renderedLevel.chase(getFillState(), 0.5, LerpedFloat.Chaser.EXP);
+			if (renderedLevel == null) {
+				// first frame after the client learned of the vessel: start AT the
+				// true surface (no rise-from-floor on chunk load / dimension entry)
+				renderedLevel = LerpedFloat.linear().startWithValue(targetRenderedLevel());
+			}
+			// chase the ABSOLUTE surface height (see renderedLevel): a capacity
+			// change with the amount unchanged (shrink on brick break, regrow on
+			// placement) leaves this target exactly where it was, so the surface
+			// only eases when fluid actually moves
+			renderedLevel.chase(targetRenderedLevel(), 0.5, LerpedFloat.Chaser.EXP);
 			renderedLevel.tickChaser();
 			return;
 		}
@@ -532,6 +551,21 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 	 * is (W-2)^2 x (H-2) air.
 	 */
 	public AssembleResult tryAssemble() {
+		return tryAssemble(MAX_SIZE - 2, Integer.MAX_VALUE, false);
+	}
+
+	/**
+	 * {@link #tryAssemble()} with bounds used by the shrink path:
+	 * {@code maxRings} caps the candidate interior height (a removed ceiling brick
+	 * must shrink the vessel, not grow it), {@code ignoreAboveY} (controller-
+	 * relative) marks the discarded top zone — layers at/above it are skipped
+	 * entirely (their bricks become stray, outside the shell) and a candidate whose
+	 * ceiling lies there is treated as open-topped. {@code allowShrink} gates
+	 * adopting a SMALLER shell: only the removal path may shrink — a placement
+	 * (sealing a half-finished ceiling) must never yank the vessel back down
+	 * (that would flicker the height while building taller).
+	 */
+	private AssembleResult tryAssemble(int maxRings, int ignoreAboveY, boolean allowShrink) {
 		if (level == null || level.isClientSide) {
 			return new AssembleResult(false, null, AssembleIssue.BOTTOM_GAP, null);
 		}
@@ -549,6 +583,9 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 				int sEnd = sStart + w - 1;
 				for (int h = MAX_SIZE; h >= MIN_SIZE; h--) {
 					int rings = h - 2; // ring layers between floor and ceiling
+					if (rings > maxRings) {
+						continue;
+					}
 
 					// the controller may sit on ANY ring layer (Tinkers-style): k = its
 					// layer counting up from the floor, so the floor is k+1 below it
@@ -582,6 +619,10 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 						// must be a vessel block and the interior hollow; (y=0,s=0,d=0) is
 						// the controller on its own layer
 						for (int y = ringY0; y <= ringY1 && ok; y++) {
+							if (y >= ignoreAboveY) {
+								progress++; // discarded layer: counts as present, no checks
+								continue;
+							}
 							boolean layerIsRing = true;
 							for (int s = sStart; s <= sEnd && layerIsRing; s++) {
 								for (int d = 0; d <= w - 1 && layerIsRing; d++) {
@@ -614,32 +655,59 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 							}
 						}
 
-						// top layer: fully sealed (w*w blocks) or fully open
+						// top layer: fully sealed (w*w blocks) or fully open — or discarded
 						boolean topOpen = false;
 						if (ok) {
-							int topBricks = 0;
-							for (int s = sStart; s <= sEnd && ok; s++) {
-								for (int d = 0; d <= w - 1 && ok; d++) {
-									BlockPos p = cell(s, d, topY, side, inward);
-									if (level.getBlockState(p).is(ChemicalAddon.VESSEL_WALLS)) {
-										topBricks++;
-									} else if (firstIssue == null) {
-										firstIssue = AssembleIssue.PARTIAL_TOP;
-										firstIssuePos = p;
+							if (topY >= ignoreAboveY) {
+								// ceiling lies in the discarded zone (shrink): treat as open,
+								// no top-brick checks — those bricks are stray, outside the shell
+								topOpen = true;
+								progress++;
+							} else {
+								int topBricks = 0;
+								for (int s = sStart; s <= sEnd && ok; s++) {
+									for (int d = 0; d <= w - 1 && ok; d++) {
+										BlockPos p = cell(s, d, topY, side, inward);
+										if (level.getBlockState(p).is(ChemicalAddon.VESSEL_WALLS)) {
+											topBricks++;
+										} else if (firstIssue == null) {
+											firstIssue = AssembleIssue.PARTIAL_TOP;
+											firstIssuePos = p;
+										}
 									}
 								}
-							}
-							if (topBricks == 0) {
-								topOpen = true;
-							} else if (topBricks != w * w) {
-								ok = false; // partially sealed top
-							}
-							if (ok) {
-								progress++;
+								if (topBricks == 0) {
+									topOpen = true;
+								} else if (topBricks != w * w) {
+									ok = false; // partially sealed top
+								}
+								if (ok) {
+									progress++;
+								}
 							}
 						}
 
 						if (ok) {
+							// A re-validation of a LIVE vessel adopts only strictly larger
+							// (extension) or — on the REMOVAL path only — strictly smaller
+							// (shrink after a bound brick was removed) shells. A placement
+							// must never shrink: sealing a half-finished ceiling would
+							// momentarily match a shorter open vessel and yank the height
+							// back down (the build flicker). A tie (same volume AND same
+							// open state — even a different orientation) keeps the current
+							// assembly untouched; an open/sealed change always takes effect
+							// (sealing/opening the top is the player's intent). Initial
+							// assembly (assembled == false) adopts the largest cuboid.
+							int newVol = w * w * rings;
+							int curVol = size * size * height;
+							if (assembled && newVol == curVol && topOpen == open) {
+								return AssembleResult.success(); // tie: keep current assembly
+							}
+							if (assembled && newVol < curVol && !allowShrink) {
+								return AssembleResult.success(); // placement must never shrink
+							}
+							boolean wasAssembled = assembled;
+							int oldSize = size;
 							assembled = true;
 							this.inward = inward;
 							this.open = topOpen;
@@ -648,6 +716,44 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 							this.ringLayer = k;
 							setStatus(ReactorStatus.REACTING);
 							tank.setCapacity(TANK_CAPACITY * (w - 2) * (w - 2) * rings); // per interior block
+							if (wasAssembled) {
+								// re-bind: clear old-shell masters first so bricks that fell OUT
+								// of the (shrunk) shell stop proxying capabilities — bindBricks
+								// below re-binds the new shell (extension re-binds harmlessly)
+								clearShellMasters(Math.max(oldSize, w) + 1);
+							} else {
+								// coming back from a break: the shell is intact again — stop
+								// any leftover trickle from the breach (a repaired vessel must
+								// not keep leaking). An extension of a live vessel keeps its
+								// (empty) spill state untouched.
+								pendingSpill.clear();
+								spillLeakPos = null;
+								spillTimer = 0;
+							}
+							// §D: rebuilt smaller than the retained contents -> the excess is
+							// turned back into physical fluid (progressive trickle from the new
+							// interior top), so the vessel never sits wedged in a permanent
+							// over-capacity OUTPUT_FULL state
+							int newCap = tank.getTankCapacity(0);
+							int nowTotal = tank.getTotalAmount();
+							if (nowTotal > newCap) {
+								int overflowMb = nowTotal - newCap;
+								List<FluidStack> overflow = new ArrayList<>();
+								for (FluidStack stack : new ArrayList<>(tank.getFluids())) {
+									int take = (int) Math.floor(stack.getAmount() * (double) overflowMb / nowTotal);
+									if (take > 0) {
+										FluidStack out = stack.copy();
+										out.setAmount(take);
+										overflow.add(out);
+										stack.shrink(take);
+									}
+								}
+								tank.pruneEmpty();
+								pendingSpill.addAll(SpillLogic.queueFluids(overflow));
+								spillLeakPos = topCenter(w, rings, inward);
+								spillTimer = 4;
+								SpillLogic.tryPlaceOne(level, spillLeakPos, pendingSpill);
+							}
 							bindBricks(worldPosition, inward, side, w, rings);
 							// absorb any fluid already sitting in the interior (e.g. water poured
 							// before the last brick closed the shell) into the tank — source blocks
@@ -681,6 +787,105 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 	private BlockPos cell(int s, int d, int y, Direction side, Direction inward) {
 		return worldPosition.offset(side.getStepX() * s + inward.getStepX() * d, y,
 			side.getStepZ() * s + inward.getStepZ() * d);
+	}
+
+	/**
+	 * §A: re-validate after a structural block was placed near an assembled
+	 * vessel. The placed block may have completed a larger shell — adopt the
+	 * result only when it is strictly larger (grow, never shrink or re-orient);
+	 * {@link #tryAssemble} enforces that, and never spills on success, so the
+	 * contents carry over untouched. Blocks far outside the shell's reach are
+	 * rejected cheaply (a stray brick must not trigger a full re-validation).
+	 */
+	public boolean tryExtend(BlockPos placedPos) {
+		if (level == null || level.isClientSide || !assembled) {
+			return false;
+		}
+		// fast reject: the placed block must be within one block of the current
+		// shell's bounding box to be able to complete a larger cuboid
+		int reach = Math.max(size, height) + 2;
+		if (Math.abs(placedPos.getX() - worldPosition.getX()) > reach
+			|| Math.abs(placedPos.getY() - worldPosition.getY()) > reach
+			|| Math.abs(placedPos.getZ() - worldPosition.getZ()) > reach) {
+			return false;
+		}
+		return tryAssemble().ok();
+	}
+
+	/**
+	 * §D: leak point for an overflow after rebuilding smaller — the top-centre
+	 * of the (new) shell's interior, so the excess pours over the rim (open top)
+	 * or seeps from the seam (sealed top; {@code SpillLogic.findFreeSpot} walks
+	 * outward from the occupied cap block).
+	 */
+	private BlockPos topCenter(int w, int rings, Direction inward) {
+		int dMid = (w - 1) / 2;
+		return worldPosition.offset(inward.getStepX() * dMid, rings - ringLayer, inward.getStepZ() * dMid);
+	}
+
+	/**
+	 * A bound shell block was removed. Before giving up on the vessel, try to
+	 * keep it going at the least destructive step:
+	 * 1) any legal (smaller or open-changed) shell from a full re-validation;
+	 * 2) a CEILING brick removed -> the vessel stays the SAME height and simply
+	 *    becomes open-topped (the ceiling layer is discarded, its bricks become
+	 *    stray) — the height of a vessel is its ring count, not its lid;
+	 * 3) a top RING brick removed -> shrink one ring (lower the vessel);
+	 * 4) otherwise the shell has no legal remainder -> full de-assembly (§B
+	 *    breach-level spill). Contents survive 1-3 (over-capacity overflows, §D).
+	 */
+	public void handleStructuralBlockRemoved(BlockPos removedPos) {
+		if (level == null || level.isClientSide || !assembled) {
+			return;
+		}
+		// 1) any legal shell from a full re-validation (smaller, or tie-with-open-change)
+		if (tryAssemble(MAX_SIZE - 2, Integer.MAX_VALUE, true).ok()) {
+			return;
+		}
+		// 2) ceiling brick removed -> same height, open-topped (discard only the lid
+		//    layer, keep every ring); no height change, no de-assembly
+		int ceilingLine = height - ringLayer; // controller-relative y of the ceiling layer
+		if (tryAssemble(height, ceilingLine, true).ok()) {
+			return;
+		}
+		// 3) top ring brick removed -> drop the ceiling + highest ring (lower by one)
+		if (tryShrink()) {
+			return;
+		}
+		// 4) nothing legal remains -> full de-assembly with breach-level spill
+		invalidateStructure(removedPos);
+	}
+
+	/**
+	 * Shrink the vessel by one interior ring: the ceiling layer and the highest
+	 * ring layer are treated as discarded (their bricks become stray, out of the
+	 * shell) and the remaining shell is re-validated as an open-topped vessel one
+	 * ring shorter. Adopts the largest legal result (w unchanged usually), so
+	 * removing a top brick lowers the vessel instead of destroying it.
+	 */
+	private boolean tryShrink() {
+		if (height <= 1) {
+			return false; // already minimal height (a 3x3x3 has a single ring)
+		}
+		// controller-relative y of the new ceiling; everything at/above is discarded
+		int dropLine = height - 1 - ringLayer;
+		return tryAssemble(height - 1, dropLine, true).ok();
+	}
+
+	/** Clears master pointers on every brick within a box around the controller. */
+	private void clearShellMasters(int radius) {
+		if (level == null) {
+			return;
+		}
+		for (int dx = -radius; dx <= radius; dx++) {
+			for (int dy = -radius; dy <= radius; dy++) {
+				for (int dz = -radius; dz <= radius; dz++) {
+					if (level.getBlockEntity(worldPosition.offset(dx, dy, dz)) instanceof ChemicalBrickBlockEntity brick) {
+						brick.setMaster(null);
+					}
+				}
+			}
+		}
 	}
 
 	/**
@@ -763,31 +968,56 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		if (assembled) {
 			assembled = false;
 			int oldSize = size;
-			size = 0;
-			height = 0;
+			// §C: keep size/height/inward as lastGeometry — the remaining lower shell
+			// still stands and the residual fluid surface must keep rendering while
+			// the vessel is de-assembled (see the renderer guard). All logical paths
+			// (reaction, absorption, capability proxy) are gated on isAssembled(), so
+			// the retained geometry only feeds rendering.
 			setStatus(ReactorStatus.NOT_ASSEMBLED);
 			setProgress(0, null);
-			// contents become physical again: items drop, fluids pour out of the breach
+			// contents become physical again: items drop, fluids pour out of the breach.
+			// §B: breach-level spill — only the fluid above the breach height pours
+			// out; the portion below stays in the tank (auto-lowered surface, recovered
+			// on rebuild, plans/10 §2.2). Breaking the controller itself keeps nothing:
+			// its NBT dies with the block, so a retained remainder would silently
+			// vanish — fall back to a full physical spill.
 			BlockPos breach = leakPos != null ? leakPos : worldPosition;
 			SpillLogic.spillItems(level, breach, items);
 			pendingSpill.clear();
-			pendingSpill.addAll(SpillLogic.queueFluids(tank)); // sub-bucket remainder lost by design
+			int total = tank.getTotalAmount();
+			if (total <= 0 || height <= 0 || breach.equals(worldPosition)) {
+				// full spill: empty tank, no interior, or the controller itself broke
+				pendingSpill.addAll(SpillLogic.queueFluids(tank)); // sub-bucket remainder lost by design
+			} else {
+				// interior ring the breach sits on (controller is on ringLayer; the ring
+				// below it holds the fluid that survives — one full layer per ring)
+				int ring = Math.max(0, Math.min(height, breach.getY() - worldPosition.getY() + ringLayer));
+				int keepMb = (int) ((long) tank.getTankCapacity(0) * ring / height);
+				int spillMb = Math.max(0, total - keepMb);
+				if (spillMb >= total) {
+					pendingSpill.addAll(SpillLogic.queueFluids(tank)); // bottom breach: drains everything
+				} else if (spillMb > 0) {
+					// proportional split preserves every phase's ratio (gases included)
+					List<FluidStack> spilled = new ArrayList<>();
+					for (FluidStack stack : new ArrayList<>(tank.getFluids())) {
+						int take = (int) Math.floor(stack.getAmount() * (double) spillMb / total);
+						if (take > 0) {
+							FluidStack out = stack.copy();
+							out.setAmount(take);
+							spilled.add(out);
+							stack.shrink(take);
+						}
+					}
+					tank.pruneEmpty();
+					pendingSpill.addAll(SpillLogic.queueFluids(spilled));
+				}
+				// spillMb == 0 (breach at/above the surface): keep everything
+			}
 			spillLeakPos = breach;
 			spillTimer = 4; // first source appears almost immediately
 			SpillLogic.tryPlaceOne(level, breach, pendingSpill);
 			// clear master pointers on nearby shell blocks so they stop proxying
-			if (level != null) {
-				int r = oldSize + 1;
-				for (int dx = -r; dx <= r; dx++) {
-					for (int dy = -r; dy <= r; dy++) {
-						for (int dz = -r; dz <= r; dz++) {
-							if (level.getBlockEntity(worldPosition.offset(dx, dy, dz)) instanceof ChemicalBrickBlockEntity brick) {
-								brick.setMaster(null);
-							}
-						}
-					}
-				}
-			}
+			clearShellMasters(oldSize + 1);
 			setChanged();
 			sync();
 		}
@@ -795,6 +1025,15 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 
 	public boolean isAssembled() {
 		return assembled;
+	}
+
+	/** mB still queued to pour out of the breach (server-side spill state; tests/debug). */
+	public int getPendingSpillAmount() {
+		int total = 0;
+		for (FluidStack f : pendingSpill) {
+			total += f.getAmount();
+		}
+		return total;
 	}
 
 	/**
@@ -807,7 +1046,10 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 	 */
 	@Override
 	protected net.minecraft.world.phys.AABB createRenderBoundingBox() {
-		if (!assembled || size < MIN_SIZE || inward == null) {
+		// §C: a broken-but-not-empty vessel keeps rendering its residual surface
+		// in the remaining shell, so the box must stay as large as the last
+		// assembly (size/height/inward are retained on invalidation as lastGeometry).
+		if ((!assembled && tank.getTotalAmount() <= 0) || size < MIN_SIZE || inward == null) {
 			return super.createRenderBoundingBox();
 		}
 		// controller sits at the wall centre (s=0, d=0, k-th ring). The shell
@@ -888,9 +1130,20 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		return Math.max(0, Math.min(1, f));
 	}
 
-	/** Animated fluid surface fraction, interpolated for smooth rendering (client only). */
+	/**
+	 * The height the client animates the fluid surface toward: fill × interior
+	 * height, in blocks above the interior floor. Deliberately ABSOLUTE (not the
+	 * bare fill fraction) so that a ring-count change (shrink/extend) with the
+	 * amount unchanged produces the SAME target — the rendered surface stays put
+	 * instead of dipping/spiking while the LerpedFloat re-converges.
+	 */
+	private float targetRenderedLevel() {
+		return getFillState() * getHeight();
+	}
+
+	/** Animated fluid surface height in blocks (interpolated for smooth rendering; client only). */
 	public float getRenderedLevel(float partialTicks) {
-		return renderedLevel.getValue(partialTicks);
+		return renderedLevel == null ? targetRenderedLevel() : renderedLevel.getValue(partialTicks);
 	}
 
 	/**
@@ -900,7 +1153,7 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 	 * lands exactly on the rendered surface. Empty vessels report the floor.
 	 */
 	public float getLiquidSurfaceY(float partialTicks) {
-		float levelHeight = getRenderedLevel(partialTicks) * getHeight();
+		float levelHeight = getRenderedLevel(partialTicks);
 		List<FluidStack> fluids = tank.getFluids();
 		int total = tank.getTotalAmount();
 		if (levelHeight <= 1 / 1024f || fluids.isEmpty() || total <= 0) {

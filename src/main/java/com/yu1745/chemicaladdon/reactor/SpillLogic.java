@@ -73,11 +73,22 @@ public final class SpillLogic {
 	 * composition loss or the proliferation of component-less mixture stacks.
 	 */
 	public static List<FluidStack> queueFluids(ReactorTank tank) {
+		List<FluidStack> all = new ArrayList<>(tank.getFluids());
+		tank.clear();
+		return queueFluids(all);
+	}
+
+	/**
+	 * Same decomposition as {@link #queueFluids(ReactorTank)} but for stacks that
+	 * were already pulled out of the tank (breach-level spill keeps the portion
+	 * below the breach in the tank and hands only the excess to this method).
+	 */
+	public static List<FluidStack> queueFluids(List<FluidStack> fluids) {
 		List<FluidStack> pending = new ArrayList<>();
-		var it = tank.getFluids().iterator();
-		while (it.hasNext()) {
-			FluidStack stack = it.next();
-			it.remove();
+		for (FluidStack stack : fluids) {
+			if (stack == null || stack.isEmpty()) {
+				continue;
+			}
 			if (Mixture.isMixture(stack)) {
 				for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveAmounts(stack).entrySet()) {
 					Fluid cf = ForgeRegistries.FLUIDS.getValue(e.getKey());

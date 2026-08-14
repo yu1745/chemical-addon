@@ -648,6 +648,12 @@ public class ReactorTank implements IFluidHandler {
 		fluids.removeIf(f -> f.getAmount() <= 0);
 	}
 
+	/** Drops stacks that were drained down to zero (public: structure-break paths
+	 * shrink stacks in place and need to clean up without a full tank round-trip). */
+	public void pruneEmpty() {
+		removeEmpty();
+	}
+
 	/** Empties the tank entirely (e.g. after contents were spilled into the world). */
 	public void clear() {
 		fluids.clear();

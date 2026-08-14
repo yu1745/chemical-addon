@@ -11,6 +11,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.common.util.LazyOptional;
@@ -40,6 +41,9 @@ public class DecantHoseBlockEntity extends BlockEntity {
 	/** Exponential chase speed for the hose offset (higher = faster descent, tighter follow). */
 	private static final float OFFSET_CHASE_SPEED = 0.25f;
 
+	/** How far below the hose an open-topped vessel can sit (findReactorBelow reach). */
+	private static final int REACTOR_SEARCH_RANGE = 32;
+
 	public DecantHoseBlockEntity(BlockPos pos, BlockState state) {
 		super(AllBlockEntities.DECANT_HOSE.get(), pos, state);
 	}
@@ -57,7 +61,7 @@ public class DecantHoseBlockEntity extends BlockEntity {
 	/** The open-topped reactor directly below {@code pos} (within reach), or null. */
 	@Nullable
 	public static ReactorControllerBlockEntity findReactorBelow(net.minecraft.world.level.Level level, BlockPos pos) {
-		for (int dy = 1; dy <= 32; dy++) {
+		for (int dy = 1; dy <= REACTOR_SEARCH_RANGE; dy++) {
 			BlockPos p = pos.below(dy);
 			BlockEntity be = level.getBlockEntity(p);
 			if (be instanceof ReactorControllerBlockEntity r && r.isOpen()) {
@@ -95,6 +99,23 @@ public class DecantHoseBlockEntity extends BlockEntity {
 	/** Interpolated hose length for the renderer (min 3/16 — the pulley never fully retracts). */
 	public float getInterpolatedOffset(float partialTicks) {
 		return Math.max(offset.getValue(partialTicks), 3 / 16f);
+	}
+
+	/**
+	 * The rope hangs from this block down into the vessel below — up to
+	 * {@link #REACTOR_SEARCH_RANGE} blocks (see {@link #findReactorBelow}). MC's
+	 * default render bounding box only covers this 1×1×1 cell, so the hose is
+	 * frustum-culled the moment its own cell leaves the viewport (e.g. looking at
+	 * the vessel from the ground without looking up) even though the rope is still
+	 * on screen. Expand the box down the full search reach, so the hose is only
+	 * culled when the whole vessel is out of view — the same whole-structure
+	 * treatment as the reactor controller's {@code createRenderBoundingBox}, and
+	 * Create's own pulley pattern ({@code PulleyBlockEntity#createRenderBoundingBox}
+	 * expands by the rope length).
+	 */
+	@Override
+	public AABB getRenderBoundingBox() {
+		return super.getRenderBoundingBox().expandTowards(0, -REACTOR_SEARCH_RANGE, 0);
 	}
 
 	private void ensureLatched() {

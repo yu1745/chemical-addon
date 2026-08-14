@@ -164,6 +164,18 @@
 - **GameTest +1（51/51）**：`thermometerReadsReactorTemperature`（读温度 500°C、触发报警、强信号 + 比较器信号）。
 - 这是 S02–S04/S11 贴面仪表族的第一个实例，S03 压力表 / S04 浓度计 / S11 液位计照此模式复制。
 
+### 反应釜结构生命周期（自动扩展 / 破口分级洒漏 / 残液可见 / 缩小溢流）
+
+统一原则：**内容物（流体）是结构层面的持久资产——结构变动只做迁移，不做删除**（除 <1 桶的按块量化损耗）。
+
+- **自动扩展**：`ChemicalBrickBlock.onPlace` 对已装配控制器调用新增 `tryExtend(placedPos)`——放一块结构方块到釜旁即重校验，仅在**严格更大**（或 open 状态变化，如封顶）时采纳；不缩、不换朝向、不洒内容（Create FluidTank「放相邻块即长大」心智：先小后大、逐步加高）。
+- **拆砖分级处置（放/拆都不抽搐）**：`ChemicalBrickBlock.onRemove` 改走新增 `handleStructuralBlockRemoved`——拆**已绑定**砖按破坏性从小到大：①完整重校验出合法壳（更小/同形状）→ 采纳；②拆**顶盖层**砖 → **高度不变、只变敞口**（盖子层废弃、砖解绑成游离，釜高度=环数≠盖子）；③拆**最高环层**砖 → `tryShrink` 降一层（废弃顶盖+最高环）；④都不行才 `invalidateStructure` 分级洒漏。`tryAssemble` 加 `allowShrink` 参数：**放砖路径禁止收缩**（封顶半程不许把釜拽矮，消除"先长高又缩回"的抽搐），拆砖路径允许。平局守卫 `<=`→`==`（体积平局且 open 不变才保持）。收缩/扩展采纳时先 `clearShellMasters` 再重绑（掉出壳的砖停止代理）。
+- **破口分级洒漏**：`invalidateStructure` 按破口环层算保留量 `capacity × ring/height`——破口以上洒出、以下留釜内（兑现 plans/10 §2.2「内部流体保留在 NBT，重建可恢复」）；**控制器被拆时回退全量洒漏**（保留份存控制器 NBT、随方块消亡会凭空消失）；底破=全洒；顶盖层拆砖走收缩（不再走失效）。
+- **破后残液可见**：失效保留 `size/height/inward` 作 lastGeometry（逻辑路径仍以 `isAssembled()` 为门），渲染器/渲染包围盒放松守卫——剩余壳内的残液面照常渲染，液面自然「降到破口以下」（capacity 未重置，`getFillState` 直接给出降低后的表面）。
+- **重建缩小溢流**：`tryAssemble` 成功后 `total > capacity` 时按比例抽出超量走 `SpillLogic` 渐进溢出（漏点取新内腔顶中心），釜不再因 `canFitOutputs` 恒 false 永久 `OUTPUT_FULL` 卡死。
+- **支撑改动**：`SpillLogic.queueFluids(List<FluidStack>)` 重载（分解逻辑复用）、`ReactorTank.pruneEmpty()` 公开；装配成功（从破坏恢复时）清旧泄漏队列（扩展/平局采纳不清，避免误删本次溢流）。
+- **GameTest +9（60/60）**：加高自动扩展（敞口 3×3×3→密封 3×3×5，内容保留）、封顶不缩高（逐块封顶高度保持 3）、拆顶盖变敞口保高度（5×5×5 高度容量不变）、最小釜 3×3×3 拆顶盖敞口不失效、拆最高环降层（3×3×5→3×3×4+溢出 1000）、中层破保留 9000/洒 18000、底破全洒、拆控制器全洒、破后重建缩小溢出 8000。
+
 ### 质量与工具
 - **GameTest 7/7**：成型/拒错/硫磺燃烧（含加热）/SO₂ 吸收/过滤/能力暴露/砖代理
 - **run-server.sh**：冒烟脚本（透传输出、纯 PID 三级关闭、启动前截断日志防假阳性）
@@ -193,6 +205,9 @@
 | 溶液/浆料桶全渲染成蓝水、无法区分 | 无色离子+水的混合色恒为淡蓝 | 物种加 `color` 字段（沿用注销前各自流体色），桶打包时写进 mixture 的 `Color` 键；悬停加 tooltip（`1000 mB`/`空`）诊断 |
 | 抽分层流体釜停停走走、很慢 | `collapseIfNeeded` 每 tick 重建单成员相（derive 绝对量 → `Mixture.create` GCD 还原），总量不被比例和整除时 ratio tag 抖动，Create `isFluidEqual` 流身份被打破、流每 tick 被切断重启 | 单成员组分相**原样保留**（不重建）；`sameContents` 对比，无变化则跳过重写 + sync |
 | 分液软管不渲染（釜里有液也不下垂） | `DecantHoseRenderer` 沿 DOWN 扫砖找釜，但砖 BE 的 `masterPos` 只在服务端成型时设置、从不同步到客户端——现场成型（不重新加载区块）时客户端砖 `masterPos=null`，渲染器找不到釜 → `offset=0` 软管收回 | 砖 BE 补 `getUpdateTag`/`getUpdatePacket`，`setMaster` 时广播 `ClientboundBlockEntityDataPacket`，客户端即时拿到 master 指针 |
+| 破釜全量洒漏，重建后釜是空的 | `invalidateStructure` → `SpillLogic.queueFluids(tank)` 用 `it.remove()` 把釜清空 100% 转实体，违背 plans/10 §2.2「内部流体保留在 NBT，重建可恢复」 | 破口分级：保留破口以下体积（`capacity × ring/height`），只洒破口以上；控制器被拆时回退全量洒漏（保留份随控制器 NBT 消亡） |
+| 重建变小后釜永久 OUTPUT_FULL 卡死 | `setCapacity` 只改数值不裁剪内容，`total > capacity` 时 `canFitOutputs` 恒 false | 重建装配时按比例抽出超量走 `SpillLogic` 渐进溢出（漏点=新内腔顶中心），釜恢复可反应 |
+| 破坏/放回液面以上的墙砖时液面抽搐（总量明明不变） | `renderedLevel` 追的是**填充比例**，渲染高度=比例×内腔高：拆上方环砖釜缩层（高度/容量**瞬间**变）而总量不变 → 比例目标跳变，LerpedFloat 过渡帧渲染「旧比例×新高度」≠真实表面，液面先跌/先冲再回弹（Create FluidTank 追比例无此问题，因其几何永不变） | 改追**绝对液面高度**（fill×内腔高）：环数变化时目标恒为 `总量/(1000·(w−2)²)` 与高度无关，目标不动即零动画，只有真实进出料才缓动；渲染器/`getLiquidSurfaceY` 直接用绝对值；并按 FluidTank 模式首帧 `startWithValue` 定位真表面，消除区块加载从 0 升起的假动画 |
 
 ## 待办 / 下一步
 
