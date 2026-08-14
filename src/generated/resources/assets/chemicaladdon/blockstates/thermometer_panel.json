@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "facing=east": { "model": "chemicaladdon:block/thermometer_panel", "y": 90 },
+    "facing=north": { "model": "chemicaladdon:block/thermometer_panel" },
+    "facing=south": { "model": "chemicaladdon:block/thermometer_panel", "y": 180 },
+    "facing=west": { "model": "chemicaladdon:block/thermometer_panel", "y": 270 },
+    "facing=up": { "model": "chemicaladdon:block/thermometer_panel", "x": 270 },
+    "facing=down": { "model": "chemicaladdon:block/thermometer_panel", "x": 90 }
+  }
+}

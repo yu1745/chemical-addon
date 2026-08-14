@@ -23,7 +23,7 @@ import com.yu1745.chemicaladdon.registry.AllBlockEntities;
  * the Create FluidTank pattern (every structural block is a BE that delegates
  * to the controller; master position is stored and validated lazily).
  */
-public class ChemicalBrickBlockEntity extends BlockEntity {
+public class ChemicalBrickBlockEntity extends BlockEntity implements IMasterBound {
 
 	@Nullable
 	private BlockPos masterPos;

@@ -11,6 +11,7 @@ import com.yu1745.chemicaladdon.reactor.FilterPressBlock;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlock;
 import com.yu1745.chemicaladdon.reactor.SettlingBasinBlockEntity.SettlingBasinBlock;
 import com.yu1745.chemicaladdon.reactor.ThermometerBlock;
+import com.yu1745.chemicaladdon.reactor.ThermometerPanelBlock;
 
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
@@ -94,13 +95,26 @@ public class AllBlocks {
 			.simpleItem()
 			.register();
 
-	/** S02 thermometer (温度计): face-mounted temperature gauge reading the reactor it is attached to. */
+	/** S02 thermometer (温度计, 方块形式): a full-cube shell block that doubles as a temperature gauge.
+	 *  In the {@code vessel_walls} tag, so it can fill a wall position of the reactor and reads its own vessel. */
 	public static final BlockEntry<ThermometerBlock> THERMOMETER =
 		REGISTRATE.block("thermometer", ThermometerBlock::new)
-			.properties(p -> p.mapColor(MapColor.METAL).strength(1.5f, 4.0f))
+			.properties(p -> p.mapColor(MapColor.METAL).strength(2.0f, 6.0f))
 			.lang("Thermometer")
 			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
 				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
+			.simpleItem()
+			.register();
+
+	/** S02 thermometer (温度计, 薄板形式): a thin face-mounted plate reading the reactor behind it. */
+	public static final BlockEntry<ThermometerPanelBlock> THERMOMETER_PANEL =
+		REGISTRATE.block("thermometer_panel", ThermometerPanelBlock::new)
+			.properties(p -> p.mapColor(MapColor.METAL).strength(1.5f, 4.0f)
+				.noOcclusion()
+				.isRedstoneConductor((a, b, c) -> false)
+				.isSuffocating((a, b, c) -> false)
+				.isViewBlocking((a, b, c) -> false))
+			.lang("Thermometer Panel")
 			.simpleItem()
 			.register();
 

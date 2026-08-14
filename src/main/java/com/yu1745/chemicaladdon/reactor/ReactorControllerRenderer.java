@@ -81,9 +81,18 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 		// light is sampled at the vessel interior (the controller block sits in
 		// the wall and is nearly unlit — contents must use the light of the spot
 		// they actually occupy: open vessels get full skylight, sealed ones go dark)
-		BlockPos centerPos = reactor.getBlockPos().offset((int) cx, height / 2, (int) cz);
+		BlockPos centerPos = reactor.getBlockPos().offset((int) cx,
+			reactor.getInteriorBottomRelY() + height / 2, (int) cz);
 		light = LightTexture.pack(reactor.getLevel().getBrightness(LightLayer.BLOCK, centerPos),
 			reactor.getLevel().getBrightness(LightLayer.SKY, centerPos));
+
+		// Everything below (floating items + the fluid body) renders relative to
+		// the interior FLOOR, which sits ringLayer below the controller's own
+		// layer — the controller may be mounted on ANY ring, and measuring from
+		// its own layer would float the whole contents ringLayer blocks too high.
+		float floorY = reactor.getInteriorBottomRelY();
+		ms.pushPose();
+		ms.translate(0, floorY, 0);
 
 		float renderTime = AnimationTickHolder.getRenderTime(reactor.getLevel());
 		// motion (drift / bob / roll / pitch rock) runs on a scaled clock so the whole
@@ -241,6 +250,7 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 		if (levelHeight > 1 / 1024f) {
 			renderFluid(reactor, x1, z1, x2, z2, levelHeight, ms, buffer, light);
 		}
+		ms.popPose();
 	}
 
 	/**

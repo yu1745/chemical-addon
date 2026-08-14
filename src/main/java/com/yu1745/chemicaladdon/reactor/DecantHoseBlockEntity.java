@@ -67,8 +67,8 @@ public class DecantHoseBlockEntity extends BlockEntity {
 			if (be instanceof ReactorControllerBlockEntity r && r.isOpen()) {
 				return r;
 			}
-			if (be instanceof ChemicalBrickBlockEntity brick) {
-				BlockEntity master = brick.getValidMaster();
+			if (be instanceof IMasterBound bound) {
+				BlockEntity master = bound.getValidMaster();
 				if (master instanceof ReactorControllerBlockEntity r && r.isOpen()) {
 					return r;
 				}

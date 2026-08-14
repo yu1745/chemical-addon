@@ -136,8 +136,8 @@ public class SettlingBasinBlockEntity extends BlockEntity {
 		if (level == null) {
 			return;
 		}
-		if (level.getBlockEntity(pos) instanceof ChemicalBrickBlockEntity brick) {
-			brick.setMaster(masterPos);
+		if (level.getBlockEntity(pos) instanceof IMasterBound bound) {
+			bound.setMaster(masterPos);
 		}
 	}
 

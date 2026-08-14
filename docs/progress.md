@@ -1,6 +1,6 @@
 # 开发进度
 
-> 最后更新：2026-08（M0–M2 完成，规则引擎 v1 + v2 离子基底 S1–S3f + D18 互溶性分相 + D18.5 分液口/软管 + S02 温度计，51/51 GameTest 通过）
+> 最后更新：2026-08（M0–M2 完成，规则引擎 v1 + v2 离子基底 S1–S3f + D18 互溶性分相 + D18.5 分液口/软管 + S02 温度计（双形态），63/63 GameTest 通过）
 > 里程碑定义见 `plans/11-content-scope.md`；设计计划书主索引 `plans/README.md`。
 
 ## 状态总览
@@ -13,7 +13,7 @@
 | M2.5 | 釜可玩性改造：世界内交互基调落地（护目镜 HUD/诊断/槽位 GUI/成型反馈） | ✅ 完成 |
 | M3+ | 电解/索尔维/高压/零排放 | ⏳ 未开始 |
 
-**自动化测试**：`./gradlew runGameTestServer` → **51/51 通过**。
+**自动化测试**：`./gradlew runGameTestServer` → **63/63 通过**。
 
 ## 已完成明细
 
@@ -155,14 +155,15 @@
 - **渲染**：气体相独立后，renderer 的「气体挂顶」分支（`isLighterThanAir`）成为活代码。
 - **GameTest +3（45/45）**：新增 `immiscibleLiquidsStaySeparate`/`drainPullsDenserPhaseFirst`/`gasStaysSeparateFromLiquid`/`miscibleAqueousMerge`；3 个旧 water+oil「混合物」测试改写为离子混合物。
 
-### S02 · 温度计（贴面仪表，世界内化）
+### S02 · 温度计（两种形式：墙块 + 薄板，世界内化）
 
-- **方块/实体**：`ThermometerBlock`（`DirectionalBlock`，`FACING` 指向玩家、釜在 `FACING.getOpposite()`）+ `ThermometerBlockEntity`（`SmartBlockEntity`，读身后的砖/控制器 → `ReactorControllerBlockEntity.getTemperature()`）。
-- **护目镜 HUD**：温度 + 报警阈值 + 报警/未连接状态（`IHaveGoggleInformation`）。
-- **世界内调阈值**：`ScrollValueBehaviour`（对准表盘滚动调 0–1000°C，默认 400°C=HEATED，`CenteredSideValueBoxTransform` 定位在正面）——零 GUI。
+- **两种形式**：①`ThermometerBlock`（方块，`extends ChemicalBrickBlock`）——可填入釜壳墙位（进 `vessel_walls` 标签），成型时像砖一样被绑定、代理 FLUID/ITEM、拆砖报破口，读**自己所在釜**的温度；②`ThermometerPanelBlock`（薄板，`DirectionalBlock`）——2px 厚贴墙仪表，读**贴附面后方**的砖/控制器/墙温度计（经 `IMasterBound`）。共享基类 `AbstractThermometerBlockEntity`。
+- **`IMasterBound` 接口**：把「绑定到多方块 master」从 `ChemicalBrickBlockEntity` 抽成接口（砖/玻璃/分液口/墙温度计都实现），装配绑定/解绑/拆砖报破口/软管寻釜统一走接口，墙温度计因此能作为一等壳块。
+- **护目镜 HUD**：温度（带热级配色）+ 报警阈值 + 报警/未连接状态（`IHaveGoggleInformation`）。
+- **世界内调阈值（缩放修复）**：`ScrollValueBehaviour` 阈值存**粗粒度单位**（25°C/格，0–40 格 = 0–1000°C，默认 400°C = 16 格）——原先 0–1000 逐度会让 Create 数值板 ~1400px 宽**溢出屏幕**（最左只能拉到 320°、最右 640°）；改粗步后数值板/世界内浮层都换算回 °C 显示，板子窄到能完整放下。
 - **红石**：比较器读模拟温度信号（0–1000°C → 0–15）；温度达阈值时输出强信号 15（报警）。
-- **GameTest +1（51/51）**：`thermometerReadsReactorTemperature`（读温度 500°C、触发报警、强信号 + 比较器信号）。
-- 这是 S02–S04/S11 贴面仪表族的第一个实例，S03 压力表 / S04 浓度计 / S11 液位计照此模式复制。
+- **GameTest（63/63）**：`thermometerPanelReadsReactorTemperature`（薄板读控制器 500°C、报警、强信号+比较器）、`wallThermometerReadsOwnReactor`（墙温度计作壳块：成型绑定、读自身釜温、代理 FLUID_HANDLER）。
+- 这是 S02–S04/S11 贴面仪表族的第一个实例（且是双形态范本），S03 压力表 / S04 浓度计 / S11 液位计照此复制。
 
 ### 反应釜结构生命周期（自动扩展 / 破口分级洒漏 / 残液可见 / 缩小溢流）
 
@@ -175,6 +176,15 @@
 - **重建缩小溢流**：`tryAssemble` 成功后 `total > capacity` 时按比例抽出超量走 `SpillLogic` 渐进溢出（漏点取新内腔顶中心），釜不再因 `canFitOutputs` 恒 false 永久 `OUTPUT_FULL` 卡死。
 - **支撑改动**：`SpillLogic.queueFluids(List<FluidStack>)` 重载（分解逻辑复用）、`ReactorTank.pruneEmpty()` 公开；装配成功（从破坏恢复时）清旧泄漏队列（扩展/平局采纳不清，避免误删本次溢流）。
 - **GameTest +9（60/60）**：加高自动扩展（敞口 3×3×3→密封 3×3×5，内容保留）、封顶不缩高（逐块封顶高度保持 3）、拆顶盖变敞口保高度（5×5×5 高度容量不变）、最小釜 3×3×3 拆顶盖敞口不失效、拆最高环降层（3×3×5→3×3×4+溢出 1000）、中层破保留 9000/洒 18000、底破全洒、拆控制器全洒、破后重建缩小溢出 8000。
+
+### 控制器任意环层下的液面/吸收基准（ringLayer 修复）
+
+控制器可装在任意环层（Tinkers 式），内腔底在其下方 `ringLayer` 格（新增统一基准 `getInteriorBottomRelY() = -ringLayer`）。但渲染、液面数学、开口吸收轮询三处原先都以**控制器自身层**为 y=0 基准——控制器不在底层环时：液面/漂浮物整体偏高 `ringLayer` 格、分液软管悬在真实液面之上、倒进控制器以下内腔层的水源**永不被吸收**（不止渲染问题）。
+
+- **渲染**：物品+流体两个 pass 统一 `translate(0, -ringLayer, 0)` 从内腔底起绘，光照采样点同步下移到内腔中心；`ringLayer=0`（控制器在底层环）时行为不变。
+- **液面数学**：`getLiquidSurfaceY` 改为内腔底起算的世界 Y（空釜=内腔底、有液=底+绝对液面高×液相占比），分液软管跟踪恢复到真实表面。
+- **吸收轮询**：`absorbFromWorld` 的 y 范围从「控制器层 .. 高度+1」改为「内腔底 .. 顶沿+1」（`getRoofRelY()+1`），AABB 同步——控制器以下内腔层的流体/物品恢复吸收。
+- **GameTest +2（62/62）**：`reactorSurfaceMeasuredFromInteriorFloor`（控制器在中环：空釜液面=内腔底 y2 而非控制器 y3；半釜绝对液面 1.5 格 → 世界 3.5）、`openVesselAbsorbsFluidBelowControllerRing`（控制器以下内腔层/以上内腔层/顶沿三处倒入全部吸收）。
 
 ### 质量与工具
 - **GameTest 7/7**：成型/拒错/硫磺燃烧（含加热）/SO₂ 吸收/过滤/能力暴露/砖代理
@@ -208,6 +218,7 @@
 | 破釜全量洒漏，重建后釜是空的 | `invalidateStructure` → `SpillLogic.queueFluids(tank)` 用 `it.remove()` 把釜清空 100% 转实体，违背 plans/10 §2.2「内部流体保留在 NBT，重建可恢复」 | 破口分级：保留破口以下体积（`capacity × ring/height`），只洒破口以上；控制器被拆时回退全量洒漏（保留份随控制器 NBT 消亡） |
 | 重建变小后釜永久 OUTPUT_FULL 卡死 | `setCapacity` 只改数值不裁剪内容，`total > capacity` 时 `canFitOutputs` 恒 false | 重建装配时按比例抽出超量走 `SpillLogic` 渐进溢出（漏点=新内腔顶中心），釜恢复可反应 |
 | 破坏/放回液面以上的墙砖时液面抽搐（总量明明不变） | `renderedLevel` 追的是**填充比例**，渲染高度=比例×内腔高：拆上方环砖釜缩层（高度/容量**瞬间**变）而总量不变 → 比例目标跳变，LerpedFloat 过渡帧渲染「旧比例×新高度」≠真实表面，液面先跌/先冲再回弹（Create FluidTank 追比例无此问题，因其几何永不变） | 改追**绝对液面高度**（fill×内腔高）：环数变化时目标恒为 `总量/(1000·(w−2)²)` 与高度无关，目标不动即零动画，只有真实进出料才缓动；渲染器/`getLiquidSurfaceY` 直接用绝对值；并按 FluidTank 模式首帧 `startWithValue` 定位真表面，消除区块加载从 0 升起的假动画 |
+| 控制器装在非底层环时：液面/漂浮物偏高 `ringLayer` 格、软管悬在真实液面之上、控制器以下内腔层倒入的水不被吸收 | 渲染/液面数学/吸收轮询三处都以控制器自身层为 y=0 基准，而内腔底在控制器下方 `ringLayer` 格（Tinkers 式任意环层装配） | 新增统一基准 `getInteriorBottomRelY()=-ringLayer`：渲染两 pass `translate` 下移到内腔底（光照采样同步）、`getLiquidSurfaceY` 内腔底起算世界 Y、`absorbFromWorld` 轮询范围改 `[内腔底, 顶沿+1]` |
 
 ## 待办 / 下一步
 

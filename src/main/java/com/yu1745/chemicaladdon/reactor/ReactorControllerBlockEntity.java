@@ -192,20 +192,22 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		if (level == null || level.isClientSide || !assembled || !open || inward == null) {
 			return;
 		}
-		int height = getHeight();
 		int iw = size - 2; // interior footprint (iw x iw)
 		Direction side = inward.getAxis() == Direction.Axis.X ? Direction.NORTH : Direction.EAST;
 		int sStart = -((size - 1) / 2) + 1; // interior s range starts one in from the wall
 		BlockPos core = worldPosition.offset(
 			side.getStepX() * sStart + inward.getStepX(), 0,
 			side.getStepZ() * sStart + inward.getStepZ());
-		// absorb area = interior column + the open rim and one block above it:
-		// a bucket click from inside the vessel (or from below the rim) places
-		// the source on the far side of the clicked block, i.e. at y = height or
-		// height+1 of the column — those must be in range or poured fluids land
-		// outside the polled area and are never absorbed
-		var area = new net.minecraft.world.phys.AABB(core.getX(), core.getY(), core.getZ(),
-			core.getX() + iw, core.getY() + height + 2, core.getZ() + iw);
+		// absorb area = the interior column (from its FLOOR, which sits ringLayer
+		// below the controller — the controller may be mounted on ANY ring) up
+		// through the open rim and one block above it: a bucket click from inside
+		// the vessel (or from below the rim) places the source on the far side of
+		// the clicked block, i.e. at the rim layer or one above — those must be in
+		// range or poured fluids land outside the polled area and are never absorbed
+		int yBottom = getInteriorBottomRelY();
+		int yTop = getRoofRelY() + 1;
+		var area = new net.minecraft.world.phys.AABB(core.getX(), core.getY() + yBottom, core.getZ(),
+			core.getX() + iw, core.getY() + yTop + 1, core.getZ() + iw);
 
 		// items thrown in through the open top
 		boolean absorbed = false;
@@ -229,7 +231,7 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		// fluids poured in (source blocks only; flowing fluid is left to drain)
 		for (int dx = 0; dx < iw; dx++) {
 			for (int dz = 0; dz < iw; dz++) {
-				for (int y = 0; y <= height + 1; y++) {
+				for (int y = yBottom; y <= yTop; y++) {
 					BlockPos p = core.offset(dx, y, dz);
 					BlockState bs = level.getBlockState(p);
 					if (bs.isAir()) {
@@ -880,8 +882,8 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		for (int dx = -radius; dx <= radius; dx++) {
 			for (int dy = -radius; dy <= radius; dy++) {
 				for (int dz = -radius; dz <= radius; dz++) {
-					if (level.getBlockEntity(worldPosition.offset(dx, dy, dz)) instanceof ChemicalBrickBlockEntity brick) {
-						brick.setMaster(null);
+					if (level.getBlockEntity(worldPosition.offset(dx, dy, dz)) instanceof IMasterBound bound) {
+						bound.setMaster(null);
 					}
 				}
 			}
@@ -921,8 +923,8 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		if (level == null) {
 			return;
 		}
-		if (level.getBlockEntity(pos) instanceof ChemicalBrickBlockEntity brick) {
-			brick.setMaster(masterPos);
+		if (level.getBlockEntity(pos) instanceof IMasterBound bound) {
+			bound.setMaster(masterPos);
 		}
 	}
 
@@ -1113,6 +1115,16 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		return -ringLayer - 1;
 	}
 
+	/**
+	 * Controller-relative Y where the fluid body's bottom rests: the TOP face of
+	 * the floor blocks (= {@code -ringLayer}). The controller may sit on ANY ring
+	 * layer, so this is NOT always 0 — rendering, the liquid-surface math and the
+	 * absorb polling all measure from here, never from the controller's own layer.
+	 */
+	public int getInteriorBottomRelY() {
+		return -ringLayer;
+	}
+
 	/** Y of the roof layer relative to the controller (positive). */
 	public int getRoofRelY() {
 		return height - ringLayer;
@@ -1156,8 +1168,11 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 		float levelHeight = getRenderedLevel(partialTicks);
 		List<FluidStack> fluids = tank.getFluids();
 		int total = tank.getTotalAmount();
+		// measure from the interior floor, ringLayer below the controller (the
+		// controller may be mounted on any ring — never from its own layer)
+		int floorY = worldPosition.getY() + getInteriorBottomRelY();
 		if (levelHeight <= 1 / 1024f || fluids.isEmpty() || total <= 0) {
-			return worldPosition.getY(); // empty: surface rests on the interior floor
+			return floorY; // empty: surface rests on the interior floor
 		}
 		int liquidAmount = 0;
 		for (FluidStack f : fluids) {
@@ -1165,7 +1180,7 @@ public class ReactorControllerBlockEntity extends SmartBlockEntity implements IH
 				liquidAmount += f.getAmount();
 			}
 		}
-		return worldPosition.getY() + levelHeight * liquidAmount / total;
+		return floorY + levelHeight * liquidAmount / total;
 	}
 
 	/** The vessel's temperature = the settled contents' temperature (°C); ambient when empty. */

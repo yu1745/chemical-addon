@@ -73,8 +73,8 @@ public class ChemicalBrickBlock extends Block implements EntityBlock {
 		// lowers the height one ring); only a shell with no legal remainder fully
 		// de-assembles (with the breach-level spill).
 		if (!state.is(newState.getBlock()) && !level.isClientSide) {
-			if (level.getBlockEntity(pos) instanceof ChemicalBrickBlockEntity brick) {
-				BlockPos masterPos = brick.getMasterPos();
+			if (level.getBlockEntity(pos) instanceof IMasterBound bound) {
+				BlockPos masterPos = bound.getMasterPos();
 				if (masterPos != null) {
 					BlockEntity be = level.getBlockEntity(masterPos);
 					if (be instanceof ReactorControllerBlockEntity controller) {

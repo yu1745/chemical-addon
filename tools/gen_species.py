@@ -83,6 +83,7 @@ BLOCKS = [
     ("settling_basin",    "沉淀池控制器", "Settling Basin", 0x5E6E7A),
     ("electrolyzer",      "电解槽", "Electrolyzer",     0x5E7A8A),
     ("thermometer",       "温度计", "Thermometer",      0x5A5A62),
+    ("thermometer_panel",  "温度计面板", "Thermometer Panel", 0x6A6A72),
 ]
 
 # Solution modes ("species = mode", plans/03 §4): NOT registered fluids — only a
@@ -509,6 +510,7 @@ def gen_block_textures():
     write_png(os.path.join(d, "settling_basin.png"), make_panel_texture(0x5E6E7A))
     write_png(os.path.join(d, "electrolyzer.png"), make_panel_texture(0x5E7A8A))
     write_png(os.path.join(d, "thermometer.png"), make_thermometer_texture(0x5A5A62))
+    write_png(os.path.join(d, "thermometer_panel.png"), make_thermometer_texture(0x6A6A72))
 
 
 # Extra lang keys added by hand (GUIs, goggles, diagnostics, assemble messages).

@@ -5,53 +5,25 @@ import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
-import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.DirectionalBlock;
-import net.minecraft.world.level.block.EntityBlock;
-import net.minecraft.world.level.block.Mirror;
-import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.StateDefinition;
 
 /**
- * S02 thermometer (温度计): a face-mounted instrument block. {@code FACING} points away
- * from the vessel it reads (toward the player), so the reactor is the block at
- * {@code FACING.getOpposite()}. Redstone:
- * <ul>
- *   <li><b>comparator</b> — an analog signal proportional to the vessel temperature;</li>
- *   <li><b>strong signal</b> — 15 once the temperature reaches the alarm threshold.</li>
- * </ul>
+ * The full-cube thermometer (方块形式): a vessel shell block that doubles as a
+ * temperature gauge. It behaves exactly like {@link ChemicalBrickBlock} (auto
+ * re-form on place, tear-down on break, capability proxy, in the vessel_walls
+ * tag) and additionally drives thermometer redstone / goggles. The reading logic
+ * lives in {@link ThermometerBlockEntity}; redstone is shared with the panel form
+ * via {@link AbstractThermometerBlockEntity#at}.
  */
-public class ThermometerBlock extends DirectionalBlock implements EntityBlock {
+public class ThermometerBlock extends ChemicalBrickBlock {
 
 	public ThermometerBlock(Properties properties) {
 		super(properties);
-		registerDefaultState(defaultBlockState().setValue(FACING, Direction.NORTH));
-	}
-
-	@Override
-	protected void createBlockStateDefinition(StateDefinition.Builder<net.minecraft.world.level.block.Block, BlockState> builder) {
-		builder.add(FACING);
-	}
-
-	@Override
-	public BlockState getStateForPlacement(BlockPlaceContext context) {
-		return defaultBlockState().setValue(FACING, context.getClickedFace());
-	}
-
-	@Override
-	public BlockState rotate(BlockState state, Rotation rot) {
-		return state.setValue(FACING, rot.rotate(state.getValue(FACING)));
-	}
-
-	@Override
-	public BlockState mirror(BlockState state, Mirror mirror) {
-		return state.rotate(mirror.getRotation(state.getValue(FACING)));
 	}
 
 	@Nullable
@@ -71,8 +43,6 @@ public class ThermometerBlock extends DirectionalBlock implements EntityBlock {
 		};
 	}
 
-	// ---- strong redstone: alarm when the temperature reaches the threshold ----
-
 	@Override
 	public boolean isSignalSource(BlockState state) {
 		return true;
@@ -80,14 +50,9 @@ public class ThermometerBlock extends DirectionalBlock implements EntityBlock {
 
 	@Override
 	public int getSignal(BlockState state, BlockGetter level, BlockPos pos, Direction side) {
-		if (level instanceof Level lvl && lvl.getBlockEntity(pos) instanceof ThermometerBlockEntity thermometer
-			&& thermometer.isAlarm()) {
-			return 15;
-		}
-		return 0;
+		AbstractThermometerBlockEntity t = AbstractThermometerBlockEntity.at(level, pos);
+		return t != null && t.isAlarm() ? 15 : 0;
 	}
-
-	// ---- analog (comparator) redstone: temperature reading ----
 
 	@Override
 	public boolean hasAnalogOutputSignal(BlockState state) {
@@ -96,9 +61,7 @@ public class ThermometerBlock extends DirectionalBlock implements EntityBlock {
 
 	@Override
 	public int getAnalogOutputSignal(BlockState state, Level level, BlockPos pos) {
-		if (level.getBlockEntity(pos) instanceof ThermometerBlockEntity thermometer) {
-			return Mth.clamp(thermometer.getTemperature() * 15 / 1000, 0, 15);
-		}
-		return 0;
+		AbstractThermometerBlockEntity t = AbstractThermometerBlockEntity.at(level, pos);
+		return t != null ? Mth.clamp(t.getTemperature() * 15 / 1000, 0, 15) : 0;
 	}
 }

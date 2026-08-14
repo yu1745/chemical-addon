@@ -3,6 +3,7 @@
   "values": [
     "chemicaladdon:chemical_brick",
     "chemicaladdon:chemical_glass",
-    "chemicaladdon:decant_port"
+    "chemicaladdon:decant_port",
+    "chemicaladdon:thermometer"
   ]
 }

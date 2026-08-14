@@ -102,5 +102,6 @@
   "block.chemicaladdon.filter_press": "过滤机",
   "block.chemicaladdon.settling_basin": "沉淀池控制器",
   "block.chemicaladdon.electrolyzer": "电解槽",
-  "block.chemicaladdon.thermometer": "温度计"
+  "block.chemicaladdon.thermometer": "温度计",
+  "block.chemicaladdon.thermometer_panel": "温度计面板"
 }

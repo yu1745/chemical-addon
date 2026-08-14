@@ -17,6 +17,7 @@ import com.yu1745.chemicaladdon.reactor.ReactorTank;
 import com.yu1745.chemicaladdon.reactor.RulesEngine;
 import com.yu1745.chemicaladdon.reactor.SpillLogic;
 import com.yu1745.chemicaladdon.reactor.ThermometerBlockEntity;
+import com.yu1745.chemicaladdon.reactor.ThermometerPanelBlockEntity;
 import com.yu1745.chemicaladdon.registry.AllBlocks;
 import com.yu1745.chemicaladdon.registry.AllContainers;
 import com.yu1745.chemicaladdon.registry.AllFluids;
@@ -589,6 +590,69 @@ public class ChemicalAddonGameTests {
 	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void reactorSurfaceMeasuredFromInteriorFloor(GameTestHelper helper) {
+		// The controller may sit on ANY ring layer; the interior floor is ringLayer
+		// blocks BELOW it (here: controller on ring 1 of an open 3x3x5, floor at
+		// world y=2, controller at y=3). Surface math must measure from that floor
+		// — measuring from the controller's own layer floats the surface one block
+		// too high and the decant hose would track above the real liquid.
+		ReactorControllerBlockEntity be = buildReactor3x3x5HighController(helper);
+		helper.assertTrue(be.isOpen() && be.getHeight() == 3,
+			"open 3x3x5 should assemble at 3 rings");
+		helper.assertTrue(be.getInteriorBottomRelY() == -1,
+			"interior bottom is one ring below the controller (got " + be.getInteriorBottomRelY() + ")");
+
+		// empty: the surface rests on the interior floor — one ring BELOW the
+		// controller (worldPosition is absolute in GameTests, so assert the
+		// controller-relative offset)
+		float emptyRel = be.getLiquidSurfaceY(1.0f) - be.getBlockPos().getY();
+		helper.assertTrue(emptyRel == -1.0f,
+			"empty surface rests on the interior floor, one ring below the controller (got rel "
+				+ emptyRel + ")");
+
+		// half full (1500/3000): level = fill × height = 1.5 blocks of ABSOLUTE
+		// height above the floor → surface at floor(-1) + 1.5 = controller + 0.5
+		be.getTank().fill(new FluidStack(Fluids.WATER, 1500), FluidAction.EXECUTE);
+		helper.assertTrue(be.getRenderedLevel(1.0f) == 1.5f,
+			"rendered level is the absolute height in blocks, not a fraction (got "
+				+ be.getRenderedLevel(1.0f) + ")");
+		float halfRel = be.getLiquidSurfaceY(1.0f) - be.getBlockPos().getY();
+		helper.assertTrue(halfRel == 0.5f,
+			"half-full surface = floor(-1) + 1.5 = controller + 0.5 (got rel " + halfRel + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void openVesselAbsorbsFluidBelowControllerRing(GameTestHelper helper) {
+		// Same open 3x3x5 with the controller on ring 1: the interior layer BELOW
+		// the controller (y=2) is inside the vessel — a source poured there must be
+		// absorbed even though it sits under the controller's own layer. The old
+		// polling started at the controller's layer and never reached down there.
+		ReactorControllerBlockEntity be = buildReactor3x3x5HighController(helper);
+		helper.assertTrue(be.isOpen(), "open vessel should assemble");
+
+		BlockPos belowController = new BlockPos(2, 2, 2); // interior layer UNDER the controller
+		BlockPos aboveController = new BlockPos(2, 4, 2); // interior layer above the controller
+		BlockPos rim = new BlockPos(2, 5, 2);             // the open rim layer
+		helper.startSequence()
+			.thenExecute(() -> helper.setBlock(belowController,
+				Fluids.WATER.defaultFluidState().createLegacyBlock()))
+			.thenIdle(3)
+			.thenExecute(() -> assertAbsorbed(helper, be, belowController))
+			.thenExecute(() -> be.getTank().drain(Integer.MAX_VALUE, FluidAction.EXECUTE))
+			.thenExecute(() -> helper.setBlock(aboveController,
+				Fluids.WATER.defaultFluidState().createLegacyBlock()))
+			.thenIdle(3)
+			.thenExecute(() -> assertAbsorbed(helper, be, aboveController))
+			.thenExecute(() -> be.getTank().drain(Integer.MAX_VALUE, FluidAction.EXECUTE))
+			.thenExecute(() -> helper.setBlock(rim,
+				Fluids.WATER.defaultFluidState().createLegacyBlock()))
+			.thenIdle(3)
+			.thenExecute(() -> assertAbsorbed(helper, be, rim))
+			.thenSucceed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void reactorControllerBreakSpillsAll(GameTestHelper helper) {
 		// §B hard rule: breaking the controller destroys the NBT that would hold a
 		// retained remainder -> fall back to a full physical spill (no silent loss)
@@ -969,8 +1033,8 @@ public class ChemicalAddonGameTests {
 	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
-	public static void thermometerReadsReactorTemperature(GameTestHelper helper) {
-		// S02 thermometer: mounted on the controller's face it reads the vessel
+	public static void thermometerPanelReadsReactorTemperature(GameTestHelper helper) {
+		// S02 thermometer (薄板): mounted on the controller's face it reads the vessel
 		// temperature, and trips the redstone alarm once the temperature reaches the
 		// threshold (default 400°C). Comparator reads a temperature-proportional signal.
 		buildReactor(helper);
@@ -981,11 +1045,11 @@ public class ChemicalAddonGameTests {
 		reactor.getTank().collapseIfNeeded();
 		Temperature.set(reactor.getTank().getFluids().get(0), 500);
 
-		BlockState thermometer = AllBlocks.THERMOMETER.get().defaultBlockState()
+		BlockState thermometer = AllBlocks.THERMOMETER_PANEL.get().defaultBlockState()
 			.setValue(BlockStateProperties.FACING, Direction.NORTH); // mounted on the controller at (2,2,1)
 		helper.setBlock(new BlockPos(2, 2, 0), thermometer);
-		ThermometerBlockEntity be = (ThermometerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 0));
-		helper.assertTrue(be != null, "thermometer should have a block entity");
+		ThermometerPanelBlockEntity be = (ThermometerPanelBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 0));
+		helper.assertTrue(be != null, "thermometer panel should have a block entity");
 		be.tick();
 		helper.assertTrue(be.getTemperature() == 500,
 			"thermometer must read the vessel temperature (got " + be.getTemperature() + ")");
@@ -1001,6 +1065,50 @@ public class ChemicalAddonGameTests {
 			"the alarm must emit a strong redstone signal");
 		helper.assertTrue(thermoState.getAnalogOutputSignal(helper.getLevel(), abs) == 7,
 			"comparator signal should be 500°C/1000°C * 15 = 7");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void wallThermometerReadsOwnReactor(GameTestHelper helper) {
+		// S02 thermometer (方块): a shell block filling a wall position — accepted by
+		// the structure (vessel_walls tag), bound to the controller, proxies fluid
+		// like a brick, and reads its own vessel's temperature.
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		BlockState thermo = AllBlocks.THERMOMETER.get().defaultBlockState();
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick); // floor
+				helper.setBlock(new BlockPos(x, 3, z), brick); // roof
+			}
+		}
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				if (x == 2 && z == 2) {
+					continue; // interior
+				}
+				BlockPos p = new BlockPos(x, 2, z);
+				BlockState st = (x == 2 && z == 1) ? controller : (x == 3 && z == 1) ? thermo : brick;
+				helper.setBlock(p, st);
+			}
+		}
+		helper.setBlock(new BlockPos(2, 2, 2), Blocks.AIR.defaultBlockState());
+		ReactorControllerBlockEntity reactor = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 1));
+		helper.assertTrue(reactor.tryAssemble().ok(), "reactor with a thermometer wall should assemble");
+
+		reactor.getTank().fill(new FluidStack(Fluids.WATER, 1000), FluidAction.EXECUTE);
+		reactor.getTank().collapseIfNeeded();
+		Temperature.set(reactor.getTank().getFluids().get(0), 500);
+
+		ThermometerBlockEntity be = (ThermometerBlockEntity) helper.getBlockEntity(new BlockPos(3, 2, 1));
+		helper.assertTrue(be != null, "wall thermometer should have a block entity");
+		be.tick();
+		helper.assertTrue(be.getMasterPos() != null, "wall thermometer must be bound to the controller");
+		helper.assertTrue(be.getTemperature() == 500,
+			"wall thermometer must read its own reactor (got " + be.getTemperature() + ")");
+		helper.assertTrue(be.isAlarm(), "500°C must trip the alarm");
+		helper.assertTrue(be.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.EAST).isPresent(),
+			"wall thermometer must proxy FLUID_HANDLER to the reactor");
 		helper.succeed();
 	}
 
@@ -1671,6 +1779,32 @@ public class ChemicalAddonGameTests {
 		helper.setBlock(new BlockPos(2, 2, 0), controller);
 		ReactorControllerBlockEntity be = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 0));
 		helper.assertTrue(be.tryAssemble().ok(), "5x5x5 reactor should assemble");
+		return be;
+	}
+
+	/** Builds an OPEN-topped 3×3×5 (3 rings, 3000 mB) with the controller mounted
+	 *  on the MIDDLE ring (2,3,1) — ringLayer=1, so the interior floor (y=2) sits
+	 *  one block BELOW the controller. Assembles it and returns the controller. */
+	private static ReactorControllerBlockEntity buildReactor3x3x5HighController(GameTestHelper helper) {
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick); // floor
+			}
+		}
+		for (int y = 2; y <= 4; y++) {
+			for (int x = 1; x <= 3; x++) {
+				for (int z = 1; z <= 3; z++) {
+					if (x == 2 && z == 2) {
+						continue; // interior column
+					}
+					helper.setBlock(new BlockPos(x, y, z), x == 2 && z == 1 && y == 3 ? controller : brick);
+				}
+			}
+		}
+		ReactorControllerBlockEntity be = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 3, 1));
+		helper.assertTrue(be.tryAssemble().ok(), "open 3x3x5 with the controller on ring 1 should assemble");
 		return be;
 	}
 
