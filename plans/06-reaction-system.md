@@ -2,7 +2,7 @@
 
 > 文档状态：**current**（引擎设计，含 §10 运行模式）
 
-> 关联：[03-substance-model.md](03-substance-model.md)（釜内流股）、[05-mechanics.md](05-mechanics.md)（M5 核心机制）、[07-reaction-catalog.md](07-reaction-catalog.md)（52 条配方）、[13-flow-modes.md](13-flow-modes.md)（运行模式 batch/continuous）。
+> 关联：[03-substance-model.md](03-substance-model.md)（釜内流股）、[05-mechanics.md](05-mechanics.md)（M5 核心机制）、[07-reaction-catalog.md](07-reaction-catalog.md)（52 条配方）、[11-content-scope.md](11-content-scope.md) §2（落地单元）。
 > **变化**：配方层复用 Create ProcessingRecipe 管线（白拿 JEI/datagen/KubeJS）；釜内执行端为自研流股模拟（进度/中间态/温度/压力/催化）。
 
 ## 1. 两级结构
@@ -105,7 +105,7 @@ chemical_reaction {
 
 ## 9. 远期（非常重要）：化学反应规则引擎
 
-> **状态：远期规划，未实现。** 本节是混合物流体系统（见 `MixtureFluid` 计划）之后的下一块核心地基，**优先级很高**。
+> **状态：v1 已实现**（规则引擎 + 离子基底，见 docs/progress.md）。已落地：crystallise→neutralise→precipitate 流水线、沉淀入 `Suspended`、析晶入 `Sediment`、相界约束（§9.6，只求解 aqueous 相）。未做：反应导向、相变 volatilise（U7）、Ksp 离子积门槛、蒸氨规则化（先走白名单配方）。后续扩展按 [11-content-scope.md](11-content-scope.md) §2.1 排序。
 > 关联：混合物流体为它提供"组分 + 温度"的数据基础；本节描述在它之上的反应模拟。
 
 ### 9.1 为什么白名单配方不够
@@ -166,11 +166,15 @@ species: {
 
 ## 10. 运行模式：批式 / 连续流（流态范式）
 
-> 详见 [13-flow-modes.md](13-flow-modes.md)。本文 §3 的釜内执行模拟目前是**批式原生**（进度 0→100% 一次性结算清空）。
+> 原 13-flow-modes.md 已并入本节（引擎语义）与 [04-machines.md](04-machines.md) §5（S11–S15 规格）；落地单元 = [11-content-scope.md](11-content-scope.md) §2.1 的 U5（F1 批式）/ U8（F2 连续流）/ U9（F3 旗舰接线）。本文 §3 的釜内执行模拟目前是**批式原生**（进度 0→100% 一次性结算清空）。
 
-- **批式（BATCH）**：四相状态机 `投料→反应→排空→复位`；引擎语义照旧，补 S11–S13 + S15 即闭环。
-- **连续流（CONTINUOUS）**：容器状态加 `mode` 字段，每 tick 按**停留时间 τ=V/Q** 转化分率，产物 + 未反应进料连续流出；沉淀连续累积进 `Suspended` 域。索尔维碳化塔 / 合成氨循环的引擎语义所在。
-- 引擎分支落在 `tickReaction`：`mode=BATCH` 走现有进度结算，`mode=CONTINUOUS` 走分率转化 + 出流。
+两个正交层：**执行层**（引擎语义：攒满结算 or 分率转化）= 容器 `mode: BATCH|CONTINUOUS` 字段；**控制层**（谁测状态、谁判时机、谁开关阀泵）= S11–S15 + Create 红石（见 04 §5 注记）。
 
-控制层（传感器/时序/阀泵）由 S11–S15 方块 + Create 红石承载，见 13 §5–§7。
+**批式（BATCH）**：四相状态机，周期 = t_fill + t_react + t_drain + t_flush——S13 定量投料 → S11 满检测启动 → S12 完成触发排空 → S11 空检测 + 定时复位；引擎语义照旧。
+
+**连续流（CONTINUOUS）**：节拍 = **停留时间 τ = V/Q**（罐容/流量）；进料速率 = 出料速率，液位由 S14 溢流堰被动自稳；**每 tick 按 τ 转化一个分率（转化率 = f(τ)）**，产物 + 未反应进料一起流出、下游分离/循环（合成氨 15–20% 转化率即此模型的产物）；沉淀连续累积进 `Suspended`、底部连续抽浆。连续模式**无「完成」态**——S12 的完成语义只属批式，连续模式诊断态 = 稳态/扰动/排空。
+
+引擎分支落在 `tickReaction`：`mode=BATCH` 走现有进度结算（注意现行 `completeRecipe` 对每个 ingredient 固定消耗 1 个，批式语义内嵌）；`mode=CONTINUOUS` 走分率转化 + **比例消耗** + 出流。
+
+已知风险：低频结算（10 tick）下分率转化的**离散误差**需 GameTest 量化（τ ≫ tick 时可忽略）；τ 太短 → 进料未反应完即流出 → 必须循环。
 

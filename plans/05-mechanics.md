@@ -45,7 +45,7 @@
 - **边界**：不做真实动力学；分步反应用配方链（中间态=中间产物物种，如 NaHCO₃、SO₃）；平衡只做「转化率上限+方向切换」。
 - **Create 对接**：配方=ProcessingRecipe 派生（自定义 RecipeType `chemical_reaction`：item+fluid 输入、HeatCondition、processingTime、概率副产）；釜体执行端自研（流股模拟），但配方描述/注册/JEI/datagen/KubeJS 全白拿。
 - **可表达**：配方数据+进度模拟，完全可表达。
-- **运行模式**：分批式（进度 0→100% 一次性结算）与连续流（停留时间 τ=V/Q 分率转化、未反应出流）两档，见 [13-flow-modes.md](13-flow-modes.md)。
+- **运行模式**：分批式（进度 0→100% 一次性结算）与连续流（停留时间 τ=V/Q 分率转化、未反应出流）两档，见 [06-reaction-system.md](06-reaction-system.md) §10。
 
 ## M6 沉淀与悬浮
 

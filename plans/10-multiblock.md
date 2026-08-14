@@ -78,7 +78,7 @@
 | 热接口 | BoilerHeater.REGISTRY / HeatCondition | 底部热源槽位认 Blaze Burner 等；夹套口接换热器/蒸汽 |
 | 电口 | ForgeCapabilities.ENERGY（createaddition 电网） | 电解槽/电热器专用 |
 | 物品口 | IItemHandler（漏斗/传送带/机械臂） | 固体进出：加料（重碱、石灰石）、出料（滤饼、纯碱）、催化剂托盘 |
-| 数据口 | 红石/阈值开关/显示屏 | 状态读取、报警、自动启停；节拍控制的传感器/程控器见 [13-flow-modes.md](13-flow-modes.md) 的 S11–S15 |
+| 数据口 | 红石/阈值开关/显示屏 | 状态读取、报警、自动启停；节拍控制的传感器/程控器见 [04-machines.md](04-machines.md) §5 的 S11–S15 |
 
 ## 4. 内部状态可视化（自绘，不依赖流体渲染）
 

@@ -5,6 +5,18 @@
 > 依据：本地源码盘点（create-forge_1.20.1 = Create 6.0.8 / createaddition-forge_1.20.1 = 1.3.3 / create-tfmg-forge_1.20.1 / create-diesel-generators-forge_1.20.1）+ Modrinth API 数据（1714 个 Create 相关项目）+ forge1 生产服 mods 目录实测。
 > 结论先行：**平台锁定 Create Forge 6.0.8（forge1 已原生安装）**；液体/配方/热/物流/动能大量现成可用；**气体与多组分流股必须自研**；石油化工赛道社区已占据，我们主打**无机化工**。
 
+## 0. 平台决策（原 00-platform-decision.md 并入，已定 2026-09）
+
+**决策：Create Forge 6.0.8 原生附属**——依赖 `create-1.20.1-6.0.8` 与 `createaddition-1.20.1-1.3.3`（均硬依赖）；forge1 生产服已原生安装两者，部署零风险。被否备选：
+
+| 备选 | 否决理由 |
+|------|---------|
+| 独立 IC2 附属（v1 计划） | 需自建罐/管/加热/物流/多方块全套骨架（~70 方块）= 重写 Create；forge1 无 IC2 流体生态优势 |
+| Create Fabric（0.5.1-j / 6.x） | forge1 已原生跑 Create **Forge**；Fabric 版经 Connector 转译属额外风险 |
+| IC2 联动 | 跨加载器成本高，降级为可选立项（如 EU→FE 桥），不承诺 |
+
+工程形态：独立仓库 Forge mod（Java 17）；IC2 时代的旧计划书留在 ic2-fabric 仓库。复用边界速览见下文 §2–§5（结论已吸收进 README D11–D17）。
+
 ---
 
 ## 1. 生产服现状（硬证据）

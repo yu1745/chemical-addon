@@ -3,7 +3,7 @@
 > 文档状态：**current**（定位与玩家体验；措辞已 v2 对齐）
 
 > 关联：02-progression（阶段）、05-mechanics（机制）、11-content-scope（规模）
-> 平台：Create Forge 6.0.8 附属（见 00-platform-decision）。
+> 平台：Create Forge 6.0.8 附属（见 00-ecosystem-recon §0）。
 
 ## 1. 一句话定位
 
