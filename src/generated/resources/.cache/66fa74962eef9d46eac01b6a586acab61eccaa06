@@ -1,4 +1,4 @@
-// 1.20.1	2026-08-15T15:16:47.9259482	Registrate Provider for chemicaladdon [Recipes, Advancements, Loot Tables, Tags (blocks), Tags (items), Tags (fluids), Tags (entity_types), Blockstates, Item models, Lang (en_us/en_ud)]
+// 1.20.1	2026-08-15T18:09:48.927182	Registrate Provider for chemicaladdon [Recipes, Advancements, Loot Tables, Tags (blocks), Tags (items), Tags (fluids), Tags (entity_types), Blockstates, Item models, Lang (en_us/en_ud)]
 404f8d84274018255af4e6938f419a71dbabebf5 assets/chemicaladdon/blockstates/air.json
 5398f4a42a9384736e88ebf696b792477ed35819 assets/chemicaladdon/blockstates/ammonia.json
 d066bf91e072da1c0a7362b4f35e0d927f98f5e9 assets/chemicaladdon/blockstates/carbon_dioxide.json
@@ -6,6 +6,8 @@ d066bf91e072da1c0a7362b4f35e0d927f98f5e9 assets/chemicaladdon/blockstates/carbon
 d0f0e0700b6d36db28f8d833de5be96ea777818c assets/chemicaladdon/blockstates/chemical_brick.json
 c9da9aac697ef1e50353a50393904d6e6d921111 assets/chemicaladdon/blockstates/chemical_glass.json
 c78087a08dcfeed3baa7368d0d18877df3420b2a assets/chemicaladdon/blockstates/chlorine.json
+1b72dddc670060a64dadabba242bf4422df16826 assets/chemicaladdon/blockstates/conductivity_gauge.json
+cd4258dfcf485d6bd58fbfa561b990fc766ef517 assets/chemicaladdon/blockstates/conductivity_gauge_panel.json
 9714b6467e5ebad0e04879624c0b5078abe5d3ed assets/chemicaladdon/blockstates/decant_hose.json
 bed4d17271699daa73a6bf03ceb051c1792d4b2e assets/chemicaladdon/blockstates/decant_port.json
 f9aa0a067e1f93fb034850b418d658e11cd313fd assets/chemicaladdon/blockstates/filter_press.json
@@ -25,8 +27,8 @@ afc144ef6240e20dc79e58acb3feaecd4629cc41 assets/chemicaladdon/blockstates/sulfur
 cca96f8d0570837890fc1952992b68ec43577a3a assets/chemicaladdon/blockstates/thermal_oil.json
 913d42324e1ffd07052e05af28d2aa40c335d45a assets/chemicaladdon/blockstates/thermometer.json
 a33d1c8ee8ca36ddd5c5deb034e10f9069825ad8 assets/chemicaladdon/blockstates/thermometer_panel.json
-97462c5f473baff84e27ada57bc44733e56834c9 assets/chemicaladdon/lang/en_ud.json
-c7f9cc03415b949e7caf77ba19bd9728bae9232d assets/chemicaladdon/lang/en_us.json
+7ffd7ccdb1fda22c42d0d4dd64491130744c8c00 assets/chemicaladdon/lang/en_ud.json
+b598f53ac701e6f9c1de9e1327afeea303f9dad5 assets/chemicaladdon/lang/en_us.json
 736302a02c48b95eab2dc5fc031636ef7f903874 assets/chemicaladdon/models/block/air.json
 87e1eda6ed5b3bcf841040ce4a18402e9e9ca9e8 assets/chemicaladdon/models/block/ammonia.json
 2c3d0d026a5fbc723fc88baabdb31a5156e3f71a assets/chemicaladdon/models/block/carbon_dioxide.json
@@ -34,6 +36,7 @@ c7f9cc03415b949e7caf77ba19bd9728bae9232d assets/chemicaladdon/lang/en_us.json
 0b131fd5bb3115ab0e4ebf136ae6f0084b75916a assets/chemicaladdon/models/block/chemical_brick.json
 3807d754f320450ad3fc50f8d4d86c20f441c5fd assets/chemicaladdon/models/block/chemical_glass.json
 fcc5a6bf85300659c3a186341530d0fd38b4e0dc assets/chemicaladdon/models/block/chlorine.json
+967299b6996ce3c4dc906cbbce0d6a63d4d9e24c assets/chemicaladdon/models/block/conductivity_gauge.json
 fa28945f4dbf2edb90f23cd7ec83650a63394b77 assets/chemicaladdon/models/block/decant_port.json
 891236f35d4dbb35ccc9a4a93e54f0236ed97177 assets/chemicaladdon/models/block/filter_press.json
 1b5bbc546102e830eb0189cd91f5346e5b1c5c29 assets/chemicaladdon/models/block/hydrogen.json
@@ -62,6 +65,8 @@ e0f565b1528c4eb8e1a9a9636c50a8c0c9e62b42 assets/chemicaladdon/models/item/calciu
 c2012b2b8163c6e1ec2320715eeebf54f28bac03 assets/chemicaladdon/models/item/calcium_sulfite.json
 19d4e9da50d90757718056b9bc7c0fe582d35164 assets/chemicaladdon/models/item/chemical_brick.json
 601c3e4ea59cb38487d82a067c39be665f4427cd assets/chemicaladdon/models/item/chemical_glass.json
+e0f7b66a84e6588f01abbbce75b1803ffe5d46e2 assets/chemicaladdon/models/item/conductivity_gauge.json
+e0f7b66a84e6588f01abbbce75b1803ffe5d46e2 assets/chemicaladdon/models/item/conductivity_gauge_panel.json
 d37cf737e062b023b11eeb47b448086bb39dff18 assets/chemicaladdon/models/item/copper_carbonate.json
 a8dad51e7ec6c2711799efcce26af79b3216e11a assets/chemicaladdon/models/item/copper_sulfate.json
 bf67834846b5f1fd13cc3178c8ebf2ab8884b85b assets/chemicaladdon/models/item/copper_sulfate_grain.json
@@ -97,6 +102,8 @@ e0f7b66a84e6588f01abbbce75b1803ffe5d46e2 assets/chemicaladdon/models/item/thermo
 f4f6711b590a33d96b93571fae2671a9886f0618 assets/chemicaladdon/models/item/urea.json
 69964cfc9d048fbc2bdd9ba1517b734351bc46d4 data/chemicaladdon/loot_tables/blocks/chemical_brick.json
 f017b989816241d3f43f121e96a00b6d8b80fb72 data/chemicaladdon/loot_tables/blocks/chemical_glass.json
+06e1377c9477d05099bc9f9d65248dbf63924f94 data/chemicaladdon/loot_tables/blocks/conductivity_gauge.json
+ef66c1ce81bfaca5663397f6e03633721a636cc7 data/chemicaladdon/loot_tables/blocks/conductivity_gauge_panel.json
 402b66814b5bc46cc7580d2c5a8cff83f4ffe806 data/chemicaladdon/loot_tables/blocks/decant_hose.json
 1d6ba71308648ecbae30acf40ce4084d04e4f2d7 data/chemicaladdon/loot_tables/blocks/decant_port.json
 f0f702905e43071389cbc327b1a1fe4729e7a9b2 data/chemicaladdon/loot_tables/blocks/filter_press.json

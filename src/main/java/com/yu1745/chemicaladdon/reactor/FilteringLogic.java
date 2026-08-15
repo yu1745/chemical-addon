@@ -42,11 +42,17 @@ public class FilteringLogic {
 
 	public void tick(Level level, ReactorTank input, ReactorTank output, ItemStackHandler items, BlockPos pos,
 		float speed) {
+		tick(level, input, output, null, items, pos, speed);
+	}
+
+	/** @param washTank U16.5 optional rinse line (filter press): plain water displacement-washes each cake. */
+	public void tick(Level level, ReactorTank input, ReactorTank output, ReactorTank washTank, ItemStackHandler items,
+		BlockPos pos, float speed) {
 		if (level == null || level.isClientSide) {
 			return;
 		}
 		// generic: separate suspended solids out of any slurry
-		if (filterSuspended(level, input, output, items, pos)) {
+		if (filterSuspended(level, input, output, washTank, items, pos)) {
 			progress = 0;
 			return;
 		}
@@ -63,8 +69,8 @@ public class FilteringLogic {
 	}
 
 	/** True when the input tank holds a mixture with suspended solids; separates them if so. */
-	private static boolean filterSuspended(Level level, ReactorTank input, ReactorTank output, ItemStackHandler items,
-		BlockPos pos) {
+	private static boolean filterSuspended(Level level, ReactorTank input, ReactorTank output, ReactorTank washTank,
+		ItemStackHandler items, BlockPos pos) {
 		boolean hasSuspended = false;
 		for (FluidStack stack : input.getFluids()) {
 			if (Mixture.isMixture(stack) && !Mixture.getSuspended(stack).isEmpty()) {
@@ -75,14 +81,16 @@ public class FilteringLogic {
 		if (!hasSuspended) {
 			return false;
 		}
-		// whole-lump extraction (plans/03 §12): single species = pure item, any
-		// second species = mixed salt residue; sub-item remainder stays behind
+		// whole-lump extraction (plans/03 §12): single species + clean pore
+		// liquor = pure item, anything else = mixed salt residue; sub-item
+		// remainder stays behind. U16.5: the wet cake drags its pore mother
+		// liquor along (entrainment) unless the rinse line displacement-washes it
 		input.extractSolids(s -> {
 			ItemStack remainder = ItemHandlerHelper.insertItemStacked(items, s, false);
 			if (!remainder.isEmpty()) {
 				Containers.dropItemStack(level, pos.getX(), pos.getY(), pos.getZ(), remainder);
 			}
-		}, false);
+		}, false, washTank, output);
 		if (input != output) {
 			moveLiquid(input, output);
 		}

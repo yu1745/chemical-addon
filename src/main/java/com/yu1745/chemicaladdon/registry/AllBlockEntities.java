@@ -2,6 +2,8 @@ package com.yu1745.chemicaladdon.registry;
 
 import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlockEntity;
+import com.yu1745.chemicaladdon.reactor.ConductivityGaugeBlockEntity;
+import com.yu1745.chemicaladdon.reactor.ConductivityGaugePanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.DecantHoseBlockEntity;
 import com.yu1745.chemicaladdon.reactor.DecantPortBlockEntity;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlockEntity;
@@ -72,6 +74,17 @@ public class AllBlockEntities {
 	public static final RegistryObject<BlockEntityType<PressureGaugePanelBlockEntity>> PRESSURE_GAUGE_PANEL =
 		REGISTER.register("pressure_gauge_panel",
 			() -> BlockEntityType.Builder.of(PressureGaugePanelBlockEntity::new, AllBlocks.PRESSURE_GAUGE_PANEL.get())
+				.build(null));
+
+	public static final RegistryObject<BlockEntityType<ConductivityGaugeBlockEntity>> CONDUCTIVITY_GAUGE =
+		REGISTER.register("conductivity_gauge",
+			() -> BlockEntityType.Builder.of(ConductivityGaugeBlockEntity::new, AllBlocks.CONDUCTIVITY_GAUGE.get())
+				.build(null));
+
+	public static final RegistryObject<BlockEntityType<ConductivityGaugePanelBlockEntity>> CONDUCTIVITY_GAUGE_PANEL =
+		REGISTER.register("conductivity_gauge_panel",
+			() -> BlockEntityType.Builder.of(ConductivityGaugePanelBlockEntity::new,
+				AllBlocks.CONDUCTIVITY_GAUGE_PANEL.get())
 				.build(null));
 
 	public static void register(IEventBus modEventBus) {

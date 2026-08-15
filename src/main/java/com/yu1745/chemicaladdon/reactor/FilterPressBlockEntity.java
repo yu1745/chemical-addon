@@ -2,6 +2,7 @@ package com.yu1745.chemicaladdon.reactor;
 
 import javax.annotation.Nullable;
 
+import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
 
 import net.minecraft.core.BlockPos;
@@ -17,6 +18,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.Fluids;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.common.util.LazyOptional;
@@ -36,9 +38,12 @@ public class FilterPressBlockEntity extends BlockEntity {
 
 	public static final int INPUT_CAPACITY = 4000;
 	public static final int OUTPUT_CAPACITY = 4000;
+	public static final int WASH_CAPACITY = 4000;
 
 	private final ReactorTank input = new ReactorTank(INPUT_CAPACITY, this::onChanged);
 	private final ReactorTank output = new ReactorTank(OUTPUT_CAPACITY, this::onChanged);
+	/** U16.5 rinse line: plain water piped into the press displacement-washes the cake. */
+	private final ReactorTank wash = new ReactorTank(WASH_CAPACITY, this::onChanged);
 	private final ItemStackHandler items = new ItemStackHandler(1) {
 		@Override
 		protected void onContentsChanged(int slot) {
@@ -69,6 +74,11 @@ public class FilterPressBlockEntity extends BlockEntity {
 
 		@Override
 		public int fill(FluidStack resource, FluidAction action) {
+			// U16.5 rinse routing: plain water piped in is wash water (it
+			// displacement-washes the cake); anything else is slurry feed
+			if (!Mixture.isMixture(resource) && resource.getFluid() == Fluids.WATER) {
+				return wash.fill(resource, action);
+			}
 			return input.fill(resource, action);
 		}
 
@@ -95,7 +105,7 @@ public class FilterPressBlockEntity extends BlockEntity {
 			return;
 		}
 		if (++tickCounter % FilteringLogic.TICK_INTERVAL == 0) {
-			logic.tick(level, input, output, items, worldPosition, 1.0f);
+			logic.tick(level, input, output, wash, items, worldPosition, 1.0f);
 		}
 	}
 
@@ -138,6 +148,10 @@ public class FilterPressBlockEntity extends BlockEntity {
 		return output;
 	}
 
+	public ReactorTank getWash() {
+		return wash;
+	}
+
 	public ItemStackHandler getItems() {
 		return items;
 	}
@@ -169,6 +183,7 @@ public class FilterPressBlockEntity extends BlockEntity {
 		super.saveAdditional(tag);
 		tag.put("input", input.serializeNBT());
 		tag.put("output", output.serializeNBT());
+		tag.put("wash", wash.serializeNBT());
 		tag.put("items", items.serializeNBT());
 	}
 
@@ -177,6 +192,7 @@ public class FilterPressBlockEntity extends BlockEntity {
 		super.load(tag);
 		input.deserializeNBT(tag.getCompound("input"));
 		output.deserializeNBT(tag.getCompound("output"));
+		wash.deserializeNBT(tag.getCompound("wash"));
 		items.deserializeNBT(tag.getCompound("items"));
 	}
 

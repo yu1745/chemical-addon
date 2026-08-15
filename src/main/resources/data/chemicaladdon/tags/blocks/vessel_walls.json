@@ -5,6 +5,7 @@
     "chemicaladdon:chemical_glass",
     "chemicaladdon:decant_port",
     "chemicaladdon:thermometer",
-    "chemicaladdon:pressure_gauge"
+    "chemicaladdon:pressure_gauge",
+    "chemicaladdon:conductivity_gauge"
   ]
 }

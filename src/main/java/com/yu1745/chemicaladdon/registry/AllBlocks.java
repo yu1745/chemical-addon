@@ -7,6 +7,8 @@ import com.yu1745.chemicaladdon.client.connected.ConnectedModelBuilder;
 import com.yu1745.chemicaladdon.item.GaugeBlockItem;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlock;
 import com.yu1745.chemicaladdon.reactor.ChemicalGlassBlock;
+import com.yu1745.chemicaladdon.reactor.ConductivityGaugeBlock;
+import com.yu1745.chemicaladdon.reactor.ConductivityGaugePanelBlock;
 import com.yu1745.chemicaladdon.reactor.DecantHoseBlock;
 import com.yu1745.chemicaladdon.reactor.DecantPortBlock;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlock;
@@ -174,6 +176,35 @@ public class AllBlocks {
 				.isViewBlocking((a, b, c) -> false))
 			.lang("Pressure Gauge Panel")
 			// same dual-form pattern as the thermometer panel (S02)
+			.blockstate((ctx, prov) -> plateVariants(prov, ctx.get(), ctx.getName()))
+			.item(GaugeBlockItem::new)
+			.model((ctx, prov) -> prov.getBuilder(ctx.getName())
+	.parent(new ModelFile.UncheckedModelFile("builtin/entity")))
+			.build()
+			.register();
+
+	/** S18 conductivity gauge (电导率计, 方块形式, U16.5): vessel shell block reading ionic strength. */
+	public static final BlockEntry<ConductivityGaugeBlock> CONDUCTIVITY_GAUGE =
+		REGISTRATE.block("conductivity_gauge", ConductivityGaugeBlock::new)
+			.properties(p -> p.mapColor(MapColor.METAL).strength(2.0f, 6.0f))
+			.lang("Conductivity Gauge")
+			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(),
+				prov.models().cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
+			.item(GaugeBlockItem::new)
+			.model((ctx, prov) -> prov.getBuilder(ctx.getName())
+	.parent(new ModelFile.UncheckedModelFile("builtin/entity")))
+			.build()
+			.register();
+
+	/** S18 conductivity gauge (电导率计, 薄板形式, U16.5): thin face-mounted plate reading ionic strength. */
+	public static final BlockEntry<ConductivityGaugePanelBlock> CONDUCTIVITY_GAUGE_PANEL =
+		REGISTRATE.block("conductivity_gauge_panel", ConductivityGaugePanelBlock::new)
+			.properties(p -> p.mapColor(MapColor.METAL).strength(1.5f, 4.0f)
+				.noOcclusion()
+				.isRedstoneConductor((a, b, c) -> false)
+				.isSuffocating((a, b, c) -> false)
+				.isViewBlocking((a, b, c) -> false))
+			.lang("Conductivity Gauge Panel")
 			.blockstate((ctx, prov) -> plateVariants(prov, ctx.get(), ctx.getName()))
 			.item(GaugeBlockItem::new)
 			.model((ctx, prov) -> prov.getBuilder(ctx.getName())

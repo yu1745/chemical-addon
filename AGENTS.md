@@ -1,6 +1,6 @@
 # AGENTS.md - chemical-addon（Create 化学附属）
 
-本仓库是 **Create Forge 6.0.8 的无机化工附属**（Forge 1.20.1，Java 17），设计计划书在 `plans/`（主索引 `plans/README.md`，生态盘点与平台决策 `plans/00-ecosystem-recon.md`），**开发进度在 `docs/progress.md`**（M0–M2.5 + **U1 容器状态层** + **U13 规则引擎 v2**（统一 equilibria 平衡条目 + 质量作用求解器，PHREEQC 语义；引擎边界：自发的归规则引擎、红氧归配方层）+ **U14 JUnit 引擎测试层**（`./gradlew test`，composition 层剥离 MC）+ **U15 晶粒、投种与混合固体物品**（晶粒 1/16 面额 + 投种 + mixed_residue 整坨取出：「取出禁止选物种，严格单物种即纯，混合=盐渣」）+ **U16 反应热能量记账**（J/unit 账本，ΔT=Q/(feedUnits×4.18)，蒸发潜热自限）完成，GameTest 90/90 + JUnit 60/60；**M3+ 开工顺序以 `plans/11-content-scope.md` §2 为唯一定义**；改代码前先看它了解现状）。
+本仓库是 **Create Forge 6.0.8 的无机化工附属**（Forge 1.20.1，Java 17），设计计划书在 `plans/`（主索引 `plans/README.md`，生态盘点与平台决策 `plans/00-ecosystem-recon.md`），**开发进度在 `docs/progress.md`**（M0–M2.5 + **U1 容器状态层** + **U13 规则引擎 v2**（统一 equilibria 平衡条目 + 质量作用求解器，PHREEQC 语义；引擎边界：自发的归规则引擎、红氧归配方层）+ **U14 JUnit 引擎测试层**（`./gradlew test`，composition 层剥离 MC）+ **U15 晶粒、投种与混合固体物品**（晶粒 1/16 面额 + 投种 + mixed_residue 整坨取出：「取出禁止选物种，严格单物种即纯，混合=盐渣」）+ **U16 反应热能量记账**（J/unit 账本，ΔT=Q/(feedUnits×4.18)，蒸发潜热自限）+ **U16.5 湿饼夹带与洗涤**（取出夹带母液、再浆/置换洗涤、S18 电导率计）完成，GameTest 96/96 + JUnit 60/60；**M3+ 开工顺序以 `plans/11-content-scope.md` §2 为唯一定义**；改代码前先看它了解现状）。
 
 ## 核心架构（改动前必读 plans/03-substance-model.md）
 
@@ -18,7 +18,7 @@
 ./run-server.sh          # 冒烟测试：启动 dev 服务器、输出透传，识别到 "Done (" 后
                          # 三级关闭（组 SIGTERM → 轮询 → SIGKILL）并退出 0；
                          # 环境变量 WAIT_DONE_TIMEOUT / SHUTDOWN_GRACE_SECONDS
-./gradlew runGameTestServer   # 跑 GameTest（chemicaladdon/gametest/，90 个测试，需先 build）
+./gradlew runGameTestServer   # 跑 GameTest（chemicaladdon/gametest/，96 个测试，需先 build）
 ```
 
 > ⚠️ runServer 永不自行返回：不要用 `cmd | script` 或 `cmd && script` 形式调用；`run-server.sh` 自行负责启动与收尾。关闭策略为纯 PID 方案（`$!` → PGID → 整组信号），**禁止**在脚本里用进程名/路径匹配（会误伤容器内的生产服 forge1 JVM）。

@@ -39,6 +39,8 @@ public class ChemicalAddonClient {
 		BlockEntityRenderers.register(AllBlockEntities.THERMOMETER_PANEL.get(), VesselGaugeRenderer::new);
 		BlockEntityRenderers.register(AllBlockEntities.PRESSURE_GAUGE.get(), VesselGaugeRenderer::new);
 		BlockEntityRenderers.register(AllBlockEntities.PRESSURE_GAUGE_PANEL.get(), VesselGaugeRenderer::new);
+		BlockEntityRenderers.register(AllBlockEntities.CONDUCTIVITY_GAUGE.get(), VesselGaugeRenderer::new);
+		BlockEntityRenderers.register(AllBlockEntities.CONDUCTIVITY_GAUGE_PANEL.get(), VesselGaugeRenderer::new);
 
 		// per-stack fluid tint for every DynamicFluidContainerModel item: the sample
 		// vial (any fluid with NBT) and every species bucket (still sprite + tint).

@@ -2195,8 +2195,11 @@ public class ChemicalAddonGameTests {
 		helper.assertTrue(Mixture.deriveSedimentAmounts(mixed.getFluids().get(0)).isEmpty()
 			|| Mixture.getSediment(mixed.getFluids().get(0)).isEmpty(),
 			"the whole lump leaves the pot");
-		helper.assertTrue(mixed.getFluids().get(0).getAmount() == 1000,
-			"the water stays behind (got " + mixed.getFluids().get(0).getAmount() + ")");
+		// U16.5 entrainment: the 3000 mB lump drags its pore liquor along —
+		// 30% of the extracted volume leaves as the cake's mother liquor
+		helper.assertTrue(mixed.getFluids().get(0).getAmount() == 100,
+			"the pore liquor leaves with the cake (100 mB stays, got "
+				+ mixed.getFluids().get(0).getAmount() + ")");
 
 		// strict single species: 2500 mB NaCl -> 2 PURE items, 500 mB stays
 		ReactorTank pure = new ReactorTank(10000, () -> {});
@@ -2251,6 +2254,241 @@ public class ChemicalAddonGameTests {
 		helper.assertTrue(ions.getOrDefault("Mg+2", 0) == 500 && ions.getOrDefault("Cl-1", 0) == 1500,
 			"the MgCl2 share should expand to Mg+2 + 2 Cl- (got " + ions + ")");
 		helper.assertTrue(Mixture.isChargeNeutral(ions), "the expanded ion set must be charge-neutral");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void wetCakeEntrainssMotherLiquor(GameTestHelper helper) {
+		// U16.5: extraction is mechanically imperfect — the cake drags its pore
+		// liquor along. A single-species salt bed under a DIRTY mother liquor
+		// therefore extracts as a residue (not a pure item): the entrained Mg²⁺
+		// travels with it, and only washing earns the pure item.
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation rockSalt = new ResourceLocation(ChemicalAddon.MODID, "rock_salt");
+		ReactorTank tank = new ReactorTank(10000, () -> {});
+		tank.fill(Mixture.create(
+			Map.of(water, 1000),
+			Map.of("Na+1", 400, "Cl-1", 600, "Mg+2", 100),
+			Map.of(),
+			Map.of(rockSalt, 1200),
+			3300), FluidAction.EXECUTE);
+		List<ItemStack> out = new ArrayList<>();
+		tank.extractSolids(out::add, true);
+		helper.assertTrue(out.size() == 1 && out.get(0).is(AllItems.MIXED_RESIDUE.get()),
+			"an unwashed single-species cake under dirty liquor must be a residue (got " + out + ")");
+		Map<ResourceLocation, Integer> parts = MixedResidueItem.parts(out.get(0));
+		helper.assertTrue(parts.containsKey(rockSalt), "the solids part must be salt (got " + parts + ")");
+		Map<String, Integer> liquor = MixedResidueItem.liquorParts(out.get(0));
+		helper.assertTrue(liquor.containsKey("Mg+2") && liquor.containsKey("Na+1") && liquor.containsKey("water"),
+			"the pore liquor must ride along in the NBT (got " + liquor + ")");
+		// vessel side: a proportional share of the liquid left with the cake
+		helper.assertTrue(Math.abs(speciesAmount(tank.getFluids().get(0), "water") - 857) <= 3,
+			"the entrained water share leaves the pot (~857 stays, got "
+				+ speciesAmount(tank.getFluids().get(0), "water") + ")");
+		helper.assertTrue(Math.abs(ionAmount(tank.getFluids().get(0), "Mg+2") - 86) <= 2,
+			"the entrained magnesium share leaves the pot (~86 stays, got "
+				+ ionAmount(tank.getFluids().get(0), "Mg+2") + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void reslurryWashingDecaysMotherLiquor(GameTestHelper helper) {
+		// U16.5 reslurry washing: decant (skim the clear liquid — the settled
+		// bed and its pore liquor stay) → refill clean water → decant again.
+		// The retained liquor decays geometrically; the bed never leaves.
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation rockSalt = new ResourceLocation(ChemicalAddon.MODID, "rock_salt");
+		ReactorTank tank = new ReactorTank(20000, () -> {});
+		tank.fill(Mixture.create(
+			Map.of(water, 1000),
+			Map.of("Na+1", 500, "Cl-1", 500),
+			Map.of(),
+			Map.of(rockSalt, 2000),
+			4000), FluidAction.EXECUTE);
+
+		// round 1: liquid 2000 mB, pore floor 600 mB -> 1400 mB skimmable
+		FluidStack first = tank.decantClear(100_000, FluidAction.EXECUTE);
+		helper.assertTrue(first.getAmount() == 1400,
+			"the first decant skims the free liquor only (got " + first.getAmount() + ")");
+		helper.assertTrue(Math.abs(ionAmount(tank.getFluids().get(0), "Na+1") - 150) <= 1,
+			"proportional share leaves: Na 500 -> ~150 (got " + ionAmount(tank.getFluids().get(0), "Na+1") + ")");
+		helper.assertTrue(Mixture.deriveSedimentAmounts(tank.getFluids().get(0)).getOrDefault(rockSalt, 0) == 2000,
+			"the crystal bed never leaves through a decant");
+
+		// the pore floor holds: a second decant without refill draws nothing
+		helper.assertTrue(tank.decantClear(100_000, FluidAction.EXECUTE).isEmpty(),
+			"a decant cannot reach below the bed's pore liquor");
+
+		// round 2 after refill: same geometry, geometric decay 150 -> ~35
+		tank.fill(new FluidStack(Fluids.WATER, 2000), FluidAction.EXECUTE);
+		tank.collapseIfNeeded(); // merge the refill into the aqueous phase (the rules engine does this every tick)
+		FluidStack second = tank.decantClear(100_000, FluidAction.EXECUTE);
+		helper.assertTrue(second.getAmount() == 2000, "the refilled free liquor is skimmable again");
+		int na = ionAmount(tank.getFluids().get(0), "Na+1");
+		helper.assertTrue(na >= 32 && na <= 38,
+			"the second round decays geometrically (~35, got " + na + ")");
+		int bed = Mixture.deriveSedimentAmounts(tank.getFluids().get(0)).getOrDefault(rockSalt, 0);
+		helper.assertTrue(bed >= 1998 && bed <= 2002,
+			"the bed survives the wash (mB view ±2, got " + bed + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void filterWashDisplacementPurifiesCake(GameTestHelper helper) {
+		// U16.5 displacement wash: clean rinse water pushed through the cake
+		// (13 pore volumes at ε=0.75) displaces the mother liquor to below the
+		// unit grid — the single-species cake comes out as the PURE item, and
+		// the spent wash water joins the filtrate.
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation rockSalt = new ResourceLocation(ChemicalAddon.MODID, "rock_salt");
+		ReactorTank input = new ReactorTank(4000, () -> {});
+		input.fill(Mixture.create(
+			Map.of(water, 1000),
+			Map.of("Na+1", 400, "Cl-1", 400),
+			Map.of(rockSalt, 1000),
+			Map.of(),
+			2800), FluidAction.EXECUTE);
+		ReactorTank wash = new ReactorTank(4000, () -> {});
+		wash.fill(new FluidStack(Fluids.WATER, 4000), FluidAction.EXECUTE);
+		ReactorTank filtrate = new ReactorTank(4000, () -> {});
+
+		List<ItemStack> out = new ArrayList<>();
+		input.extractSolids(out::add, false, wash, filtrate);
+		helper.assertTrue(out.size() == 1 && out.get(0).is(AllItems.ROCK_SALT.get()),
+			"a fully displacement-washed single-species cake must come out PURE (got " + out + ")");
+		helper.assertTrue(wash.getTotalAmount() == 100,
+			"the useful wash maximum is 13 pore volumes (3900 mB spent, got " + (4000 - wash.getTotalAmount()) + ")");
+		helper.assertTrue(filtrate.getTotalAmount() == 3900,
+			"the spent wash water joins the filtrate (got " + filtrate.getTotalAmount() + ")");
+		// the mother liquor it displaced stays in the input as filtrate-to-be
+		helper.assertTrue(ionAmount(input.getFluids().get(0), "Na+1") == 400,
+			"the displaced mother liquor stays behind for the filtrate");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void washingRedissolvesSolubleBedButNotMinerals(GameTestHelper helper) {
+		// U16.5: the wash water's yield cost is emergent — refilling a soluble
+		// (curve-species) bed with clean water redissolves product (real
+		// washing loss), while a Ksp mineral bed barely notices.
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation rockSalt = new ResourceLocation(ChemicalAddon.MODID, "rock_salt");
+		ResourceLocation limestone = new ResourceLocation(ChemicalAddon.MODID, "limestone");
+
+		// the soluble bed: post-decant pore state + a clean-water refill
+		ReactorTank salt = new ReactorTank(20000, () -> {});
+		salt.fill(Mixture.create(
+			Map.of(water, 2300),
+			Map.of("Na+1", 150, "Cl-1", 150),
+			Map.of(),
+			Map.of(rockSalt, 2000),
+			4600), FluidAction.EXECUTE);
+		RulesEngine.apply(salt);
+		int saltBed = Mixture.deriveSedimentAmounts(salt.getFluids().get(0)).getOrDefault(rockSalt, 0);
+		helper.assertTrue(saltBed >= 1250 && saltBed <= 1400,
+			"refilling clean water redissolves NaCl product (yield loss, bed ~1322, got " + saltBed + ")");
+
+		// the mineral bed: CaCO3 stays put (Ksp insoluble)
+		ReactorTank mineral = new ReactorTank(20000, () -> {});
+		mineral.fill(Mixture.create(
+			Map.of(water, 2300),
+			Map.of(),
+			Map.of(),
+			Map.of(limestone, 2000),
+			4300), FluidAction.EXECUTE);
+		RulesEngine.apply(mineral);
+		int mineralBed = Mixture.deriveSedimentAmounts(mineral.getFluids().get(0)).getOrDefault(limestone, 0);
+		helper.assertTrue(mineralBed >= 1995,
+			"a Ksp mineral bed survives washing essentially untouched (got " + mineralBed + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void wetCakeDissolvesBackConservingMass(GameTestHelper helper) {
+		// U16.5: dissolving a wet cake expands BOTH phases exactly — the solid
+		// salt AND the pore liquor's ions/water land in the ion/molecular
+		// domains, charge-neutral, in the NBT's exact proportions.
+		ResourceLocation rockSalt = new ResourceLocation(ChemicalAddon.MODID, "rock_salt");
+		ItemStack cake = MixedResidueItem.of(
+			Map.of(rockSalt, 1900L),
+			Map.of("Na+1", 100L, "Cl-1", 100L),
+			100L);
+		ItemStackHandler items = new ItemStackHandler(1);
+		items.setStackInSlot(0, cake);
+
+		ReactorTank tank = new ReactorTank(10000, () -> {});
+		tank.fill(new FluidStack(Fluids.WATER, 5000), FluidAction.EXECUTE);
+		RulesEngine.apply(tank, false, items);
+		helper.assertTrue(items.getStackInSlot(0).isEmpty(), "the wet cake should fully dissolve");
+		// parts gcd to {salt 19, Na 1, Cl 1, water 1}/22 of one item:
+		// Na⁺ = (19 + 1)/22 × 1000 mB = 909 mB, water gains 1/22 of a bucket
+		FluidStack result = tank.getFluids().get(0);
+		int na = ionAmount(result, "Na+1");
+		int cl = ionAmount(result, "Cl-1");
+		helper.assertTrue(Math.abs(na - 909) <= 2 && Math.abs(cl - 909) <= 2,
+			"both the solid and the liquor's sodium land in the ion domain (got Na=" + na + " Cl=" + cl + ")");
+		helper.assertTrue(Math.abs(speciesAmount(result, "water") - 5045) <= 2,
+			"the liquor's water rejoins the solvent (got " + speciesAmount(result, "water") + ")");
+		helper.assertTrue(Mixture.isChargeNeutral(Mixture.deriveIonAmounts(result)), "charge neutrality holds");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void conductivityGaugeReadsIonicStrength(GameTestHelper helper) {
+		// S18 (U16.5): conductivity = 10 × (ion units / water units) on the
+		// declared mS scale — molecular solutes do not conduct (the ammonia
+		// distinction), and the wall gauge reads its own vessel with the
+		// INVERTED alarm: signal = conductivity fell to/below the setpoint.
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation ammonia = new ResourceLocation(ChemicalAddon.MODID, "ammonia");
+		ReactorTank brine = new ReactorTank(10000, () -> {});
+		brine.fill(Mixture.create(Map.of(water, 1000), Map.of("Na+1", 500, "Cl-1", 500), 2000),
+			FluidAction.EXECUTE);
+		helper.assertTrue(com.yu1745.chemicaladdon.reactor.AbstractConductivityGaugeBlockEntity
+			.conductivityOf(brine) == 10, "a 1:1 brine reads 10 mS");
+		ReactorTank ammoniaWater = new ReactorTank(10000, () -> {});
+		ammoniaWater.fill(Mixture.create(Map.of(water, 1000, ammonia, 200), Map.of(), 1200),
+			FluidAction.EXECUTE);
+		helper.assertTrue(com.yu1745.chemicaladdon.reactor.AbstractConductivityGaugeBlockEntity
+			.conductivityOf(ammoniaWater) == 0, "molecular ammonia does not conduct");
+
+		// the wall form: shell block, bound, reading its own vessel
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		BlockState gaugeBlock = AllBlocks.CONDUCTIVITY_GAUGE.get().defaultBlockState();
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick);
+				helper.setBlock(new BlockPos(x, 3, z), brick);
+			}
+		}
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				if (x == 2 && z == 2) {
+					continue;
+				}
+				BlockPos p = new BlockPos(x, 2, z);
+				helper.setBlock(p, (x == 2 && z == 1) ? controller : (x == 3 && z == 1) ? gaugeBlock : brick);
+			}
+		}
+		ReactorControllerBlockEntity reactor = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 1));
+		helper.assertTrue(reactor.tryAssemble().ok(), "reactor with a conductivity gauge wall should assemble");
+		com.yu1745.chemicaladdon.reactor.ConductivityGaugeBlockEntity gauge =
+			(com.yu1745.chemicaladdon.reactor.ConductivityGaugeBlockEntity) helper.getBlockEntity(new BlockPos(3, 2, 1));
+		helper.assertTrue(gauge != null && gauge.getMasterPos() != null,
+			"the wall gauge must be bound to the controller");
+
+		reactor.getTank().fill(brine.drain(100_000, FluidAction.EXECUTE), FluidAction.EXECUTE);
+		gauge.tick();
+		helper.assertTrue(gauge.isAttached() && gauge.getConductivity() == 10,
+			"the wall gauge reads its vessel's conductivity (got " + gauge.getConductivity() + ")");
+		helper.assertTrue(!gauge.isAlarm(), "a dirty vessel at 10 mS vs setpoint 5 mS is not clean");
+
+		reactor.getTank().clear();
+		reactor.getTank().fill(new FluidStack(Fluids.WATER, 1000), FluidAction.EXECUTE);
+		gauge.tick();
+		helper.assertTrue(gauge.isAlarm(),
+			"the inverted alarm fires when conductivity falls to/below the setpoint (washing-complete)");
 		helper.succeed();
 	}
 
@@ -2458,7 +2696,8 @@ public class ChemicalAddonGameTests {
 				helper.assertTrue(!be.getItems().getStackInSlot(0).isEmpty()
 					&& be.getItems().getStackInSlot(0).is(AllItems.SODIUM_BICARBONATE.get()),
 					"cake should be produced");
-				helper.assertTrue(hasSpecies(be.getOutput(), "water", 900), "filtrate water should be produced");
+				// U16.5: the 1000 mB cake carries 300 mB of pore water with it
+				helper.assertTrue(hasSpecies(be.getOutput(), "water", 700), "filtrate water should be produced");
 			})
 			.thenSucceed();
 	}
@@ -2504,7 +2743,8 @@ public class ChemicalAddonGameTests {
 				helper.assertTrue(!be.getItems().getStackInSlot(0).isEmpty()
 					&& be.getItems().getStackInSlot(0).is(AllItems.SODIUM_BICARBONATE.get()),
 					"settled cake should be produced");
-				helper.assertTrue(hasSpecies(be.getTank(), "water", 900), "clear water should remain");
+				// U16.5: the 1000 mB cake carries 300 mB of pore water with it
+				helper.assertTrue(hasSpecies(be.getTank(), "water", 700), "clear water should remain");
 			})
 			.thenSucceed();
 	}

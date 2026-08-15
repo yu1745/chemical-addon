@@ -191,9 +191,17 @@ public abstract class AbstractVesselGaugeBlockEntity extends SmartBlockEntity im
 		return needleAngle.getValue(partialTicks);
 	}
 
-	/** true when the reading reached the alarm threshold (attached vessels only). */
+	/** Which crossing raises the alarm. Gauges default to "reading at/above the
+	 *  threshold" (over-limit alarms: overtemperature, overpressure); a gauge may
+	 *  invert it — e.g. the conductivity gauge signals "reading has fallen to/below
+	 *  the setpoint", the washing-complete / water-clean endpoint (plans/12 §3). */
+	protected boolean alarmWhenBelow() {
+		return false;
+	}
+
+	/** true when the reading crossed the alarm threshold (attached vessels only). */
 	public boolean isAlarm() {
-		return attached && value >= getThreshold();
+		return attached && (alarmWhenBelow() ? value <= getThreshold() : value >= getThreshold());
 	}
 
 	/** true when the gauge currently sees a vessel to read. */

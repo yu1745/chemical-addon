@@ -3,6 +3,7 @@ package com.yu1745.chemicaladdon.reactor;
 import javax.annotation.Nullable;
 
 import com.yu1745.chemicaladdon.fluid.Miscibility;
+import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
 import com.yu1745.chemicaladdon.vessel.IMasterBound;
 
@@ -228,7 +229,15 @@ public class DecantHoseBlockEntity extends BlockEntity {
 				}
 			}
 			ReactorControllerBlockEntity r = reactor();
-			return r == null ? FluidStack.EMPTY : r.getTank().drain(resource, action);
+			if (r == null) {
+				return FluidStack.EMPTY;
+			}
+			// U16.5: a surface hose skims the mixture's liquid only, never the
+			// settled bed or its pore liquor (the reslurry-washing primitive)
+			if (Mixture.isMixture(resource.getFluid())) {
+				return r.getTank().decantClear(resource.getAmount(), action);
+			}
+			return r.getTank().drain(resource, action);
 		}
 
 		@Override
@@ -238,11 +247,14 @@ public class DecantHoseBlockEntity extends BlockEntity {
 				return FluidStack.EMPTY;
 			}
 			if (!onlyTop) {
-				return r.getTank().drainLightest(maxDrain, action);
+				return r.getTank().drainLightestClear(maxDrain, action);
 			}
 			ensureLatched();
 			if (latched.isEmpty()) {
 				return FluidStack.EMPTY;
+			}
+			if (Mixture.isMixture(latched)) {
+				return r.getTank().decantClear(maxDrain, action);
 			}
 			FluidStack request = latched.copy();
 			request.setAmount(maxDrain);

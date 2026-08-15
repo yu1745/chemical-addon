@@ -23,9 +23,14 @@
   "goggles.chemicaladdon.pressure_gauge_threshold": "报警阈值：%s kPa",
   "goggles.chemicaladdon.pressure_gauge_alarm": "报警：超压",
   "goggles.chemicaladdon.pressure_gauge_no_vessel": "未连接反应釜",
+  "goggles.chemicaladdon.conductivity": "电导率：%s mS",
+  "goggles.chemicaladdon.conductivity_gauge_threshold": "设定点：%s mS",
+  "goggles.chemicaladdon.conductivity_gauge_clean": "达标：电导率已降至设定点",
+  "goggles.chemicaladdon.conductivity_gauge_no_vessel": "未连接反应釜",
   "goggles.chemicaladdon.saturation": "饱和态：",
   "thermometer.chemicaladdon.threshold": "报警阈值",
   "pressure_gauge.chemicaladdon.threshold": "报警阈值",
+  "conductivity_gauge.chemicaladdon.threshold": "设定点",
   "status.chemicaladdon.not_assembled": "未成型",
   "status.chemicaladdon.reacting": "反应中",
   "status.chemicaladdon.temperature": "温度不满足",
@@ -132,5 +137,7 @@
   "block.chemicaladdon.thermometer": "温度计",
   "block.chemicaladdon.thermometer_panel": "温度计面板",
   "block.chemicaladdon.pressure_gauge": "压力表",
-  "block.chemicaladdon.pressure_gauge_panel": "压力表面板"
+  "block.chemicaladdon.pressure_gauge_panel": "压力表面板",
+  "block.chemicaladdon.conductivity_gauge": "电导率计",
+  "block.chemicaladdon.conductivity_gauge_panel": "电导率计面板"
 }

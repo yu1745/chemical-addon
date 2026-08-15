@@ -3,6 +3,7 @@ package com.yu1745.chemicaladdon.reactor;
 import javax.annotation.Nullable;
 
 import com.yu1745.chemicaladdon.fluid.Miscibility;
+import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
 import com.yu1745.chemicaladdon.vessel.VesselBlockEntity;
 
@@ -154,7 +155,15 @@ public class DecantPortBlockEntity extends ChemicalBrickBlockEntity {
 				return FluidStack.EMPTY;
 			}
 			ReactorTank t = vesselTank();
-			return t == null ? FluidStack.EMPTY : t.drain(resource, action);
+			if (t == null) {
+				return FluidStack.EMPTY;
+			}
+			// U16.5: a clear-liquid spout skims the liquid only, never the
+			// settled bed or its pore liquor (the reslurry-washing primitive)
+			if (Mixture.isMixture(latched)) {
+				return t.decantClear(resource.getAmount(), action);
+			}
+			return t.drain(resource, action);
 		}
 
 		@Override
@@ -166,6 +175,9 @@ public class DecantPortBlockEntity extends ChemicalBrickBlockEntity {
 			ReactorTank t = vesselTank();
 			if (t == null) {
 				return FluidStack.EMPTY;
+			}
+			if (Mixture.isMixture(latched)) {
+				return t.decantClear(maxDrain, action);
 			}
 			FluidStack request = latched.copy();
 			request.setAmount(maxDrain);

@@ -109,6 +109,8 @@ BLOCKS = [
     ("thermometer_panel",  "温度计面板", "Thermometer Panel", 0x6A6A72),
     ("pressure_gauge",     "压力表", "Pressure Gauge",      0x5A6272),
     ("pressure_gauge_panel", "压力表面板", "Pressure Gauge Panel", 0x6A7282),
+    ("conductivity_gauge",     "电导率计", "Conductivity Gauge",      0x5A7262),
+    ("conductivity_gauge_panel", "电导率计面板", "Conductivity Gauge Panel", 0x6A8272),
 ]
 
 # Solution modes ("species = mode", plans/03 §4): NOT registered fluids — only a
@@ -631,6 +633,8 @@ def gen_block_textures():
     write_png(os.path.join(d, "thermometer_panel.png"), make_dial_texture(0x6A6A72))
     write_png(os.path.join(d, "pressure_gauge.png"), make_dial_texture(0x5A6272, needle=(72, 108, 188), dial=(226, 232, 244)))
     write_png(os.path.join(d, "pressure_gauge_panel.png"), make_dial_texture(0x6A7282, needle=(72, 108, 188), dial=(226, 232, 244)))
+    write_png(os.path.join(d, "conductivity_gauge.png"), make_dial_texture(0x5A7262, needle=(62, 158, 110), dial=(228, 240, 232)))
+    write_png(os.path.join(d, "conductivity_gauge_panel.png"), make_dial_texture(0x6A8272, needle=(62, 158, 110), dial=(228, 240, 232)))
     # decant_hose was missing from here since D18.5 — runData's blockstate
     # provider for it failed on the absent texture (U1 fix)
     write_png(os.path.join(d, "decant_hose.png"), make_coil_texture(0xB87333))
@@ -663,9 +667,14 @@ EXTRA_LANG_ZH = {
     "goggles.chemicaladdon.pressure_gauge_threshold": "报警阈值：%s kPa",
     "goggles.chemicaladdon.pressure_gauge_alarm": "报警：超压",
     "goggles.chemicaladdon.pressure_gauge_no_vessel": "未连接反应釜",
+    "goggles.chemicaladdon.conductivity": "电导率：%s mS",
+    "goggles.chemicaladdon.conductivity_gauge_threshold": "设定点：%s mS",
+    "goggles.chemicaladdon.conductivity_gauge_clean": "达标：电导率已降至设定点",
+    "goggles.chemicaladdon.conductivity_gauge_no_vessel": "未连接反应釜",
     "goggles.chemicaladdon.saturation": "饱和态：",
     "thermometer.chemicaladdon.threshold": "报警阈值",
     "pressure_gauge.chemicaladdon.threshold": "报警阈值",
+    "conductivity_gauge.chemicaladdon.threshold": "设定点",
     "status.chemicaladdon.not_assembled": "未成型",
     "status.chemicaladdon.reacting": "反应中",
     "status.chemicaladdon.temperature": "温度不满足",
@@ -711,9 +720,14 @@ EXTRA_LANG_EN = {
     "goggles.chemicaladdon.pressure_gauge_threshold": "Threshold: %s kPa",
     "goggles.chemicaladdon.pressure_gauge_alarm": "ALARM",
     "goggles.chemicaladdon.pressure_gauge_no_vessel": "Not attached to a reactor",
+    "goggles.chemicaladdon.conductivity": "Conductivity: %s mS",
+    "goggles.chemicaladdon.conductivity_gauge_threshold": "Setpoint: %s mS",
+    "goggles.chemicaladdon.conductivity_gauge_clean": "CLEAN: conductivity at/below setpoint",
+    "goggles.chemicaladdon.conductivity_gauge_no_vessel": "Not attached to a reactor",
     "goggles.chemicaladdon.saturation": "Saturation:",
     "thermometer.chemicaladdon.threshold": "Alarm Threshold",
     "pressure_gauge.chemicaladdon.threshold": "Alarm Threshold",
+    "conductivity_gauge.chemicaladdon.threshold": "Setpoint",
     "status.chemicaladdon.not_assembled": "Not assembled",
     "status.chemicaladdon.reacting": "Reacting",
     "status.chemicaladdon.temperature": "Temperature not met",

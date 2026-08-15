@@ -61,6 +61,34 @@ public final class RulesEngine {
 	/** One grain in solver units (exactly representable on the 10⁴ grid). */
 	public static final long GRAIN_UNITS = ITEM_UNITS / GRAINS_PER_ITEM;
 
+	/**
+	 * Wet-cake mother-liquor holdup (U16.5, plans/03 §12): the pore fraction of
+	 * a settled/filtered solid mass that stays full of liquor — extraction is
+	 * mechanically imperfect, and the entrained liquor (a proportional share of
+	 * the vessel's liquid at extraction time) travels with the cake into the
+	 * residue item. One declared constant, two manifestations: cake
+	 * entrainment here, and the decant ports' inability to suck a settled bed
+	 * dry (reslurry washing's driving force).
+	 */
+	public static final double CAKE_LIQUOR_FRACTION = 0.3;
+
+	/**
+	 * Displacement-wash efficiency (U16.5): each cake-volume of clean wash
+	 * water pushed through the cake displaces this fraction of the entrained
+	 * mother liquor — remaining liquor scales by (1−ε)^(wash/pore), so ~8 pore
+	 * volumes wash to below the unit grid (integer rounding does the honest
+	 * cutoff; the machine never judges concentration, only composition).
+	 */
+	public static final double WASH_DISPLACEMENT = 0.75;
+
+	/**
+	 * Useful maximum of displacement washing in pore volumes: 13 volumes at
+	 * ε=0.75 scales even a bucket-scale mother liquor to below half a unit
+	 * (integer rounding then zeroes it — the honest cutoff). More wash water
+	 * than this is not consumed; it cannot make the cake any cleaner.
+	 */
+	public static final double MAX_WASH_PORE_VOLUMES = 13;
+
 	/** Water's boiling point (°C) — the open-vessel evaporation threshold. */
 	private static final int WATER_BOILING_C = 100;
 
@@ -232,7 +260,7 @@ public final class RulesEngine {
 		if (water <= 0) {
 			return false; // no solvent: nothing dissolves
 		}
-		boolean consumed = dissolveResidue(ions, suspended, items, water, temperature);
+		boolean consumed = dissolveResidue(mol, ions, suspended, items, water, temperature);
 		for (Species s : SpeciesManager.all()) {
 			if (!s.isCrystallisable() || !s.isElectrolyte()) {
 				continue;
@@ -284,39 +312,82 @@ public final class RulesEngine {
 	 * dissolve them to Ksp. Whole-item only: partial dissolution would need a
 	 * fractional item.
 	 */
-	private static boolean dissolveResidue(Map<String, Long> ions, Map<ResourceLocation, Long> suspended,
-		IItemHandler items, long water, int temperature) {
+	/**
+	 * Dissolve one mixed-residue (wet-cake) item: expand its NBT ratio
+	 * composition — solids <b>and</b> entrained mother liquor (U16.5) — into a
+	 * full 1000 mB share, distributed proportionally over all parts. Curve
+	 * species go to the ion domain — but only if every one of them (from
+	 * solids and liquor alike) still fits under its saturation cap afterwards
+	 * (a residue dropped into an already-saturated brine correctly refuses to
+	 * dissolve); mineral species go to {@code Suspended} where the equilibria
+	 * dissolve them to Ksp; liquor water joins the solvent and liquor solutes
+	 * re-enter the molecular domain. Whole-item only: partial dissolution
+	 * would need a fractional item.
+	 */
+	private static boolean dissolveResidue(Map<ResourceLocation, Long> mol, Map<String, Long> ions,
+		Map<ResourceLocation, Long> suspended, IItemHandler items, long water, int temperature) {
 		for (int slot = 0; slot < items.getSlots(); slot++) {
 			ItemStack stack = items.getStackInSlot(slot);
 			if (!(stack.getItem() instanceof MixedResidueItem)) {
 				continue;
 			}
 			Map<ResourceLocation, Integer> parts = MixedResidueItem.parts(stack);
+			Map<String, Integer> liquor = MixedResidueItem.liquorParts(stack);
 			long totalParts = 0;
 			for (int v : parts.values()) {
+				totalParts += v;
+			}
+			for (int v : liquor.values()) {
 				totalParts += v;
 			}
 			if (totalParts <= 0) {
 				continue;
 			}
-			// per-entry unit shares summing exactly to ITEM_UNITS
+			// per-entry unit shares summing exactly to ITEM_UNITS, across solids
+			// AND liquor (the water in a wet cake rejoins the solvent)
 			Map<ResourceLocation, Long> shares = new LinkedHashMap<>();
+			Map<String, Long> liquorShares = new LinkedHashMap<>();
 			long assigned = 0;
 			for (Map.Entry<ResourceLocation, Integer> e : parts.entrySet()) {
 				long share = ITEM_UNITS * e.getValue() / totalParts;
 				shares.put(e.getKey(), share);
 				assigned += share;
 			}
-			// hand the rounding remainder to the largest entry
-			ResourceLocation largest = null;
-			for (Map.Entry<ResourceLocation, Integer> e : parts.entrySet()) {
-				if (largest == null || e.getValue() > parts.get(largest)) {
-					largest = e.getKey();
+			for (Map.Entry<String, Integer> e : liquor.entrySet()) {
+				long share = ITEM_UNITS * e.getValue() / totalParts;
+				liquorShares.put(e.getKey(), share);
+				assigned += share;
+			}
+			// hand the rounding remainder to the largest entry overall
+			String largestLiquor = null;
+			for (Map.Entry<String, Integer> e : liquor.entrySet()) {
+				if (largestLiquor == null || e.getValue() > liquor.get(largestLiquor)) {
+					largestLiquor = e.getKey();
 				}
 			}
-			shares.merge(largest, ITEM_UNITS - assigned, Long::sum);
+			ResourceLocation largestSolid = null;
+			for (Map.Entry<ResourceLocation, Integer> e : parts.entrySet()) {
+				if (largestSolid == null || e.getValue() > parts.get(largestSolid)) {
+					largestSolid = e.getKey();
+				}
+			}
+			long remainder = ITEM_UNITS - assigned;
+			if (largestLiquor != null
+				&& (largestSolid == null || liquor.get(largestLiquor) >= parts.get(largestSolid))) {
+				liquorShares.merge(largestLiquor, remainder, Long::sum);
+			} else if (largestSolid != null) {
+				shares.merge(largestSolid, remainder, Long::sum);
+			}
 
-			// saturation feasibility: every curve species must fit after the addition
+			// saturation feasibility: every curve species must fit after the
+			// addition — the liquor's direct ions count against the same caps
+			Map<String, Long> liquorIons = new LinkedHashMap<>();
+			for (Map.Entry<String, Long> e : liquorShares.entrySet()) {
+				if (!e.getKey().equals(MixedResidueItem.LIQUOR_WATER)
+					&& !e.getKey().startsWith(MixedResidueItem.LIQUOR_SOLUTE_PREFIX)) {
+					liquorIons.put(e.getKey(), e.getValue());
+				}
+			}
 			boolean feasible = true;
 			for (Map.Entry<ResourceLocation, Long> e : shares.entrySet()) {
 				Species sp = SpeciesManager.bySolute(e.getKey());
@@ -324,7 +395,16 @@ public final class RulesEngine {
 					continue; // mineral / unknown → suspended, equilibria decide
 				}
 				long cap = (long) Math.floor(Solution.solubilityThreshold(sp, temperature) * water);
-				if (Solution.formableUnits(ions, sp) + e.getValue() > cap) {
+				long incoming = e.getValue();
+				for (Species.IonComponent c : sp.ions()) {
+					// liquor ions of the same species double-count the solute feed:
+					// approximate by their equivalent solute fraction
+					Long liquorShare = liquorIons.get(c.ion().id());
+					if (liquorShare != null) {
+						incoming += liquorShare / Math.max(1, c.count());
+					}
+				}
+				if (Solution.formableUnits(ions, sp) + incoming > cap) {
 					feasible = false;
 					break;
 				}
@@ -341,6 +421,19 @@ public final class RulesEngine {
 					}
 				} else {
 					suspended.merge(e.getKey(), e.getValue(), Long::sum); // equilibria take it from here
+				}
+			}
+			for (Map.Entry<String, Long> e : liquorShares.entrySet()) {
+				if (e.getKey().equals(MixedResidueItem.LIQUOR_WATER)) {
+					mol.merge(Solution.WATER, e.getValue(), Long::sum);
+				} else if (e.getKey().startsWith(MixedResidueItem.LIQUOR_SOLUTE_PREFIX)) {
+					ResourceLocation solute = ResourceLocation.tryParse(
+						e.getKey().substring(MixedResidueItem.LIQUOR_SOLUTE_PREFIX.length()));
+					if (solute != null) {
+						mol.merge(solute, e.getValue(), Long::sum);
+					}
+				} else {
+					ions.merge(e.getKey(), e.getValue(), Long::sum);
 				}
 			}
 			return true; // one residue item per solve (gradual, like every item)
