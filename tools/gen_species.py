@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 Chemical Addon species/resource generator (M0).
-Single source of truth for the 38 fluid species + 18 solid species from
-plans/08-substance-catalog.md. Generates:
+Single source of truth for the fluid/solid species tables (see the FLUIDS /
+SOLIDS / GRAINS / SOLUTIONS / SLURRIES / BLOCKS tables below and
+plans/08-substance-catalog.md). Generates:
   - fluid textures   (assets/chemicaladdon/textures/fluid/<id>_still.png + _flow.png)
   - item textures    (assets/chemicaladdon/textures/item/<id>.png, <id>_bucket.png)
   - block textures   (assets/chemicaladdon/textures/block/*.png)
@@ -72,7 +73,27 @@ SOLIDS = [
     ("calcium_sulfite",        "亚硫酸钙", "Calcium Sulfite", 0xE0E8E0),
     ("copper_sulfate",         "硫酸铜", "Copper Sulfate",  0x2285D6),
     ("copper_carbonate",       "碱式碳酸铜", "Basic Copper Carbonate", 0x2FA896),
+    ("potassium_nitrate",      "硝酸钾", "Potassium Nitrate", 0xE8E8E8),
+    ("potassium_chloride",     "氯化钾", "Potassium Chloride", 0xE8E8E0),
+    ("ammonium_chloride",      "氯化铵", "Ammonium Chloride", 0xE8F0E8),
+    ("magnesium_chloride",     "氯化镁", "Magnesium Chloride", 0xE8E8F0),
+    ("potassium_alum",         "钾明矾", "Potassium Alum",  0xF0F0F8),
     ("filter_cake",            "滤渣",   "Filter Cake",     0x908878),
+]
+
+# Crystallisable solids that get a "grain" item variant (U15, plans/03 §5): a grain
+# is the intermediate denomination across the item↔fluid boundary — 1/16 item =
+# 62.5 mB — so seeding a metastable solution and small-batch dosing never hit the
+# "either 0 or a whole bucket" cliff. 1 item -> 16 grains via Create crushing.
+GRAINS = [
+    "rock_salt",
+    "potassium_nitrate",
+    "potassium_chloride",
+    "ammonium_chloride",
+    "copper_sulfate",
+    "calcium_chloride",
+    "magnesium_chloride",
+    "potassium_alum",
 ]
 
 # (id, cn, en, color)
@@ -244,6 +265,52 @@ def tint_fluid(base, rgb, gas):
         out.append(new)
     return out
 
+def make_grain_texture(rgb):
+    """Grain item: a cluster of three small crystals (diamonds) with darker
+    facets on a transparent background — visually the '1/16 shard' of the solid
+    item above, tinted the same colour (baked; grains have no runtime tint)."""
+    r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
+    dark = (int(r * 0.7), int(g * 0.7), int(b * 0.7))
+    rows = [[0, 0, 0, 0] * 16 for _ in range(16)]
+
+    def crystal(cx, cy, s):
+        for y in range(16):
+            for x in range(16):
+                d = abs(x - cx) + abs(y - cy)
+                if d <= s:
+                    lit = (x - cx) + (y - cy) <= 0  # upper-left facet brighter
+                    rows[y][x * 4:x * 4 + 4] = [r, g, b, 255] if lit else list(dark) + [255]
+
+    crystal(6, 6, 3)
+    crystal(10, 9, 2)
+    crystal(4, 10, 2)
+    return rows
+
+
+def make_residue_texture(rgb):
+    """Mixed-residue item: an irregular mottled lump (multi-species salt cake)
+    in neutral grey — the real colour is a runtime blend of the NBT composition
+    (see MixedResidueItem/ItemColor), the baked grey only shows without NBT."""
+    rows = []
+    import random as _rand
+    rng = _rand.Random(1745)
+    r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
+    for y in range(16):
+        row = []
+        for x in range(16):
+            dx, dy = x - 7.5, y - 8.5
+            d = (dx * dx + dy * dy) ** 0.5
+            if x == 0 or y == 0 or x == 15 or y == 15:
+                row += [0, 0, 0, 0]
+            elif d <= 5.2:
+                shade = 0.75 + rng.random() * 0.4
+                row += [min(255, int(r * shade)), min(255, int(g * shade)), min(255, int(b * shade)), 255]
+            else:
+                row += [0, 0, 0, 0]
+        rows.append(row)
+    return rows
+
+
 def make_item_texture(rgb):
     r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
     rows = []
@@ -323,6 +390,12 @@ def gen_textures():
     os.makedirs(d, exist_ok=True)
     for sid, _, _, color in SOLIDS:
         write_png(os.path.join(d, f"{sid}.png"), make_item_texture(color))
+    # grain variants (U15): 1/16 denomination of the crystallisable solids
+    solid_colors = {sid: color for sid, _, _, color in SOLIDS}
+    for sid in GRAINS:
+        write_png(os.path.join(d, f"{sid}_grain.png"), make_grain_texture(solid_colors[sid]))
+    # mixed residue: neutral lump, tinted at runtime by its NBT composition
+    write_png(os.path.join(d, "mixed_residue.png"), make_residue_texture(0x9A9A94))
     # the generic sample vial (hand-written item, not a species): glass base +
     # fluid mask for the DynamicFluidContainerModel
     write_png(os.path.join(d, "fluid_vial.png"), make_vial_texture())
@@ -569,6 +642,7 @@ EXTRA_LANG_ZH = {
     "itemGroup.chemicaladdon": "化学附属",
     "item.chemicaladdon.fluid_vial": "样品瓶",
     "item.chemicaladdon.temperature_debug": "温度调试棒",
+    "item.chemicaladdon.mixed_residue": "混合盐渣",
     "goggles.chemicaladdon.temperature": "温度：%s°C",
     "goggles.chemicaladdon.heat.none": "无热级",
     "goggles.chemicaladdon.heat.heated": "加热",
@@ -614,6 +688,9 @@ EXTRA_LANG_ZH = {
 
 EXTRA_LANG_EN = {
     "itemGroup.chemicaladdon": "Chemical Addon",
+    # NOTE: no "item.chemicaladdon.mixed_residue" here — the registrate .lang()
+    # call on the item already emits the en_us key; a duplicate crashes datagen.
+    # The zh name lives in EXTRA_LANG_ZH (zh_cn.json is fully py-generated).
     "goggles.chemicaladdon.temperature": "Temperature: %s°C",
     "goggles.chemicaladdon.heat.none": "No heat",
     "goggles.chemicaladdon.heat.heated": "Heated",
@@ -661,6 +738,9 @@ def gen_lang():
         zh[f"item.chemicaladdon.{sid}_bucket"] = cn + "桶"
     for sid, cn, _, _ in SOLIDS:
         zh[f"item.chemicaladdon.{sid}"] = cn
+    solid_names = {sid: cn for sid, cn, _, _ in SOLIDS}
+    for sid in GRAINS:
+        zh[f"item.chemicaladdon.{sid}_grain"] = solid_names[sid] + "晶粒"
     for sid, cn, _ in SOLUTIONS + SLURRIES:
         zh[f"item.chemicaladdon.{sid}_bucket"] = cn + "桶"
     for sid, cn, _, _ in BLOCKS:
@@ -791,6 +871,7 @@ def gen_items_java():
              "import com.simibubi.create.foundation.data.CreateRegistrate;",
              "import com.tterrag.registrate.util.entry.ItemEntry;",
              "import com.yu1745.chemicaladdon.ChemicalAddon;",
+             "import com.yu1745.chemicaladdon.item.MixedResidueItem;",
              "import net.minecraft.world.item.Item;",
              "",
              "public class AllItems {",
@@ -801,6 +882,20 @@ def gen_items_java():
                      f"\t\tREGISTRATE.item(\"{sid}\", Item::new)\n"
                      f"\t\t\t.lang(\"{en_name}\")\n"
                      "\t\t\t.register();")
+    solid_names = {sid: en for sid, _, en, _ in SOLIDS}
+    for sid in GRAINS:
+        parts.append(f"\tpublic static final ItemEntry<Item> {sid.upper()}_GRAIN =\n"
+                     f"\t\tREGISTRATE.item(\"{sid}_grain\", Item::new)\n"
+                     f"\t\t\t.lang(\"{solid_names[sid]} Grains\")\n"
+                     "\t\t\t.register();")
+    # the mixed-solid item (U15, plans/03 §12): NBT composition ratio, unified
+    # name, runtime colour blend, whole-lump extraction target for any solid
+    # domain that holds more than one species ("mixed salt is the default; pure
+    # is what the player earns")
+    parts.append("\tpublic static final ItemEntry<MixedResidueItem> MIXED_RESIDUE =\n"
+                 "\t\tREGISTRATE.item(\"mixed_residue\", MixedResidueItem::new)\n"
+                 "\t\t\t.lang(\"Mixed Salt Residue\")\n"
+                 "\t\t\t.register();")
     parts += ["", "\tpublic static void register() {", "\t}", "}", ""]
     with open(os.path.join(JAVA, "AllItems.java"), "w", encoding="utf-8") as f:
         f.write("\n".join(parts))

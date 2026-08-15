@@ -75,12 +75,14 @@ public class FilteringLogic {
 		if (!hasSuspended) {
 			return false;
 		}
-		input.extractSuspended(s -> {
+		// whole-lump extraction (plans/03 §12): single species = pure item, any
+		// second species = mixed salt residue; sub-item remainder stays behind
+		input.extractSolids(s -> {
 			ItemStack remainder = ItemHandlerHelper.insertItemStacked(items, s, false);
 			if (!remainder.isEmpty()) {
 				Containers.dropItemStack(level, pos.getX(), pos.getY(), pos.getZ(), remainder);
 			}
-		}, RulesEngine.MB_PER_ITEM);
+		}, false);
 		if (input != output) {
 			moveLiquid(input, output);
 		}

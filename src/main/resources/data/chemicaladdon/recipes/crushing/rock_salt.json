@@ -1,0 +1,10 @@
+{
+  "type": "create:crushing",
+  "ingredients": [
+    { "item": "chemicaladdon:rock_salt" }
+  ],
+  "processingTime": 250,
+  "results": [
+    { "item": "chemicaladdon:rock_salt_grain", "count": 16 }
+  ]
+}

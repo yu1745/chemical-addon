@@ -1,0 +1,19 @@
+{
+  "formula": "MgCl2(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "solventRatio": 10,
+  "ions": [
+    { "ion": "Mg", "charge": 2, "count": 1 },
+    { "ion": "Cl", "charge": -1, "count": 2 }
+  ],
+  "solute": "chemicaladdon:magnesium_chloride",
+  "solubility": [
+    { "tempC": 0, "gPer100g": 52.9 },
+    { "tempC": 20, "gPer100g": 54.6 },
+    { "tempC": 40, "gPer100g": 57.5 },
+    { "tempC": 60, "gPer100g": 61.0 },
+    { "tempC": 80, "gPer100g": 66.1 },
+    { "tempC": 100, "gPer100g": 72.7 }
+  ]
+}

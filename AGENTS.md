@@ -1,6 +1,6 @@
 # AGENTS.md - chemical-addon（Create 化学附属）
 
-本仓库是 **Create Forge 6.0.8 的无机化工附属**（Forge 1.20.1，Java 17），设计计划书在 `plans/`（主索引 `plans/README.md`，生态盘点与平台决策 `plans/00-ecosystem-recon.md`），**开发进度在 `docs/progress.md`**（M0–M2.5 + **U1 容器状态层** + **U13 规则引擎 v2**（统一 equilibria 平衡条目 + 质量作用求解器，PHREEQC 语义；引擎边界：自发的归规则引擎、红氧归配方层）+ **U14 JUnit 引擎测试层**（`./gradlew test`，composition 层剥离 MC）完成，GameTest 86/86 + JUnit 40/40；**M3+ 开工顺序以 `plans/11-content-scope.md` §2 为唯一定义**；改代码前先看它了解现状）。
+本仓库是 **Create Forge 6.0.8 的无机化工附属**（Forge 1.20.1，Java 17），设计计划书在 `plans/`（主索引 `plans/README.md`，生态盘点与平台决策 `plans/00-ecosystem-recon.md`），**开发进度在 `docs/progress.md`**（M0–M2.5 + **U1 容器状态层** + **U13 规则引擎 v2**（统一 equilibria 平衡条目 + 质量作用求解器，PHREEQC 语义；引擎边界：自发的归规则引擎、红氧归配方层）+ **U14 JUnit 引擎测试层**（`./gradlew test`，composition 层剥离 MC）+ **U15 晶粒、投种与混合固体物品**（晶粒 1/16 面额 + 投种 + mixed_residue 整坨取出：「取出禁止选物种，严格单物种即纯，混合=盐渣」）完成，GameTest 89/89 + JUnit 56/56；**M3+ 开工顺序以 `plans/11-content-scope.md` §2 为唯一定义**；改代码前先看它了解现状）。
 
 ## 核心架构（改动前必读 plans/03-substance-model.md）
 

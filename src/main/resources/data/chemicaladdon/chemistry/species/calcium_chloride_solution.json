@@ -7,5 +7,14 @@
   "ions": [
     { "ion": "Ca", "charge": 2, "count": 1 },
     { "ion": "Cl", "charge": -1, "count": 2 }
+  ],
+  "solute": "chemicaladdon:calcium_chloride",
+  "solubility": [
+    { "tempC": 0, "gPer100g": 59.5 },
+    { "tempC": 20, "gPer100g": 74.5 },
+    { "tempC": 40, "gPer100g": 114.0 },
+    { "tempC": 60, "gPer100g": 137.0 },
+    { "tempC": 80, "gPer100g": 147.0 },
+    { "tempC": 100, "gPer100g": 159.0 }
   ]
 }

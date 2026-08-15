@@ -13,9 +13,12 @@
 | M2.5 | 釜可玩性改造：世界内交互基调落地（护目镜 HUD/诊断/槽位 GUI/成型反馈） | ✅ 完成 |
 | U1 容器状态层 | 多相加热 / 放热全体 / 压力模型 / S03 压力表 | ✅ 完成（M3 首单元） |
 | U3 模板抽取 | vessel/ 结构层基类 / 沉淀池去拷贝 / 控制器拆类 / 内部件 allowlist | ✅ 完成 |
-| M3+ 其余 | FE 接线 / 模板抽取 / 竖窑 / 索尔维 / 连续流 / 高压 / 零排放 | ⏳ 未开始（顺序见 plans/11 §2.1） |
+| U13 规则引擎 v2 | equilibria 质量作用求解器 + 物品投料 + 蒸发浓缩 + speciation | ✅ 完成（插队） |
+| U14 引擎测试层 | JUnit 剥离 MC + 10⁴ 细网格 + 动力学 + 21 物种 | ✅ 完成（插队） |
+| U15 晶粒投种混合固体 | 晶粒 1/16 + 投种 + mixed_residue 整坨取出 + 苦卤盐曲线 | ✅ 完成（插队） |
+| M3+ 其余 | FE 接线 / 竖窑 / 索尔维 / 连续流 / 高压 / 零排放 | ⏳ 未开始（顺序见 plans/11 §2.1） |
 
-**自动化测试**：`./gradlew runGameTestServer` → **77/77 通过**。
+**自动化测试**：`./gradlew runGameTestServer` → **89/89 通过**；`./gradlew test` → **56/56 JUnit**。
 
 ## 已完成明细
 
@@ -247,6 +250,17 @@ M3 首单元（plans/11 §2.1）：修掉 G1/G2/G3 三条公共地基缺口，�
 - **GameTest +5（72→77）**：`basinAssemblesAndProxiesFluid`（池成型/8000 容量/地砖代理）、`basinSettlesSlurry`（浆料沉降出碱饼+清水）、`brokenBasinSpillsContents`（破壁洒漏）、`solidInteriorBlocksUntilAllowlisted`（实心内腔拒装 + allowlist 放行，INTERIOR_BLOCKED 路径首次直测）、`glassBreakDisassemblesVessel`（玻璃破碎回归）。
 - 顺带修复（非 U3 范围、用户连接纹理工作被挡编译）：`AllBlocks` 玻璃 blockstate 的 `ModelBuilder<?>` 通配符捕获使 `ConnectedModelBuilder::new` 推断失败 → 改具体 `BlockModelBuilder`。
 
+### U15 · 晶粒、投种与混合固体物品
+
+「物品↔流体边界」的中间面额 + 整坨取出语义（plans/03 §5/§12）。GameTest 89/89 + JUnit 56/56 全绿。**这一单元把「纯」变成玩家挣来的东西**：未分离的混合沉底只能整体取出为混合盐渣，纯物品三条挣取路线（时序分批/化学除杂/重结晶）从此有真实的对手盘。
+
+- **①苦卤盐数据先行**：`magnesium_chloride_solution` 新物种（曲线 52.9→72.7 g/100g，`magnesium_chloride` 物品注册）、`calcium_chloride_solution` 补曲线（59.5→159）——蒸干苦卤不再有干离子残留，`BitternTest`：NaCl+MgCl₂ 双沉淀、CaCl₂ 深冷结晶（68% 过饱和过成核门槛）vs 浅过饱和亚稳（18% 低于门槛，晶种塌缩）。
+- **②晶粒与投种**：8 可结晶固体（岩盐/KNO₃/KCl/NH₄Cl/CuSO₄/CaCl₂/MgCl₂/明矾）各注册晶粒变体（`GRAINS` 表驱动 `gen_species.py`，1/16 物品 = 62.5 mB），Create 粉碎轮 1 粉末→16 晶粒（8 条 crushing 配方）。`RulesEngine.dissolveItems`：过饱和分支 = **投种**（过饱和液里固体溶不进去 → 晶粒优先按 625,000 units 面额入 Sediment 域，动力学以有种速率塌缩亚稳液）；未饱和时晶粒按 62.5 mB 面额溶解（整物品仍是 1000 mB/次）。取出只发整物品 ⇒ **<1000 mB 沉底余量留锅 = 传家宝种**终身自接种（62.5 mB 在 10⁴ 网格精确保存）。
+- **③mixed_residue 混合盐渣**：`MixedResidueItem` NBT 存 GCD 约分成分比例（复用 mixture ratio-tag 身份机制，tag 相等才堆叠）；`ReactorTank.extractSolids(sink, domain)` **整坨取出、禁止选物种**——严格判定：域内单物种（且有注册物品）→ 纯物品；含任何第二物种 → 盐渣（1 物品 = 1000 mB 当量，比例减除、余量留锅）。可见信息守测量诚实性：统一名「混合盐渣」+ 按成分染色（ItemColor→SolidColors 混合，颜色=物理可观测量）；成分百分比仅 `Chemistry.ASSAY` dev 模式（新旋钮，U17 接管）；**溶解即化验**——投回水中按 NBT 精确展开回离子域（饱和则拒绝溶解；无曲线矿物入 Suspended 由 equilibria 接管）。
+- **④过滤机/沉淀池升级**：`FilteringLogic` generic 路径切 `extractSolids`，删旧 `extractSuspended`（按物种逐个吐纯物品的上帝视角——正是 §12 否决的行为）。
+- **GameTest +3**：真实晶粒投种塌缩（0.45 vs 0.36 亚稳 + 1 岩盐晶粒 → 80 mB 沉淀 + 饱和母液 72 mB）；整坨取出双路（3000 mB 混合沉底→3 盐渣（NBT 双成分）/ 2500 mB 单物种→2 纯物品 + 500 mB 传家宝 / 62.5 mB 不可取出）；盐渣溶解展开守恒（Na⁺/Mg²⁺/Cl⁻ 精确、电中性）。
+- 踩坑记录：`ItemStack(Item,int,CompoundTag)` 在 1.20.1 第三参是 **capNBT** 不是物品 tag（盐渣 NBT 全空）→ 改 `copy()+setCount`；mixture 构造时 total 与 parts 和不一致会整体重归一化（绝对量被 ratio 洗掉），测试需令 Σparts = total mB；datagen 的 en extra lang 与 registrate `.lang()` 撞键直接崩——`.lang()` 已覆盖的键不进 EXTRA_LANG_EN。
+
 ### U14 · JUnit 引擎测试层 + 常用无机材料矩阵（引擎数据层 only）
 
 composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor 静态）剥离 MC 跑纯 JUnit（`./gradlew test`），GameTest 86/86 + JUnit 52/52 全绿。含后续追加的**动力学层**与 **10⁴ 细网格**。
@@ -320,7 +334,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 5. **基础设施**：流体桶（S08）、GUI 美化、datagen 接入（配方/模型 provider）、Jade 集成（流体显示/温度/进度 tooltip）、JEI 配方展示
 6. **混合物流体系统（Mixture）**：✅ 互溶性（D18）已落地——`miscibilityGroup` 声明式溶剂族、按组合并、按密度分相抽出。**剩余**：液-液分离手段见新增 **D18.5 分液软管** 条目；给 M9 加「不互溶共管=混液炸管」的输送约束
 7. **已知限制**：沉淀池/过滤机无 GUI；方块纹理为程序生成色块；砖无连接纹理（多变体方案待做）；压力/相态/催化未实现（计划 M3+）；**反应热仍为集总常数**（ΔT∝反应量、无热容/潜热，自持反应判不了——修法已设计，plans/11 U16）。（底面尺寸已参数化为任意 W×W×H 3..7；轻相抽出已由 D18.5 分液软管落地）
-8. **设计定案待实施（2026-08 讨论批，plans/11 §2.1）**：**U15 晶粒、投种与混合固体物品**（晶粒 1/16 面额+粉碎轮+投种、种=传家宝；**混合盐渣物品**=NBT ratio-tag 身份承载任意成分混合固体，取出整坨/严格单物种即纯/机器只做相分离、物种分离是化学活——纯物品三条挣取路线=时序/除杂/重结晶；可见信息统一名+颜色渲染、成分仅 dev 化验、溶解即化验；MgCl₂/CaCl₂ 苦卤盐数据首位；原则层 plans/03 §12「混合固体的物品承载」+ §5「中间面额」）；**U16 反应热能量记账**（J/unit + ΔT=Q/(Σunits×4.18) + 蒸发潜热；建议排在 S04/pH 或浓硫酸稀释事故之前）；**U17 分析化学层 + 终点控制**（测量诚实性原则 03 §6：玩家仪器只读物理间接量——波美计/沸点/pH/试纸/浊度，SI 对玩家侧不可见、护目镜 SI 行降级 dev 化验；M08→终点结晶器（物理量设定点+分馏模式）、S04→波美计；试纸族=消耗性阈值探测器；**U17 依赖 U15**）；远期弹性见 plans/11（Kw 条目 / rate 数据授权 / 底排口零头打包晶粒 / 萃取独立系统）。
+8. **设计定案待实施（2026-08 讨论批，plans/11 §2.1）**：~~**U15 晶粒、投种与混合固体物品**~~（✅ 已完成，见「已完成明细」；~~MgCl₂/CaCl₂ 苦卤盐数据首位~~ 一并落地）；**U16 反应热能量记账**（J/unit + ΔT=Q/(Σunits×4.18) + 蒸发潜热；建议排在 S04/pH 或浓硫酸稀释事故之前）；**U17 分析化学层 + 终点控制**（测量诚实性原则 03 §6：玩家仪器只读物理间接量——波美计/沸点/pH/试纸/浊度，SI 对玩家侧不可见、护目镜 SI 行降级 dev 化验——`Chemistry.ASSAY` 旋钮已就绪、mixed_residue 百分比已接；M08→终点结晶器（物理量设定点+分馏模式）、S04→波美计；试纸族=消耗性阈值探测器）；远期弹性见 plans/11（Kw 条目 / rate 数据授权 / 底排口零头打包晶粒 / 萃取独立系统）。
 9. **D18.5 分液（分液口 + 软管滑轮）**：✅ **已实现**——`decant_port`（壁块，只抽最重相，锁相）+ `decant_hose`（Create 软管滑轮装**开口釜上方** → Forge `EntityPlaceEvent` 转化为分液软管；`FLUID_HANDLER` 只抽最轻相/锁相，扳手切「只抽上层/全部抽」，敲掉/中键掉回原版 `create:hose_pulley`）。**视觉已实现**：`DecantHoseRenderer` 照抄 Create `AbstractPulleyRenderer`（coil 滚动 + 下垂 rope + magnet，复用 Create 的 hose_pulley 部分模型与 `HOSE_PULLEY_COIL` sprite shift），块体直接引用 `create:block/hose_pulley/block` 模型（占位贴图废弃）；软管 `offset`（BE 内 `LerpedFloat`，客户端 tick 用 `Chaser.EXP` 缓动追 `ReactorControllerBlockEntity.getLiquidSurfaceY`）从 0 **慢慢下放**到液面、液面升降自动跟随、无手动收放；转化瞬间播**铁砧放置音**（`SoundEvents.ANVIL_PLACE`）提示。**剩余**：Ponder 提示。详见 plans/05 §M7。
 
 ## 常用命令

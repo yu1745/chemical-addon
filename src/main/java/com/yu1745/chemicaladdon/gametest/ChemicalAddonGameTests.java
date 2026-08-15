@@ -12,6 +12,7 @@ import com.yu1745.chemicaladdon.fluid.IonColors;
 import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.fluid.SolidColors;
 import com.yu1745.chemicaladdon.fluid.Temperature;
+import com.yu1745.chemicaladdon.item.MixedResidueItem;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlock;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlockEntity;
 import com.yu1745.chemicaladdon.reactor.DecantHoseBlockEntity;
@@ -2076,6 +2077,127 @@ public class ChemicalAddonGameTests {
 		Map<String, Integer> ions = Mixture.deriveIonAmounts(tank.getFluids().get(0));
 		helper.assertTrue(ions.getOrDefault("NH4+1", 0) >= 383 && ions.getOrDefault("NH4+1", 0) <= 390,
 			"a saturated mother liquor stays behind (got " + ions + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void grainItemSeedsMetastableSolution(GameTestHelper helper) {
+		// U15②: a REAL grain item dropped into a metastable solution seeds it —
+		// the grain cannot dissolve (supersaturated) so it joins the Sediment
+		// domain, and seeded growth collapses the supersaturation to the curve.
+		// 90 f.u. NaCl / 200 water at 20 °C = 0.45 vs cap 0.36: 25% over →
+		// inside the metastable zone unseeded.
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation rockSalt = new ResourceLocation(ChemicalAddon.MODID, "rock_salt");
+		ReactorTank tank = new ReactorTank(10000, () -> {});
+		FluidStack supersaturated = Mixture.create(
+			Map.of(water, 200),
+			Map.of("Na+1", 90, "Cl-1", 90),
+			380);
+		Temperature.set(supersaturated, 20);
+		tank.fill(supersaturated, FluidAction.EXECUTE);
+
+		RulesEngine.apply(tank);
+		helper.assertTrue(Mixture.deriveSedimentAmounts(tank.getFluids().get(0)).isEmpty(),
+			"unseeded shallow supersaturation must stay metastable");
+
+		ItemStackHandler items = new ItemStackHandler(1);
+		items.setStackInSlot(0, new ItemStack(AllItems.ROCK_SALT_GRAIN.get(), 1));
+		for (int i = 0; i < 200; i++) {
+			RulesEngine.apply(tank, false, items);
+		}
+		helper.assertTrue(items.getStackInSlot(0).isEmpty(),
+			"the seed grain should be consumed into the sediment domain");
+		// the grain itself (62.5 mB) + the collapsed excess (90 − floor(0.36×200) = 18)
+		int settled = Mixture.deriveSedimentAmounts(tank.getFluids().get(0)).getOrDefault(rockSalt, 0);
+		helper.assertTrue(settled >= 79 && settled <= 82,
+			"seeded growth should collapse to the curve leaving the grain + excess (~80 mB, got " + settled + ")");
+		int motherLiquor = Mixture.deriveIonAmounts(tank.getFluids().get(0)).getOrDefault("Na+1", 0);
+		helper.assertTrue(motherLiquor >= 71 && motherLiquor <= 73,
+			"a saturated NaCl mother liquor (~72 mB) stays behind (got " + motherLiquor + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void sedimentExtractionIsWholeLumpOnly(GameTestHelper helper) {
+		// U15③: extraction may never pick species (plans/03 §12). Mixed
+		// sediment = mixed-residue items; strict single species = pure items;
+		// the sub-item remainder stays in the pot (the heirloom seed).
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation rockSalt = new ResourceLocation(ChemicalAddon.MODID, "rock_salt");
+		ResourceLocation mgCl2 = new ResourceLocation(ChemicalAddon.MODID, "magnesium_chloride");
+
+		// mixed: NaCl 1500 mB + MgCl2 1500 mB -> exactly 3 residue items, no pure salt
+		ReactorTank mixed = new ReactorTank(10000, () -> {});
+		mixed.fill(Mixture.create(Map.of(water, 1000), Map.of(), Map.of(),
+			Map.of(rockSalt, 1500, mgCl2, 1500), 4000), FluidAction.EXECUTE);
+		List<ItemStack> out = new ArrayList<>();
+		mixed.extractSolids(out::add, true);
+		helper.assertTrue(out.size() == 1 && out.get(0).getCount() == 3
+			&& out.get(0).is(AllItems.MIXED_RESIDUE.get()),
+			"3000 mB of mixed sediment must extract as 3 mixed-residue items (got " + out + ")");
+		Map<ResourceLocation, Integer> parts = MixedResidueItem.parts(out.get(0));
+		helper.assertTrue(parts.containsKey(rockSalt) && parts.containsKey(mgCl2),
+			"the residue NBT must carry both species (got " + parts + ")");
+		helper.assertTrue(Mixture.deriveSedimentAmounts(mixed.getFluids().get(0)).isEmpty()
+			|| Mixture.getSediment(mixed.getFluids().get(0)).isEmpty(),
+			"the whole lump leaves the pot");
+		helper.assertTrue(mixed.getFluids().get(0).getAmount() == 1000,
+			"the water stays behind (got " + mixed.getFluids().get(0).getAmount() + ")");
+
+		// strict single species: 2500 mB NaCl -> 2 PURE items, 500 mB stays
+		ReactorTank pure = new ReactorTank(10000, () -> {});
+		pure.fill(Mixture.create(Map.of(water, 1000), Map.of(), Map.of(),
+			Map.of(rockSalt, 2500), 3500), FluidAction.EXECUTE);
+		List<ItemStack> pureOut = new ArrayList<>();
+		pure.extractSolids(pureOut::add, true);
+		helper.assertTrue(pureOut.size() == 1 && pureOut.get(0).getCount() == 2
+			&& pureOut.get(0).is(AllItems.ROCK_SALT.get()),
+			"single-species sediment must extract as pure items (got " + pureOut + ")");
+		int remainder = Mixture.deriveSedimentAmounts(pure.getFluids().get(0)).getOrDefault(rockSalt, 0);
+		helper.assertTrue(remainder >= 499 && remainder <= 501,
+			"the sub-item remainder stays as the heirloom seed (~500 mB, got " + remainder + ")");
+
+		// one grain's worth (water:sediment 16:1, ~62.5 mB) can never form an
+		// item: it stays forever and keeps re-seeding the pot
+		ReactorTank pot = new ReactorTank(10000, () -> {});
+		pot.fill(Mixture.create(
+			Map.of(water, 16000),
+			Map.of(),
+			Map.of(),
+			Map.of(rockSalt, 1000),
+			1062), FluidAction.EXECUTE);
+		List<ItemStack> none = new ArrayList<>();
+		long extracted = pot.extractSolids(none::add, true);
+		helper.assertTrue(extracted == 0 && none.isEmpty(),
+			"a sub-item sediment remainder is not extractable (got " + extracted + ")");
+		helper.assertTrue(!Mixture.deriveSedimentAmounts(pot.getFluids().get(0)).isEmpty(),
+			"the heirloom seed stays in the pot");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void mixedResidueDissolvesBackToIons(GameTestHelper helper) {
+		// U15③ "dissolving is the assay": a residue item thrown into water
+		// expands its NBT composition exactly into the ion domain, charge-neutral
+		ResourceLocation rockSalt = new ResourceLocation(ChemicalAddon.MODID, "rock_salt");
+		ResourceLocation mgCl2 = new ResourceLocation(ChemicalAddon.MODID, "magnesium_chloride");
+		ItemStack residue = MixedResidueItem.of(Map.of(
+			rockSalt, 5_000_000L,
+			mgCl2, 5_000_000L));
+		ItemStackHandler items = new ItemStackHandler(1);
+		items.setStackInSlot(0, residue);
+
+		ReactorTank tank = new ReactorTank(10000, () -> {});
+		tank.fill(new FluidStack(Fluids.WATER, 5000), FluidAction.EXECUTE);
+		RulesEngine.apply(tank, false, items);
+		helper.assertTrue(items.getStackInSlot(0).isEmpty(), "the residue item should fully dissolve");
+		Map<String, Integer> ions = Mixture.deriveIonAmounts(tank.getFluids().get(0));
+		helper.assertTrue(ions.getOrDefault("Na+1", 0) == 500,
+			"the NaCl share should expand to 500 mB Na+ + Cl- (got " + ions + ")");
+		helper.assertTrue(ions.getOrDefault("Mg+2", 0) == 500 && ions.getOrDefault("Cl-1", 0) == 1500,
+			"the MgCl2 share should expand to Mg+2 + 2 Cl- (got " + ions + ")");
+		helper.assertTrue(Mixture.isChargeNeutral(ions), "the expanded ion set must be charge-neutral");
 		helper.succeed();
 	}
 

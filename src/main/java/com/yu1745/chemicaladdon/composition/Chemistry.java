@@ -39,5 +39,13 @@ public final class Chemistry {
 	/** Slf4j logger under the same name the mod uses; safe headless. */
 	public static final Logger LOGGER = LogUtils.getLogger();
 
+	/**
+	 * Dev assay mode (U17 measurement-honesty knob): when true, engine-internal
+	 * knowledge (speciation lines, mixed-residue percentages) is revealed —
+	 * the developer's god-view. Player-facing instruments must never read this
+	 * state (plans/03 §6); this flag only unlocks diagnostic display.
+	 */
+	public static volatile boolean ASSAY = false;
+
 	private Chemistry() {}
 }

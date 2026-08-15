@@ -31,6 +31,11 @@ public final class SolidColors {
 		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "calcium_sulfite"), 0xFFE0E8E0);
 		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "copper_sulfate"), 0xFF2285D6);
 		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "copper_carbonate"), 0xFF2FA896);
+		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "potassium_nitrate"), 0xFFE8E8E8);
+		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "potassium_chloride"), 0xFFE8E8E0);
+		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "ammonium_chloride"), 0xFFE8F0E8);
+		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "magnesium_chloride"), 0xFFE8E8F0);
+		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "potassium_alum"), 0xFFF0F0F8);
 		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "filter_cake"), 0xFF908878);
 	}
 

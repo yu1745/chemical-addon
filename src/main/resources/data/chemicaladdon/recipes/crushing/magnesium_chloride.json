@@ -1,0 +1,10 @@
+{
+  "type": "create:crushing",
+  "ingredients": [
+    { "item": "chemicaladdon:magnesium_chloride" }
+  ],
+  "processingTime": 250,
+  "results": [
+    { "item": "chemicaladdon:magnesium_chloride_grain", "count": 16 }
+  ]
+}

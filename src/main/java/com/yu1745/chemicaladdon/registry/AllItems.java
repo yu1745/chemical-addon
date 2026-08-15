@@ -3,6 +3,7 @@ package com.yu1745.chemicaladdon.registry;
 import com.simibubi.create.foundation.data.CreateRegistrate;
 import com.tterrag.registrate.util.entry.ItemEntry;
 import com.yu1745.chemicaladdon.ChemicalAddon;
+import com.yu1745.chemicaladdon.item.MixedResidueItem;
 import net.minecraft.world.item.Item;
 
 public class AllItems {
@@ -88,9 +89,65 @@ public class AllItems {
 		REGISTRATE.item("copper_carbonate", Item::new)
 			.lang("Basic Copper Carbonate")
 			.register();
+	public static final ItemEntry<Item> POTASSIUM_NITRATE =
+		REGISTRATE.item("potassium_nitrate", Item::new)
+			.lang("Potassium Nitrate")
+			.register();
+	public static final ItemEntry<Item> POTASSIUM_CHLORIDE =
+		REGISTRATE.item("potassium_chloride", Item::new)
+			.lang("Potassium Chloride")
+			.register();
+	public static final ItemEntry<Item> AMMONIUM_CHLORIDE =
+		REGISTRATE.item("ammonium_chloride", Item::new)
+			.lang("Ammonium Chloride")
+			.register();
+	public static final ItemEntry<Item> MAGNESIUM_CHLORIDE =
+		REGISTRATE.item("magnesium_chloride", Item::new)
+			.lang("Magnesium Chloride")
+			.register();
+	public static final ItemEntry<Item> POTASSIUM_ALUM =
+		REGISTRATE.item("potassium_alum", Item::new)
+			.lang("Potassium Alum")
+			.register();
 	public static final ItemEntry<Item> FILTER_CAKE =
 		REGISTRATE.item("filter_cake", Item::new)
 			.lang("Filter Cake")
+			.register();
+	public static final ItemEntry<Item> ROCK_SALT_GRAIN =
+		REGISTRATE.item("rock_salt_grain", Item::new)
+			.lang("Rock Salt Grains")
+			.register();
+	public static final ItemEntry<Item> POTASSIUM_NITRATE_GRAIN =
+		REGISTRATE.item("potassium_nitrate_grain", Item::new)
+			.lang("Potassium Nitrate Grains")
+			.register();
+	public static final ItemEntry<Item> POTASSIUM_CHLORIDE_GRAIN =
+		REGISTRATE.item("potassium_chloride_grain", Item::new)
+			.lang("Potassium Chloride Grains")
+			.register();
+	public static final ItemEntry<Item> AMMONIUM_CHLORIDE_GRAIN =
+		REGISTRATE.item("ammonium_chloride_grain", Item::new)
+			.lang("Ammonium Chloride Grains")
+			.register();
+	public static final ItemEntry<Item> COPPER_SULFATE_GRAIN =
+		REGISTRATE.item("copper_sulfate_grain", Item::new)
+			.lang("Copper Sulfate Grains")
+			.register();
+	public static final ItemEntry<Item> CALCIUM_CHLORIDE_GRAIN =
+		REGISTRATE.item("calcium_chloride_grain", Item::new)
+			.lang("Calcium Chloride Grains")
+			.register();
+	public static final ItemEntry<Item> MAGNESIUM_CHLORIDE_GRAIN =
+		REGISTRATE.item("magnesium_chloride_grain", Item::new)
+			.lang("Magnesium Chloride Grains")
+			.register();
+	public static final ItemEntry<Item> POTASSIUM_ALUM_GRAIN =
+		REGISTRATE.item("potassium_alum_grain", Item::new)
+			.lang("Potassium Alum Grains")
+			.register();
+	public static final ItemEntry<MixedResidueItem> MIXED_RESIDUE =
+		REGISTRATE.item("mixed_residue", MixedResidueItem::new)
+			.lang("Mixed Salt Residue")
 			.register();
 
 	public static void register() {

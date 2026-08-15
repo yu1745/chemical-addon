@@ -14,9 +14,11 @@ import com.yu1745.chemicaladdon.composition.SpeciesManager;
 import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.fluid.Miscibility;
 import com.yu1745.chemicaladdon.fluid.Temperature;
+import com.yu1745.chemicaladdon.item.MixedResidueItem;
 
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.capability.IFluidHandler.FluidAction;
@@ -46,7 +48,18 @@ public final class RulesEngine {
 	public static final int MB_PER_ITEM = 1000;
 
 	/** {@link #MB_PER_ITEM} in solver units (1 item = one bucket of formula units). */
-	private static final long ITEM_UNITS = (long) MB_PER_ITEM * Chemistry.UNIT_PER_MB;
+	public static final long ITEM_UNITS = (long) MB_PER_ITEM * Chemistry.UNIT_PER_MB;
+
+	/**
+	 * Grains per item — the intermediate denomination across the item↔fluid
+	 * boundary (plans/03 §5 "中间面额" invariant): 1 grain = 62.5 mB, so seeding
+	 * a metastable solution and small-batch dosing never hit the "either 0 or a
+	 * whole bucket" cliff. Produced 1 item → 16 grains via Create crushing.
+	 */
+	public static final int GRAINS_PER_ITEM = 16;
+
+	/** One grain in solver units (exactly representable on the 10⁴ grid). */
+	public static final long GRAIN_UNITS = ITEM_UNITS / GRAINS_PER_ITEM;
 
 	/** Water's boiling point (°C) — the open-vessel evaporation threshold. */
 	private static final int WATER_BOILING_C = 100;
@@ -135,7 +148,8 @@ public final class RulesEngine {
 		//    territory per the plans/03 §8.1 engine boundary). Mutates the
 		//    before-maps in place, so it reports whether it consumed anything
 		//    (the skip-check below compares against those same maps).
-		boolean itemDissolved = items != null && dissolveItems(beforeMol, beforeIons, items, temperature);
+		boolean itemDissolved = items != null
+			&& dissolveItems(beforeMol, beforeIons, beforeSuspended, beforeSediment, items, temperature);
 
 		// 4. solve (existing solids participate: undersaturated ones redissolve)
 		Solution solution = new Solution(beforeMol, beforeIons, beforeSuspended, beforeSediment, temperature)
@@ -189,44 +203,172 @@ public final class RulesEngine {
 	 * one bucket of formula units per tick, but only while the solution stays
 	 * at/below its curve threshold afterwards (a saturated solution stops
 	 * dissolving — drop-in rock salt in water yields exactly saturated brine).
+	 * Grains dissolve at their finer 62.5 mB denomination.
+	 *
+	 * <p>Three U15 extensions:
+	 * <ul>
+	 *   <li><b>seeding</b> — a solid item dropped into a solution that is
+	 *       already supersaturated w.r.t. it cannot dissolve, so it joins the
+	 *       {@code Sediment} domain instead (one grain preferred, else the
+	 *       whole item). The kinetics then grow crystals on it at the seeded
+	 *       rate — one grain collapses a metastable solution (U15②).</li>
+	 *   <li><b>mixed residue</b> — a {@link MixedResidueItem} dissolves whole,
+	 *       expanding its NBT composition exactly into ions (curve species,
+	 *       saturation-checked per species) or into {@code Suspended} (mineral
+	 *       species, which the equilibria then take to Ksp). Dissolving it IS
+	 *       the assay (plans/03 §12).</li>
+	 * </ul>
 	 * All amounts in solver units.
 	 *
 	 * @return true when at least one item was consumed (the caller must then
 	 *         rewrite the tank even though the before/after maps look equal)
 	 */
 	private static boolean dissolveItems(Map<ResourceLocation, Long> mol, Map<String, Long> ions,
-		IItemHandler items, int temperature) {
+		Map<ResourceLocation, Long> suspended, Map<ResourceLocation, Long> sediment, IItemHandler items, int temperature) {
 		long water = mol.getOrDefault(Solution.WATER, 0L);
 		if (water <= 0) {
 			return false; // no solvent: nothing dissolves
 		}
-		boolean consumed = false;
+		boolean consumed = dissolveResidue(ions, suspended, items, water, temperature);
 		for (Species s : SpeciesManager.all()) {
 			if (!s.isCrystallisable() || !s.isElectrolyte()) {
 				continue;
 			}
-			Item item = ForgeRegistries.ITEMS.getValue(s.solute());
-			if (item == null || item == Items.AIR) {
+			Item item = itemFor(s.solute());
+			Item grain = grainFor(s.solute());
+			if (item == null && grain == null) {
 				continue;
 			}
 			double threshold = Solution.solubilityThreshold(s, temperature);
 			long cap = (long) Math.floor(threshold * water);
-			long headroom = cap - Solution.formableUnits(ions, s);
-			if (headroom < ITEM_UNITS) {
-				continue; // at/near saturation (or no matching item below)
-			}
-			for (int slot = 0; slot < items.getSlots(); slot++) {
-				if (items.getStackInSlot(slot).getItem() == item && items.getStackInSlot(slot).getCount() > 0) {
-					items.extractItem(slot, 1, false);
-					for (Species.IonComponent c : s.ions()) {
-						ions.merge(c.ion().id(), ITEM_UNITS * c.count(), Long::sum);
-					}
-					consumed = true;
-					break; // one item per species per tick (gradual, visible)
+			long form = Solution.formableUnits(ions, s);
+			if (form > cap) {
+				// supersaturated: dissolving is impossible, so the item seeds —
+				// it becomes settled crystal mass the kinetics grows on
+				Item seed = grain != null ? takeOne(items, grain) : null;
+				if (seed == null && item != null) {
+					seed = takeOne(items, item);
 				}
+				if (seed != null) {
+					long units = seed == grain ? GRAIN_UNITS : ITEM_UNITS;
+					sediment.merge(s.solute(), units, Long::sum);
+					consumed = true;
+				}
+				continue;
+			}
+			long headroom = cap - form;
+			if (headroom >= ITEM_UNITS && item != null && takeOne(items, item) != null) {
+				for (Species.IonComponent c : s.ions()) {
+					ions.merge(c.ion().id(), ITEM_UNITS * c.count(), Long::sum);
+				}
+				consumed = true; // one item per species per tick (gradual, visible)
+			} else if (headroom >= GRAIN_UNITS && grain != null && takeOne(items, grain) != null) {
+				for (Species.IonComponent c : s.ions()) {
+					ions.merge(c.ion().id(), GRAIN_UNITS * c.count(), Long::sum);
+				}
+				consumed = true;
 			}
 		}
 		return consumed;
+	}
+
+	/**
+	 * Dissolve one mixed-residue item: expand its NBT ratio composition into a
+	 * full 1000 mB of solids. Curve species go to the ion domain — but only if
+	 * every one of them still fits under its saturation cap afterwards (a
+	 * residue dropped into an already-saturated brine correctly refuses to
+	 * dissolve); mineral species go to {@code Suspended} where the equilibria
+	 * dissolve them to Ksp. Whole-item only: partial dissolution would need a
+	 * fractional item.
+	 */
+	private static boolean dissolveResidue(Map<String, Long> ions, Map<ResourceLocation, Long> suspended,
+		IItemHandler items, long water, int temperature) {
+		for (int slot = 0; slot < items.getSlots(); slot++) {
+			ItemStack stack = items.getStackInSlot(slot);
+			if (!(stack.getItem() instanceof MixedResidueItem)) {
+				continue;
+			}
+			Map<ResourceLocation, Integer> parts = MixedResidueItem.parts(stack);
+			long totalParts = 0;
+			for (int v : parts.values()) {
+				totalParts += v;
+			}
+			if (totalParts <= 0) {
+				continue;
+			}
+			// per-entry unit shares summing exactly to ITEM_UNITS
+			Map<ResourceLocation, Long> shares = new LinkedHashMap<>();
+			long assigned = 0;
+			for (Map.Entry<ResourceLocation, Integer> e : parts.entrySet()) {
+				long share = ITEM_UNITS * e.getValue() / totalParts;
+				shares.put(e.getKey(), share);
+				assigned += share;
+			}
+			// hand the rounding remainder to the largest entry
+			ResourceLocation largest = null;
+			for (Map.Entry<ResourceLocation, Integer> e : parts.entrySet()) {
+				if (largest == null || e.getValue() > parts.get(largest)) {
+					largest = e.getKey();
+				}
+			}
+			shares.merge(largest, ITEM_UNITS - assigned, Long::sum);
+
+			// saturation feasibility: every curve species must fit after the addition
+			boolean feasible = true;
+			for (Map.Entry<ResourceLocation, Long> e : shares.entrySet()) {
+				Species sp = SpeciesManager.bySolute(e.getKey());
+				if (sp == null || !sp.isElectrolyte()) {
+					continue; // mineral / unknown → suspended, equilibria decide
+				}
+				long cap = (long) Math.floor(Solution.solubilityThreshold(sp, temperature) * water);
+				if (Solution.formableUnits(ions, sp) + e.getValue() > cap) {
+					feasible = false;
+					break;
+				}
+			}
+			if (!feasible) {
+				continue;
+			}
+			items.extractItem(slot, 1, false);
+			for (Map.Entry<ResourceLocation, Long> e : shares.entrySet()) {
+				Species sp = SpeciesManager.bySolute(e.getKey());
+				if (sp != null && sp.isElectrolyte()) {
+					for (Species.IonComponent c : sp.ions()) {
+						ions.merge(c.ion().id(), e.getValue() * c.count(), Long::sum);
+					}
+				} else {
+					suspended.merge(e.getKey(), e.getValue(), Long::sum); // equilibria take it from here
+				}
+			}
+			return true; // one residue item per solve (gradual, like every item)
+		}
+		return false;
+	}
+
+	@Nullable
+	private static Item itemFor(ResourceLocation solute) {
+		Item item = ForgeRegistries.ITEMS.getValue(solute);
+		return item == Items.AIR ? null : item;
+	}
+
+	/** The grain variant item of a solute ({@code <id>_grain}), if registered. */
+	@Nullable
+	private static Item grainFor(ResourceLocation solute) {
+		Item grain = ForgeRegistries.ITEMS.getValue(
+			new ResourceLocation(solute.getNamespace(), solute.getPath() + "_grain"));
+		return grain == Items.AIR ? null : grain;
+	}
+
+	/** Extract one item from the first slot holding it; null (nothing consumed) when absent. */
+	@Nullable
+	private static Item takeOne(IItemHandler items, Item item) {
+		for (int slot = 0; slot < items.getSlots(); slot++) {
+			if (items.getStackInSlot(slot).getItem() == item && items.getStackInSlot(slot).getCount() > 0) {
+				items.extractItem(slot, 1, false);
+				return item;
+			}
+		}
+		return null;
 	}
 
 	private static boolean same(Map<?, Long> a, Map<?, Long> b) {

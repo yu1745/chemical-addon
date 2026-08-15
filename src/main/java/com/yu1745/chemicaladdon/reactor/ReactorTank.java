@@ -7,12 +7,14 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 import com.simibubi.create.foundation.fluid.FluidIngredient;
+import com.yu1745.chemicaladdon.composition.Chemistry;
 import com.yu1745.chemicaladdon.composition.Solution;
 import com.yu1745.chemicaladdon.composition.Species;
 import com.yu1745.chemicaladdon.composition.SpeciesManager;
 import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.fluid.Miscibility;
 import com.yu1745.chemicaladdon.fluid.Temperature;
+import com.yu1745.chemicaladdon.item.MixedResidueItem;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -20,6 +22,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.material.FlowingFluid;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.Fluids;
@@ -689,52 +692,165 @@ public class ReactorTank implements IFluidHandler {
 	 * (molecules + ions) and any settled solids (sediment) stay in the tank.
 	 * Returns the total mB of suspended solids removed.
 	 */
-	public int extractSuspended(Consumer<ItemStack> sink, int mbPerItem) {
-		int extracted = 0;
-		for (FluidStack stack : new ArrayList<>(fluids)) {
+	/**
+	 * Whole-lump extraction of one solid domain (plans/03 §12, U15): the
+	 * per-species ledger is <b>not</b> a separation — physically the solids are
+	 * one muddled mass, so the extraction may never pick species.
+	 * <ul>
+	 *   <li><b>strict single-species = pure</b> — a domain holding exactly one
+	 *       species with a registered item extracts that many plain items;</li>
+	 *   <li><b>any second species = mixed residue</b> — the domain extracts as
+	 *       {@link MixedResidueItem} stacks whose NBT carries the GCD-reduced
+	 *       composition (equal tags stack; the deterministic engine makes the
+	 *       same feed yield the same residue);</li>
+	 *   <li>denomination is whole items only ({@link RulesEngine#MB_PER_ITEM}
+	 *       per item) — the sub-item remainder <b>stays in the domain</b>, which
+	 *       is exactly the heirloom seed: a pot that keeps &lt;1000 mB of
+	 *       settled crystal re-seeds every later supersaturation for free.</li>
+	 * </ul>
+	 *
+	 * @param sedimentDomain true for the settled (Sediment) domain, false for
+	 *        the suspended (Suspended) slurry domain
+	 * @return total units extracted (0 when nothing forms a whole item)
+	 */
+	public long extractSolids(Consumer<ItemStack> sink, boolean sedimentDomain) {
+		// aggregate the domain across the vessel's mixtures (one physical pot)
+		Map<ResourceLocation, Long> units = new LinkedHashMap<>();
+		for (FluidStack stack : fluids) {
 			if (!Mixture.isMixture(stack)) {
 				continue;
 			}
-			Map<ResourceLocation, Integer> susp = Mixture.deriveSuspendedAmounts(stack);
-			if (susp.isEmpty()) {
+			Map<ResourceLocation, Integer> domain = sedimentDomain
+				? Mixture.deriveUnitSedimentAmounts(stack)
+				: Mixture.deriveUnitSuspendedAmounts(stack);
+			for (Map.Entry<ResourceLocation, Integer> e : domain.entrySet()) {
+				units.merge(e.getKey(), (long) e.getValue(), Long::sum);
+			}
+		}
+		long total = 0;
+		for (long v : units.values()) {
+			total += v;
+		}
+		long items = total / RulesEngine.ITEM_UNITS;
+		if (items <= 0) {
+			return 0; // sub-item remainder only: the heirloom seed stays put
+		}
+		Map<ResourceLocation, Long> take = new LinkedHashMap<>();
+		if (units.size() == 1) {
+			Map.Entry<ResourceLocation, Long> only = units.entrySet().iterator().next();
+			Item item = ForgeRegistries.ITEMS.getValue(only.getKey());
+			if (item == null || item == Items.AIR) {
+				return 0; // single species without a registered item is not extractable
+			}
+			emitStacks(sink, new ItemStack(item), items);
+			take.put(only.getKey(), items * RulesEngine.ITEM_UNITS);
+		} else {
+			emitStacks(sink, MixedResidueItem.of(units), items);
+			// proportional shares of the extracted lump, summing exactly
+			long extracted = items * RulesEngine.ITEM_UNITS;
+			long assigned = 0;
+			Map.Entry<ResourceLocation, Long> largest = null;
+			for (Map.Entry<ResourceLocation, Long> e : units.entrySet()) {
+				long share = extracted * e.getValue() / total;
+				take.put(e.getKey(), share);
+				assigned += share;
+				if (largest == null || e.getValue() > largest.getValue()) {
+					largest = e;
+				}
+			}
+			take.merge(largest.getKey(), extracted - assigned, Long::sum);
+		}
+
+		// subtract the taken units from each mixture stack (greedy: exact
+		// integers), rebuilding the stack list wholesale — setContents replaces
+		// the whole tank, so a per-stack write must not run inside the loop
+		List<FluidStack> rebuilt = new ArrayList<>();
+		boolean changed = false;
+		for (FluidStack stack : fluids) {
+			if (!Mixture.isMixture(stack)) {
+				rebuilt.add(stack);
 				continue;
 			}
-			Map<ResourceLocation, Integer> mol = Mixture.deriveAmounts(stack);
-			Map<String, Integer> ions = Mixture.deriveIonAmounts(stack);
-			Map<ResourceLocation, Integer> sed = Mixture.deriveSedimentAmounts(stack);
-			for (Map.Entry<ResourceLocation, Integer> e : susp.entrySet()) {
-				Item item = ForgeRegistries.ITEMS.getValue(e.getKey());
-				if (item == null || e.getValue() <= 0) {
+			Map<ResourceLocation, Integer> domain = new LinkedHashMap<>(sedimentDomain
+				? Mixture.deriveUnitSedimentAmounts(stack)
+				: Mixture.deriveUnitSuspendedAmounts(stack));
+			boolean touched = false;
+			for (Map.Entry<ResourceLocation, Integer> e : domain.entrySet()) {
+				long need = take.getOrDefault(e.getKey(), 0L);
+				if (need <= 0) {
 					continue;
 				}
-				int count = Math.max(1, (int) Math.round((double) e.getValue() / mbPerItem));
-				sink.accept(new ItemStack(item, count));
-				extracted += e.getValue();
+				long remove = Math.min(need, e.getValue());
+				take.merge(e.getKey(), -remove, Long::sum);
+				domain.put(e.getKey(), (int) (e.getValue() - remove));
+				touched = true;
 			}
-			int newTotal = 0;
-			for (int v : mol.values()) {
-				newTotal += v;
+			if (!touched) {
+				rebuilt.add(stack);
+				continue;
 			}
-			for (int v : ions.values()) {
-				newTotal += v;
-			}
-			for (int v : sed.values()) {
-				newTotal += v;
-			}
-			int idx = fluids.indexOf(stack);
-			if (newTotal <= 0) {
-				fluids.set(idx, FluidStack.EMPTY);
-			} else {
-				FluidStack replacement = Mixture.create(mol, ions, Map.of(), sed, newTotal);
-				Temperature.set(replacement, Temperature.get(stack));
-				fluids.set(idx, replacement);
-			}
+			Map<ResourceLocation, Integer> susp = sedimentDomain
+				? Mixture.deriveUnitSuspendedAmounts(stack) : domain;
+			Map<ResourceLocation, Integer> sed = sedimentDomain ? domain : Mixture.deriveUnitSedimentAmounts(stack);
+			replaceWith(rebuilt, Mixture.deriveUnitAmounts(stack), Mixture.deriveUnitIonAmounts(stack), susp, sed,
+				Temperature.get(stack));
+			changed = true;
 		}
-		if (extracted > 0) {
+		if (changed) {
+			fluids.clear();
+			fluids.addAll(rebuilt);
 			removeEmpty();
+			collapseIfNeeded(); // degrade a single-component remainder to a pure fluid
 			onChanged.run();
 		}
-		return extracted;
+		return items * RulesEngine.ITEM_UNITS;
+	}
+
+	/** Emit {@code count} copies of {@code proto} to the sink in legal stack sizes. */
+	private static void emitStacks(Consumer<ItemStack> sink, ItemStack proto, long count) {
+		while (count > 0) {
+			int n = (int) Math.min(count, proto.getMaxStackSize());
+			ItemStack stack = proto.copy();
+			stack.setCount(n);
+			sink.accept(stack);
+			count -= n;
+		}
+	}
+
+	/**
+	 * Append a mixture rebuilt from unit-domain maps to {@code out} (single pure
+	 * molecular species degrades to a plain stack, mirroring
+	 * {@link #setContents}); an all-empty result appends nothing.
+	 */
+	private static void replaceWith(List<FluidStack> out, Map<ResourceLocation, Integer> molecules,
+		Map<String, Integer> ions, Map<ResourceLocation, Integer> suspended, Map<ResourceLocation, Integer> sediment,
+		int temperature) {
+		molecules.values().removeIf(v -> v <= 0);
+		ions.values().removeIf(v -> v <= 0);
+		suspended.values().removeIf(v -> v <= 0);
+		sediment.values().removeIf(v -> v <= 0);
+		if (molecules.isEmpty() && ions.isEmpty() && suspended.isEmpty() && sediment.isEmpty()) {
+			return;
+		}
+		if (molecules.size() == 1 && ions.isEmpty() && suspended.isEmpty() && sediment.isEmpty()) {
+			Map.Entry<ResourceLocation, Integer> only = molecules.entrySet().iterator().next();
+			Fluid pf = ForgeRegistries.FLUIDS.getValue(only.getKey());
+			if (pf != null && pf != Fluids.EMPTY) {
+				FluidStack pure = new FluidStack(pf, only.getValue() / Chemistry.UNIT_PER_MB);
+				Temperature.set(pure, temperature);
+				out.add(pure);
+				return;
+			}
+		}
+		long totalUnits = 0;
+		for (int v : molecules.values()) totalUnits += v;
+		for (int v : ions.values()) totalUnits += v;
+		for (int v : suspended.values()) totalUnits += v;
+		for (int v : sediment.values()) totalUnits += v;
+		FluidStack rebuilt = Mixture.create(molecules, ions, suspended, sediment,
+			Math.max(1, (int) Math.round((double) totalUnits / Chemistry.UNIT_PER_MB)));
+		Temperature.set(rebuilt, temperature);
+		out.add(rebuilt);
 	}
 
 	/**

@@ -1,0 +1,10 @@
+{
+  "type": "create:crushing",
+  "ingredients": [
+    { "item": "chemicaladdon:potassium_nitrate" }
+  ],
+  "processingTime": 250,
+  "results": [
+    { "item": "chemicaladdon:potassium_nitrate_grain", "count": 16 }
+  ]
+}

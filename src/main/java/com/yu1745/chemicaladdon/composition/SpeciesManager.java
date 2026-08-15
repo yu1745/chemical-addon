@@ -54,6 +54,22 @@ public class SpeciesManager {
 		return REGISTRY.get(id);
 	}
 
+	/**
+	 * The solution species that crystallises into the given solid solute
+	 * (reverse lookup of {@link Species#solute()} — the grain/seeding and
+	 * mixed-residue paths map an extracted solid back to the ions it dissolves
+	 * into). Nullable when no curve species targets this solute.
+	 */
+	@Nullable
+	public static Species bySolute(ResourceLocation solute) {
+		for (Species s : REGISTRY.values()) {
+			if (s.isCrystallisable() && solute.equals(s.solute())) {
+				return s;
+			}
+		}
+		return null;
+	}
+
 	public static Collection<Species> all() {
 		return List.copyOf(REGISTRY.values());
 	}
@@ -100,7 +116,9 @@ public class SpeciesManager {
 		"iron_hydroxide", "aluminium_hydroxide",
 		"silver_nitrate_solution", "ferric_chloride_solution", "zinc_sulfate_solution",
 		"potassium_nitrate_solution", "potassium_chloride_solution", "potassium_alum_solution",
-		"ferrous_sulfate_solution", "potassium_thiocyanate_solution"
+		"ferrous_sulfate_solution", "potassium_thiocyanate_solution",
+		// U15 bittern salts (bittern-salt curves: the dry-out residue of brine)
+		"magnesium_chloride_solution"
 	};
 
 	/** Register a species programmatically — JUnit kinetics tests injecting rate-bearing entries. */

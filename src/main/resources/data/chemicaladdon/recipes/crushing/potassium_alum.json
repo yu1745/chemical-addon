@@ -1,0 +1,10 @@
+{
+  "type": "create:crushing",
+  "ingredients": [
+    { "item": "chemicaladdon:potassium_alum" }
+  ],
+  "processingTime": 250,
+  "results": [
+    { "item": "chemicaladdon:potassium_alum_grain", "count": 16 }
+  ]
+}
