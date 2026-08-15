@@ -1,0 +1,7 @@
+{
+  "formula": "AgCl",
+  "phase": "SOLID",
+  "equilibria": [
+    { "reaction": "silver_chloride(s) = Ag+1 + Cl-1", "log_k": -9.75 }
+  ]
+}

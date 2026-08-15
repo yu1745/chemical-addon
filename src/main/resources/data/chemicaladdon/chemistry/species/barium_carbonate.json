@@ -1,0 +1,7 @@
+{
+  "formula": "BaCO3",
+  "phase": "SOLID",
+  "equilibria": [
+    { "reaction": "barium_carbonate(s) = Ba+2 + CO3-2", "log_k": -8.56 }
+  ]
+}

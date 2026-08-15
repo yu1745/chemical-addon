@@ -70,6 +70,8 @@ SOLIDS = [
     ("urea",                   "尿素",   "Urea",            0xF0F0F0),
     ("calcium_chloride",       "氯化钙", "Calcium Chloride", 0xE0E8F0),
     ("calcium_sulfite",        "亚硫酸钙", "Calcium Sulfite", 0xE0E8E0),
+    ("copper_sulfate",         "硫酸铜", "Copper Sulfate",  0x2285D6),
+    ("copper_carbonate",       "碱式碳酸铜", "Basic Copper Carbonate", 0x2FA896),
     ("filter_cake",            "滤渣",   "Filter Cake",     0x908878),
 ]
 
@@ -105,6 +107,7 @@ SOLUTIONS = [
     ("ammonia_water",            "氨水",   "Ammonia Water"),
     ("ammonium_sulfate_solution", "硫酸铵液", "Ammonium Sulfate Solution"),
     ("ammonium_nitrate_solution", "硝酸铵液", "Ammonium Nitrate Solution"),
+    ("copper_sulfate_solution",   "硫酸铜液", "Copper Sulfate Solution"),
 ]
 
 # Slurry modes (plans/03 §12): water + a suspended solid (NOT dissolved ions).
@@ -586,6 +589,7 @@ EXTRA_LANG_ZH = {
     "goggles.chemicaladdon.pressure_gauge_threshold": "报警阈值：%s kPa",
     "goggles.chemicaladdon.pressure_gauge_alarm": "报警：超压",
     "goggles.chemicaladdon.pressure_gauge_no_vessel": "未连接反应釜",
+    "goggles.chemicaladdon.saturation": "饱和态：",
     "thermometer.chemicaladdon.threshold": "报警阈值",
     "pressure_gauge.chemicaladdon.threshold": "报警阈值",
     "status.chemicaladdon.not_assembled": "未成型",
@@ -630,6 +634,7 @@ EXTRA_LANG_EN = {
     "goggles.chemicaladdon.pressure_gauge_threshold": "Threshold: %s kPa",
     "goggles.chemicaladdon.pressure_gauge_alarm": "ALARM",
     "goggles.chemicaladdon.pressure_gauge_no_vessel": "Not attached to a reactor",
+    "goggles.chemicaladdon.saturation": "Saturation:",
     "thermometer.chemicaladdon.threshold": "Alarm Threshold",
     "pressure_gauge.chemicaladdon.threshold": "Alarm Threshold",
     "status.chemicaladdon.not_assembled": "Not assembled",

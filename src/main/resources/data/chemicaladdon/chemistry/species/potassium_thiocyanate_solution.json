@@ -1,0 +1,10 @@
+{
+  "formula": "KSCN(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "solventRatio": 10,
+  "ions": [
+    { "ion": "K", "charge": 1, "count": 1 },
+    { "ion": "SCN", "charge": -1, "count": 1 }
+  ]
+}

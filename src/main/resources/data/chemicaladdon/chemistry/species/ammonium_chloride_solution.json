@@ -7,5 +7,14 @@
   "ions": [
     { "ion": "NH4", "charge": 1, "count": 1 },
     { "ion": "Cl", "charge": -1, "count": 1 }
+  ],
+  "solute": "chemicaladdon:ammonium_chloride",
+  "solubility": [
+    { "tempC": 0, "gPer100g": 29.4 },
+    { "tempC": 20, "gPer100g": 37.2 },
+    { "tempC": 40, "gPer100g": 45.8 },
+    { "tempC": 60, "gPer100g": 55.2 },
+    { "tempC": 80, "gPer100g": 65.6 },
+    { "tempC": 100, "gPer100g": 77.3 }
   ]
 }

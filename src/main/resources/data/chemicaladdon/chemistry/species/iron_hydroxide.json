@@ -1,0 +1,7 @@
+{
+  "formula": "Fe(OH)3",
+  "phase": "SOLID",
+  "equilibria": [
+    { "reaction": "iron_hydroxide(s) = Fe+3 + 3 OH-1", "log_k": -38.6 }
+  ]
+}

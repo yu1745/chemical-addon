@@ -247,8 +247,35 @@ M3 首单元（plans/11 §2.1）：修掉 G1/G2/G3 三条公共地基缺口，�
 - **GameTest +5（72→77）**：`basinAssemblesAndProxiesFluid`（池成型/8000 容量/地砖代理）、`basinSettlesSlurry`（浆料沉降出碱饼+清水）、`brokenBasinSpillsContents`（破壁洒漏）、`solidInteriorBlocksUntilAllowlisted`（实心内腔拒装 + allowlist 放行，INTERIOR_BLOCKED 路径首次直测）、`glassBreakDisassemblesVessel`（玻璃破碎回归）。
 - 顺带修复（非 U3 范围、用户连接纹理工作被挡编译）：`AllBlocks` 玻璃 blockstate 的 `ModelBuilder<?>` 通配符捕获使 `ConnectedModelBuilder::new` 推断失败 → 改具体 `BlockModelBuilder`。
 
+### U14 · JUnit 引擎测试层 + 常用无机材料矩阵（引擎数据层 only）
+
+composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor 静态）剥离 MC 跑纯 JUnit（`./gradlew test`），GameTest 86/86 + JUnit 52/52 全绿。含后续追加的**动力学层**与 **10⁴ 细网格**。
+
+- **JUnit 基建**：build.gradle JUnit 5 + `useJUnitPlatform()`；唯一 MC 类型 ResourceLocation 可 headless。**修真 bug**：composition 类引用 `ChemicalAddon.LOGGER/MODID` 触发主类静态初始化（registry 未 bootstrap 即炸）→ 新 `composition/Chemistry`（常量+独立 logger），composition 层不再反向依赖模组主类。`EngineHarness`：classpath 真数据加载、solve/solveToFixpoint、域/守恒/色彩断言。
+- **内部求解网格 1/10000 mB（`Chemistry.UNIT_PER_MB = 10⁴`）**：求解器/比例 tag/规则引擎全量 unit 域，浓度分辨率 10⁻⁷——定标锚点＝最弱可建模水解 Mg²⁺（Ka 10⁻¹¹·⁴ → [H⁺]~6e-7）。细粒度持久化在比例 tag（ratio parts 无量纲），mB 视图照旧是传输/显示粒度；`Mixture` 加 unit 派生（软钳制防溢出）、`ReactorTank.setContents` 单位感知（mB 量=round(Σunits/scale)）。**修真 bug ×2**（细网格放大暴露）：①「强碱赶氨」分支会把弱碱平衡自身的电离产物拆光（旧网格 1-2 单位被测试容差掩盖）→ 删除（反向二分本就收敛到真平衡）；②中和热逐单位 `(int)` 累加全量化为 0 → heat 改 double 记账。`FineGridTest` 对账解析解：石膏饱和母液恰好 5000 units（旧网格 0/1）、氨电离 19000 units（旧 1-2）。
+- **两旋钮制**：`MINERAL_LOG_OFFSET=-2` 仅矿物条目（Ksp 量纲归一）；水相条目（络合 β/弱电解质 Kb）用原始 log_k——统一 offset 会把 Kb 压到整数分辨率下限以下成死条目。
+- **弱电解质首条解封**：`NH₃+H₂O⇌NH₄⁺+OH⁻（Kb 10⁻⁴·⁷⁵）`。**修真卡点**：滴定链「电离 1 单位 OH→中和吃掉→再电离」在整数二分处过冲 0.3 log 单位而死锁 → 中和步骤加**弱电解质通道**（强酸滴弱碱/酸化铝酸盐按化学计量完成，化学依据=Kw 介导推动力近无限）；`equilibrate` 轮内穿插 `neutralise`；裸 `water` token 解析为溶剂（原被当成离子 id，Kb 条目永远不可动——JUnit 首夜抓出的第二个真 bug）。
+- **引擎数据 +21 物种（零游戏注册）**：矿物 AgCl/BaSO₄/BaCO₃/Ag₂CO₃(2:1)/Mg(OH)₂/MgCO₃/Cu(OH)₂/Zn(OH)₂/Fe(OH)₃(1:3)/Al(OH)₃；络合 [Ag(NH₃)₂]⁺/[Zn(NH₃)₄]²⁺/[FeSCN]²⁺/Al(OH)₃+OH⁻=[Al(OH)₄]⁻（**两性**）；曲线 KNO₃/KCl/NH₄Cl/明矾（复盐 1:1:2 离子集）/绿矾（60°C 以上**逆行溶解**）；IonColors Fe³⁺ 黄褐/Fe²⁺ 浅绿/[FeSCN]²⁺ 血红。
+- **动力学层（两速化学，结晶域默认动力学）**：快平衡瞬时解（PHREEQC 立场，缺省语义）；结晶生长亲和律限速（`0.1×水×(c/c_sat−1)×搅拌`，几何逼近永不过冲）+ **成核门槛 0.5**（无晶种且过饱和 <50% = 亚稳，骤冷不析出；一粒晶种塌缩——接种玩法）+ 首晶 0.05 慢成核 + 回溶瞬时 + **蒸干规则**（水尽全析，煮干出盐）；平衡条目可选 `"rate"`（亲和律 + 粗 Arrhenius 每 25°C 翻倍 ×搅拌，每求解步一推，缺省瞬时=零回归）。`Speciation.rateLimited` 报告"热力学该动但动力学卡住"。**修真 bug**：①动力学条目被外层 pass 偷跑两倍（pass 感知）；②**mB↔unit 往返的余数分配使 NH₄⁺/NO₃⁻差 1 单位 → 电中性校验拒收整个离子集 → `Mixture.create` 静默扔掉全部离子、质量塌成水**（GameTest 循环里暴露）——`setContents` 单位路径加**痕量电荷修复**（±几单位刮掉，大失衡照旧拒收报警）；③自接种让成核惩罚只慢一步——改为硬成核门槛才是真亚稳。搅拌系数从 BE 贯通到求解器。测试重定基线：结晶断言全部改定点语义（solveToFixpoint 预算 4000），GameTest 冷却测试改写成「骤冷亚稳 + 投种塌缩」演示、蒸发测试改「蒸干出盐」；新增 `KineticsTest` 8 例（几何逼近单调、亚稳门槛、晶种塌缩、蒸干、rate 条目每步一推、Arrhenius 4×、瞬时平衡不受影响）。
+- **测试套 9×（52 用例）**：`InvariantsTest`（fuzz 守恒 + 定点稳定性）、`PrecipitationTest`、`CrystallisationTest`（定点语义）、`ComplexationTest`、`WeakElectrolyteTest`、`FineGridTest`（细网格 vs 解析解对账）、`SpeciationReportTest`、`KineticsTest` + Smoke。
+- 氨水行为变化：进釜后「完全电离」的 NH₄⁺OH⁻ 松弛为绝大部分分子氨——素尔维中间体行为后续 U6 调参时复核。
+- **反应热量纲分析定案（03 §12）**：现状集总常数（ΔT∝反应量、无热容、无潜热）不能正确表达自持反应（两个方向都判错）；修法已设计（能量记账 J/unit + ΔT=Q/(Σunits×4.18) + 蒸发潜热 2260 J/unit），未排期。
+
+### U13 · 规则引擎 v2（统一 equilibria 条目 + 质量作用求解器，PHREEQC 语义）
+
+删 `ksp` 专用字段与「Ksp 仅排序、整组搬走」的 v1 简化，换成**一条数据形状解所有常数平衡**（语义与 log_k 出处：PHREEQC，USGS 公有领域，见 THIRD_PARTY.md）。80→86 全绿。
+
+- **`Equilibrium`（新）**：条目 = 反应式 + log_k（+delta_h 预留，v1 不算）。token 微语法：`" + "` 连接、`=` 分侧、系数前缀、`(s)` 固相后缀；离子 id（`Cu+2`、`[Cu(NH3)4]+2`）/ 分子 id（`chemicaladdon:ammonia`，短名默认本模组命名空间）/ 固相三分类。**符号约定 PHREEQC 同款**：log_k 为按书写方向的常数（固/溶剂活度=1），矿物按溶解方向书写（`limestone(s) = Ca+2 + CO3-2, log_k −8.3` ⇒ Ksp）、络合按生成方向（log_k = β）。条目挂任意物种 JSON、`SpeciesManager.allEquilibria()` 汇总（水相先、矿物后按 log_k 升序——络合先于成核，氨掩蔽铜即此顺序的涌现）。
+- **`Solution` v2 求解器**：全 log 空间比较（`log Q vs log_k + LOG_K_OFFSET`，全局旋钮 −2，防下溢）；每条目二分求「移到平衡的整数单位数」；**整数分辨率下限 = 半单位浓度**（耗尽物种记 0.5/water，消灭 NaN/±∞ 边界态；K 极小者析到 0 残差，近溶者留饱和痕量）；管线 equilibrate→neutralise→curveBalance 外层 2 轮（同离子效应/掩蔽由迭代涌现）。结晶改**部分析出**（只析 `form − floor(阈值×水)` 过剩，留饱和母液），欠饱和时沉底/混悬**回溶**。speciation 报告（每矿物 SI + 净移动）。
+- **`RulesEngine`**：物品投料溶解（带曲线物种的固体物品 1 个/tick 溶入至饱和余量，1 物品=1000 单位；**修真 bug**：溶解原地改 before-map 使跳过写回判定永远相等，溶解结果从未写回——改为返回 consumed 标志）；开口釜 100°C 蒸发浓缩（50 mB/reaction tick，闭口抑制）；写回语义从「合并」改「替换」（回溶可缩减固相域）；预存固相进求解器（欠饱和即溶）。
+- **引擎边界入档（plans/03 §8.1）**：自发的归规则引擎 / 需驱动的归配方引擎（红氧=pe 平衡否决：会消灭 H₂/O₂ 亚稳态=无条件点火；活度系数再否决；盐类水解后置但弱电解质条目格式已通）。**萃取决策**：独立系统后置（互溶性分相已有，液-液分配需 `(o)` 相条目 + 多液相联立 + 溶在油里存储语义，不与釜内反应同釜）。
+- **数据**：limestone/gypsum 迁 equilibria（log_k −8.3/−4.6，摘自 PHREEQC/minteq 量级）；**新增 `copper_carbonate`（碱式碳酸铜，孔雀石绿 0x2FA896，log_k −10）**；铜氨络合条目（β 12.6）+ `IonColors` 铜氨深蓝；brine 补 NaCl 曲线 + solute rock_salt（岩盐投料可溶）；BUILTIN_SPECIES 补硫酸铜三件套。
+- **护目镜**：饱和态行（SI ≥ −3 或有移动的矿物列出，`名称 SI x.x`，青=过饱和析出/黄=接近/绿=平衡）——「为什么没反应」从猜测变读数。
+- **GameTest +6（80→86）**：回溶（冷却饱和→加热全溶）、碱式碳酸铜（蓝绿混悬+孔雀石绿渲染+ spectators 保留）、氨掩蔽（铜全入络离子、零沉淀）、同离子效应（硫酸过量 Ca 析尽 vs 1:1 留 1 单位母液）、投料溶解（1 物品/tick + 余量 <1000 拒溶整件）、蒸发浓缩→析晶（闭口对照不蒸）。校对 3 个旧规则测试（部分结晶 116/500、石灰石完全析出、中和改不饱和浓度避开 NaCl 结晶干扰）。
+
 ### 质量与工具
 - **GameTest 7/7**：成型/拒错/硫磺燃烧（含加热）/SO₂ 吸收/过滤/能力暴露/砖代理
+
 - **run-server.sh**：冒烟脚本（透传输出、纯 PID 三级关闭、启动前截断日志防假阳性）
 - **mc_source_forge_1.20.1**：Forge 47.4.0 反编译源码（5453 文件，含 net/minecraftforge），MC/Forge API 查询首选
 - 开发环境完整入 server monorepo submodule（工程 + create/创想/匠魂/TFMG/柴油机 + mc_source×2）
@@ -292,14 +319,16 @@ M3 首单元（plans/11 §2.1）：修掉 G1/G2/G3 三条公共地基缺口，�
 4. **M4 旗舰**：索尔维制碱闭环（吸收塔氨盐水 → 碳化 → 煅烧 → 氨回收）
 5. **基础设施**：流体桶（S08）、GUI 美化、datagen 接入（配方/模型 provider）、Jade 集成（流体显示/温度/进度 tooltip）、JEI 配方展示
 6. **混合物流体系统（Mixture）**：✅ 互溶性（D18）已落地——`miscibilityGroup` 声明式溶剂族、按组合并、按密度分相抽出。**剩余**：液-液分离手段见新增 **D18.5 分液软管** 条目；给 M9 加「不互溶共管=混液炸管」的输送约束
-7. **已知限制**：沉淀池/过滤机无 GUI；方块纹理为程序生成色块；砖无连接纹理（多变体方案待做）；压力/相态/催化未实现（计划 M3+）。（底面尺寸已参数化为任意 W×W×H 3..7；轻相抽出已由 D18.5 分液软管落地）
-8. **D18.5 分液（分液口 + 软管滑轮）**：✅ **已实现**——`decant_port`（壁块，只抽最重相，锁相）+ `decant_hose`（Create 软管滑轮装**开口釜上方** → Forge `EntityPlaceEvent` 转化为分液软管；`FLUID_HANDLER` 只抽最轻相/锁相，扳手切「只抽上层/全部抽」，敲掉/中键掉回原版 `create:hose_pulley`）。**视觉已实现**：`DecantHoseRenderer` 照抄 Create `AbstractPulleyRenderer`（coil 滚动 + 下垂 rope + magnet，复用 Create 的 hose_pulley 部分模型与 `HOSE_PULLEY_COIL` sprite shift），块体直接引用 `create:block/hose_pulley/block` 模型（占位贴图废弃）；软管 `offset`（BE 内 `LerpedFloat`，客户端 tick 用 `Chaser.EXP` 缓动追 `ReactorControllerBlockEntity.getLiquidSurfaceY`）从 0 **慢慢下放**到液面、液面升降自动跟随、无手动收放；转化瞬间播**铁砧放置音**（`SoundEvents.ANVIL_PLACE`）提示。**剩余**：Ponder 提示。详见 plans/05 §M7。
+7. **已知限制**：沉淀池/过滤机无 GUI；方块纹理为程序生成色块；砖无连接纹理（多变体方案待做）；压力/相态/催化未实现（计划 M3+）；**反应热仍为集总常数**（ΔT∝反应量、无热容/潜热，自持反应判不了——修法已设计，plans/11 U16）。（底面尺寸已参数化为任意 W×W×H 3..7；轻相抽出已由 D18.5 分液软管落地）
+8. **设计定案待实施（2026-08 讨论批，plans/11 §2.1）**：**U15 晶粒、投种与混合固体物品**（晶粒 1/16 面额+粉碎轮+投种、种=传家宝；**混合盐渣物品**=NBT ratio-tag 身份承载任意成分混合固体，取出整坨/严格单物种即纯/机器只做相分离、物种分离是化学活——纯物品三条挣取路线=时序/除杂/重结晶；可见信息统一名+颜色渲染、成分仅 dev 化验、溶解即化验；MgCl₂/CaCl₂ 苦卤盐数据首位；原则层 plans/03 §12「混合固体的物品承载」+ §5「中间面额」）；**U16 反应热能量记账**（J/unit + ΔT=Q/(Σunits×4.18) + 蒸发潜热；建议排在 S04/pH 或浓硫酸稀释事故之前）；**U17 分析化学层 + 终点控制**（测量诚实性原则 03 §6：玩家仪器只读物理间接量——波美计/沸点/pH/试纸/浊度，SI 对玩家侧不可见、护目镜 SI 行降级 dev 化验；M08→终点结晶器（物理量设定点+分馏模式）、S04→波美计；试纸族=消耗性阈值探测器；**U17 依赖 U15**）；远期弹性见 plans/11（Kw 条目 / rate 数据授权 / 底排口零头打包晶粒 / 萃取独立系统）。
+9. **D18.5 分液（分液口 + 软管滑轮）**：✅ **已实现**——`decant_port`（壁块，只抽最重相，锁相）+ `decant_hose`（Create 软管滑轮装**开口釜上方** → Forge `EntityPlaceEvent` 转化为分液软管；`FLUID_HANDLER` 只抽最轻相/锁相，扳手切「只抽上层/全部抽」，敲掉/中键掉回原版 `create:hose_pulley`）。**视觉已实现**：`DecantHoseRenderer` 照抄 Create `AbstractPulleyRenderer`（coil 滚动 + 下垂 rope + magnet，复用 Create 的 hose_pulley 部分模型与 `HOSE_PULLEY_COIL` sprite shift），块体直接引用 `create:block/hose_pulley/block` 模型（占位贴图废弃）；软管 `offset`（BE 内 `LerpedFloat`，客户端 tick 用 `Chaser.EXP` 缓动追 `ReactorControllerBlockEntity.getLiquidSurfaceY`）从 0 **慢慢下放**到液面、液面升降自动跟随、无手动收放；转化瞬间播**铁砧放置音**（`SoundEvents.ANVIL_PLACE`）提示。**剩余**：Ponder 提示。详见 plans/05 §M7。
 
 ## 常用命令
 
 ```bash
 ./gradlew build              # 构建
-./gradlew runGameTestServer  # 77/77 自动化测试
+./gradlew test               # 引擎 JUnit（composition 层，无需 MC 启动）
+./gradlew runGameTestServer  # 86/86 自动化测试
 ./run-server.sh              # 服务端冒烟（自动关闭）
 ./gradlew runClient          # 客户端（自动进 "New World"，-PquickPlayWorld= 覆盖）
 python3 tools/gen_species.py # 改物种后重新生成资源/注册代码

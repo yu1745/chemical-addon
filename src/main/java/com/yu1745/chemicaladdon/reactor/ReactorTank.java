@@ -766,17 +766,31 @@ public class ReactorTank implements IFluidHandler {
 	 */
 	public void setContents(Map<ResourceLocation, Integer> molecules, Map<String, Integer> ions,
 		Map<ResourceLocation, Integer> suspended, Map<ResourceLocation, Integer> sediment, int temperature) {
+		setContents(molecules, ions, suspended, sediment, temperature, 1);
+	}
+
+	/**
+	 * Unit-aware write-back (the rules engine's path): {@code scale = 1} means
+	 * the maps are in mB; {@code Chemistry#UNIT_PER_MB} means the solver's
+	 * 1/10000 mB grid. The GCD-reduced ratio parts are scale-free either way —
+	 * only the stack's mB amount is the scaled-down sum (rounded to the
+	 * nearest mB; the <1 sub-unit error is invisible and does not accumulate,
+	 * because the next tick re-derives from the ratio tag).
+	 */
+	public void setContents(Map<ResourceLocation, Integer> molecules, Map<String, Integer> ions,
+		Map<ResourceLocation, Integer> suspended, Map<ResourceLocation, Integer> sediment, int temperature, int scale) {
 		fluids.clear();
 		molecules.values().removeIf(v -> v <= 0);
 		ions.values().removeIf(v -> v <= 0);
 		suspended.values().removeIf(v -> v <= 0);
 		sediment.values().removeIf(v -> v <= 0);
+		repairTraceChargeImbalance(ions);
 		if (molecules.isEmpty() && ions.isEmpty() && suspended.isEmpty() && sediment.isEmpty()) {
 			onChanged.run();
 			return;
 		}
 		FluidStack target;
-		if (molecules.size() == 1 && ions.isEmpty() && suspended.isEmpty() && sediment.isEmpty()) {
+		if (scale == 1 && molecules.size() == 1 && ions.isEmpty() && suspended.isEmpty() && sediment.isEmpty()) {
 			Map.Entry<ResourceLocation, Integer> only = molecules.entrySet().iterator().next();
 			Fluid pf = ForgeRegistries.FLUIDS.getValue(only.getKey());
 			if (pf == null || pf == Fluids.EMPTY) {
@@ -785,28 +799,63 @@ public class ReactorTank implements IFluidHandler {
 			}
 			target = new FluidStack(pf, only.getValue());
 		} else {
-			int total = 0;
+			long totalUnits = 0;
 			for (int v : molecules.values()) {
-				total += v;
+				totalUnits += v;
 			}
 			for (int v : ions.values()) {
-				total += v;
+				totalUnits += v;
 			}
 			for (int v : suspended.values()) {
-				total += v;
+				totalUnits += v;
 			}
 			for (int v : sediment.values()) {
-				total += v;
+				totalUnits += v;
 			}
-			target = Mixture.create(molecules, ions, suspended, sediment, total);
+			int totalMb = (int) Math.round((double) totalUnits / scale);
+			target = Mixture.create(molecules, ions, suspended, sediment, Math.max(1, totalMb));
 		}
 		Temperature.set(target, temperature);
 		fluids.add(target);
 		onChanged.run();
 	}
 
-	public CompoundTag serializeNBT() {
-		CompoundTag tag = new CompoundTag();
+	/**
+	 * The unit-grid write-back can arrive a few units off neutral: the mB→unit
+	 * re-derivation's integer remainder distribution is not charge-balanced
+	 * (equal Na⁺/Cl⁻ parts can differ by one unit). The mixture's neutrality
+	 * invariant is exact and would REJECT the whole ion set — silently
+	 * dropping every ion — so shave the trace imbalance off the most abundant
+	 * ion of the excess sign (a few units in millions: invisible). A real
+	 * solver bug (large imbalance) is still left for the invariant to reject
+	 * loudly.
+	 */
+	private static void repairTraceChargeImbalance(Map<String, Integer> ions) {
+		long imbalance = 0;
+		for (Map.Entry<String, Integer> e : ions.entrySet()) {
+			imbalance += (long) com.yu1745.chemicaladdon.composition.Ion.chargeOf(e.getKey()) * e.getValue();
+		}
+		int guard = 0;
+		while (imbalance != 0 && guard++ < 64) {
+			String pick = null;
+			for (Map.Entry<String, Integer> e : ions.entrySet()) {
+				int q = com.yu1745.chemicaladdon.composition.Ion.chargeOf(e.getKey());
+				if ((imbalance > 0 && q > 0) || (imbalance < 0 && q < 0)
+					&& (pick == null || e.getValue() > ions.get(pick))) {
+					pick = e.getKey();
+				}
+			}
+			if (pick == null) {
+				break;
+			}
+			if (ions.merge(pick, -1, Integer::sum) <= 0) {
+				ions.remove(pick);
+			}
+			imbalance -= com.yu1745.chemicaladdon.composition.Ion.chargeOf(pick);
+		}
+	}
+
+	public CompoundTag serializeNBT() {		CompoundTag tag = new CompoundTag();
 		ListTag list = new ListTag();
 		for (FluidStack f : fluids) {
 			list.add(f.writeToNBT(new CompoundTag()));

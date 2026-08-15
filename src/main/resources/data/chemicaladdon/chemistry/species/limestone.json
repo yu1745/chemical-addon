@@ -1,9 +1,7 @@
 {
   "formula": "CaCO3",
   "phase": "SOLID",
-  "ksp": 1.0e-8,
-  "ions": [
-    { "ion": "Ca", "charge": 2, "count": 1 },
-    { "ion": "CO3", "charge": -2, "count": 1 }
+  "equilibria": [
+    { "reaction": "limestone(s) = Ca+2 + CO3-2", "log_k": -8.3, "delta_h": -10.6 }
   ]
 }

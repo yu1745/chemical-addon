@@ -3,12 +3,14 @@ package com.yu1745.chemicaladdon.gametest;
 import com.simibubi.create.content.processing.burner.BlazeBurnerBlock;
 import com.simibubi.create.content.processing.burner.BlazeBurnerBlockEntity;
 import com.yu1745.chemicaladdon.ChemicalAddon;
+import com.yu1745.chemicaladdon.composition.Chemistry;
 import com.yu1745.chemicaladdon.composition.Solution;
 import com.yu1745.chemicaladdon.composition.Species;
 import com.yu1745.chemicaladdon.composition.SpeciesManager;
 import com.yu1745.chemicaladdon.fluid.FluidColors;
 import com.yu1745.chemicaladdon.fluid.IonColors;
 import com.yu1745.chemicaladdon.fluid.Mixture;
+import com.yu1745.chemicaladdon.fluid.SolidColors;
 import com.yu1745.chemicaladdon.fluid.Temperature;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlock;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlockEntity;
@@ -50,6 +52,7 @@ import net.minecraftforge.event.RegisterGameTestsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.capability.IFluidHandler.FluidAction;
+import net.minecraftforge.items.ItemStackHandler;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.common.util.LazyOptional;
 import net.minecraftforge.fluids.capability.IFluidHandler;
@@ -1414,6 +1417,60 @@ public class ChemicalAddonGameTests {
 	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void dilutionFadesTintDepth(GameTestHelper helper) {
+		// concentration must read visually: same coloured solute, more water → same
+		// hue but lower alpha (faint when dilute, full at the canonical 10:1
+		// solventRatio concentration). Colourless solvent still contributes no hue.
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation no2 = new ResourceLocation(ChemicalAddon.MODID, "nitrogen_dioxide");
+		int full = FluidColors.of(no2);
+
+		// saturated (solute fraction 1/11, the canonical solventRatio): full depth
+		FluidStack sat = Mixture.create(Map.of(water, 1000, no2, 100), 1100);
+		int satColor = Mixture.getColor(sat);
+		helper.assertTrue(satColor == full,
+			"saturated solution should render full-depth (got " + Integer.toHexString(satColor)
+				+ ", want " + Integer.toHexString(full) + ")");
+
+		// tenfold dilution (solute fraction 1/110): same RGB, strictly fainter alpha
+		FluidStack dilute = Mixture.create(Map.of(water, 1000, no2, 10), 1010);
+		int dilColor = Mixture.getColor(dilute);
+		helper.assertTrue((dilColor & 0x00FFFFFF) == (full & 0x00FFFFFF),
+			"dilution must not shift the hue (got " + Integer.toHexString(dilColor)
+				+ ", want RGB of " + Integer.toHexString(full) + ")");
+		int satA = (satColor >>> 24) & 0xFF, dilA = (dilColor >>> 24) & 0xFF;
+		helper.assertTrue(dilA < satA,
+			"dilute tint must be fainter than saturated (dilute alpha " + dilA + " vs " + satA + ")");
+		helper.assertTrue(dilA > ((IonColors.CLEAR_TINT >>> 24) & 0xFF),
+			"trace solute must still be more visible than pure solvent (alpha " + dilA + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void copperSulfateSolutionRendersBlue(GameTestHelper helper) {
+		// CuSO4 dissolves into Cu+2 (blue) + SO4-2 (colourless): the mixture must
+		// render the ion blue at full depth when saturated, fade when diluted, and
+		// the colourless counter-ion must not wash the blue out.
+		ResourceLocation water = Solution.WATER;
+		int blue = IonColors.of("Cu+2");
+
+		// canonical solventRatio 10:1 — Cu+2 fraction 1/11 → full depth, pure hue
+		FluidStack sat = Mixture.create(Map.of(water, 1000), Map.of("Cu+2", 100, "SO4-2", 100), 1200);
+		helper.assertTrue(Mixture.getColor(sat) == blue,
+			"saturated CuSO4 must render full Cu+2 blue (got " + Integer.toHexString(Mixture.getColor(sat))
+				+ ", want " + Integer.toHexString(blue) + ")");
+
+		// tenfold dilution: same blue hue, strictly fainter alpha
+		FluidStack dilute = Mixture.create(Map.of(water, 1000), Map.of("Cu+2", 10, "SO4-2", 10), 1020);
+		int dilColor = Mixture.getColor(dilute);
+		helper.assertTrue((dilColor & 0x00FFFFFF) == (blue & 0x00FFFFFF),
+			"dilution must not shift the Cu+2 hue (got " + Integer.toHexString(dilColor) + ")");
+		helper.assertTrue(((dilColor >>> 24) & 0xFF) < ((blue >>> 24) & 0xFF),
+			"dilute CuSO4 must render fainter than saturated");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void mixtureDegradesToPure(GameTestHelper helper) {
 		// draining all the solute ions out of an aqueous mixture leaves pure solvent,
 		// and a single-component remainder degrades back to a pure fluid stack.
@@ -1693,13 +1750,15 @@ public class ChemicalAddonGameTests {
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void rulesEngineNeutralisesAcidAndBase(GameTestHelper helper) {
-		// H+ + OH- -> H2O (emergent, no whitelist); Na+ + Cl- remain as ions
+		// H+ + OH- -> H2O (emergent, no whitelist); Na+ + Cl- remain as ions.
+		// Amounts stay under NaCl's saturation (500 f.u. / 1500 water = 0.33 < 0.36)
+		// so this test isolates neutralisation from curve crystallisation.
 		ResourceLocation water = Solution.WATER;
 		ReactorTank tank = new ReactorTank(10000, () -> {});
 		FluidStack mix = Mixture.create(
 			Map.of(water, 1000),
-			Map.of("H+1", 1000, "Cl-1", 1000, "Na+1", 1000, "OH-1", 1000),
-			5000);
+			Map.of("H+1", 500, "Cl-1", 500, "Na+1", 500, "OH-1", 500),
+			3000);
 		tank.fill(mix, FluidAction.EXECUTE);
 
 		RulesEngine.apply(tank);
@@ -1707,12 +1766,14 @@ public class ChemicalAddonGameTests {
 		FluidStack result = tank.getFluids().get(0);
 		helper.assertTrue(Mixture.deriveSuspendedAmounts(result).isEmpty(),
 			"neutralisation should not suspend any solid");
+		helper.assertTrue(Mixture.deriveSedimentAmounts(result).isEmpty(),
+			"unsaturated NaCl should not crystallise (got " + Mixture.deriveSedimentAmounts(result) + ")");
 		Map<String, Integer> ions = Mixture.deriveIonAmounts(result);
 		helper.assertTrue(ions.getOrDefault("H+1", 0) == 0, "H+ should be consumed (got " + ions + ")");
 		helper.assertTrue(ions.getOrDefault("OH-1", 0) == 0, "OH- should be consumed (got " + ions + ")");
-		helper.assertTrue(ions.getOrDefault("Na+1", 0) == 1000, "Na+ should remain (got " + ions + ")");
-		helper.assertTrue(ions.getOrDefault("Cl-1", 0) == 1000, "Cl- should remain (got " + ions + ")");
-		helper.assertTrue(Mixture.deriveAmounts(result).getOrDefault(water, 0) == 2000,
+		helper.assertTrue(ions.getOrDefault("Na+1", 0) == 500, "Na+ should remain (got " + ions + ")");
+		helper.assertTrue(ions.getOrDefault("Cl-1", 0) == 500, "Cl- should remain (got " + ions + ")");
+		helper.assertTrue(Mixture.deriveAmounts(result).getOrDefault(water, 0) == 1500,
 			"neutralisation should produce water (got " + Mixture.deriveAmounts(result) + ")");
 		helper.assertTrue(Temperature.get(result) > 20,
 			"neutralisation is exothermic (got " + Temperature.get(result) + "°C)");
@@ -1721,36 +1782,261 @@ public class ChemicalAddonGameTests {
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void rulesEnginePrecipitatesLimestone(GameTestHelper helper) {
-		// Ca2+ + CO3-- -> CaCO3(s) (emergent, no whitelist); the solid stays suspended
+		// Ca2+ + CO3-- -> CaCO3(s) (emergent, no whitelist); the solid stays
+		// suspended. Spectator Na+ + Cl- stays under NaCl's curve (300/1000 = 0.3
+		// < 0.36) so no crystallisation interferes. v2 mass action with the
+		// half-unit floor: a very insoluble mineral (log_k -8.3) precipitates to
+		// exhaustion — residual 0 units.
 		ResourceLocation water = Solution.WATER;
 		ResourceLocation limestone = new ResourceLocation(ChemicalAddon.MODID, "limestone");
 		ReactorTank tank = new ReactorTank(10000, () -> {});
 		FluidStack mix = Mixture.create(
 			Map.of(water, 1000),
-			Map.of("Ca+2", 1000, "Cl-1", 2000, "Na+1", 2000, "CO3-2", 1000),
-			7000);
+			Map.of("Ca+2", 300, "Cl-1", 300, "Na+1", 300, "CO3-2", 300),
+			2200); // total MUST equal Σ parts: the four domains share one ratio space
 		tank.fill(mix, FluidAction.EXECUTE);
 
-		RulesEngine.apply(tank);
+		Solution solved = RulesEngine.apply(tank);
 
 		FluidStack result = tank.getFluids().get(0);
-		helper.assertTrue(Mixture.deriveSuspendedAmounts(result).getOrDefault(limestone, 0) == 1000,
-			"Ca2+ + CO3-- should precipitate 1000 mB limestone (got " + Mixture.deriveSuspendedAmounts(result) + ")");
+		helper.assertTrue(Mixture.deriveSuspendedAmounts(result).getOrDefault(limestone, 0) == 300,
+			"Ca2+ + CO3-- should precipitate 300 mB limestone (got " + Mixture.deriveSuspendedAmounts(result) + ")");
 		helper.assertTrue(Mixture.deriveSedimentAmounts(result).isEmpty(),
 			"fast precipitation should stay suspended, not settle (got " + Mixture.deriveSedimentAmounts(result) + ")");
 		Map<String, Integer> ions = Mixture.deriveIonAmounts(result);
 		helper.assertTrue(ions.getOrDefault("Ca+2", 0) == 0, "Ca2+ should be consumed (got " + ions + ")");
 		helper.assertTrue(ions.getOrDefault("CO3-2", 0) == 0, "CO3-- should be consumed (got " + ions + ")");
-		helper.assertTrue(ions.getOrDefault("Na+1", 0) == 2000, "Na+ should remain (got " + ions + ")");
-		helper.assertTrue(ions.getOrDefault("Cl-1", 0) == 2000, "Cl- should remain (got " + ions + ")");
+		helper.assertTrue(ions.getOrDefault("Na+1", 0) == 300, "Na+ should remain (got " + ions + ")");
+		helper.assertTrue(ions.getOrDefault("Cl-1", 0) == 300, "Cl- should remain (got " + ions + ")");
+		// speciation report: limestone moved ~all of its 300 mB (solver units)
+		// and sits at/over saturation
+		boolean reported = solved != null && solved.report().stream()
+			.anyMatch(s -> s.target().equals(limestone) && s.moved() >= 299L * Chemistry.UNIT_PER_MB);
+		helper.assertTrue(reported, "the speciation report should record limestone precipitating 300 units (got "
+			+ (solved == null ? "null" : solved.report()) + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void rulesEngineRedissolvesOnHeating(GameTestHelper helper) {
+		// the crystallisation equilibrium is reversible: settled crystals at
+		// saturation hold at 20°C (mother liquor stays saturated), then fully
+		// redissolve when the curve allows more at 100°C
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation ammoniumNitrate = new ResourceLocation(ChemicalAddon.MODID, "ammonium_nitrate");
+		ReactorTank tank = new ReactorTank(10000, () -> {});
+		// the four domains share one ratio space, so the settled 116 must be
+		// part of the create() call (post-hoc setSediment would rescale water)
+		FluidStack cold = Mixture.create(
+			Map.of(water, 200),
+			Map.of("NH4+1", 384, "NO3-1", 384),
+			Map.of(), Map.of(ammoniumNitrate, 116),
+			1084);
+		Temperature.set(cold, 20);
+		tank.fill(cold, FluidAction.EXECUTE);
+
+		RulesEngine.apply(tank);
+		helper.assertTrue(Mixture.deriveSedimentAmounts(tank.getFluids().get(0)).getOrDefault(ammoniumNitrate, 0) == 116,
+			"a saturated solution at 20°C holds its 116 mB sediment (got "
+				+ Mixture.deriveSedimentAmounts(tank.getFluids().get(0)) + ")");
+
+		Temperature.set(tank.getFluids().get(0), 100);
+		RulesEngine.apply(tank);
+		helper.assertTrue(Mixture.deriveSedimentAmounts(tank.getFluids().get(0)).getOrDefault(ammoniumNitrate, 0) == 0,
+			"heating to 100°C should redissolve all settled crystals (got "
+				+ Mixture.deriveSedimentAmounts(tank.getFluids().get(0)) + ")");
+		Map<String, Integer> ions = Mixture.deriveIonAmounts(tank.getFluids().get(0));
+		helper.assertTrue(ions.getOrDefault("NH4+1", 0) == 500 && ions.getOrDefault("NO3-1", 0) == 500,
+			"redissolved ions should return to solution (got " + ions + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void rulesEnginePrecipitatesBasicCopperCarbonate(GameTestHelper helper) {
+		// the flagship demo: soda ash + copper sulfate -> malachite-green basic
+		// copper carbonate slurry + a COLOURLESS sodium sulfate mother liquor
+		// (Cu+2 is the only coloured species; once it leaves the solution the
+		// tint falls back to clear). log_k -10 precipitates to exhaustion.
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation copperCarbonate = new ResourceLocation(ChemicalAddon.MODID, "copper_carbonate");
+		ReactorTank tank = new ReactorTank(10000, () -> {});
+		// charge check: Cu +200, Na +400, SO4 -200, CO3 -400 = 0
+		FluidStack mix = Mixture.create(
+			Map.of(water, 1000),
+			Map.of("Cu+2", 100, "SO4-2", 100, "Na+1", 400, "CO3-2", 200),
+			1800);
+		tank.fill(mix, FluidAction.EXECUTE);
+
+		RulesEngine.apply(tank);
+
+		FluidStack result = tank.getFluids().get(0);
+		helper.assertTrue(Mixture.deriveSuspendedAmounts(result).getOrDefault(copperCarbonate, 0) == 100,
+			"Cu2+ + CO3-- should precipitate 100 mB basic copper carbonate (got "
+				+ Mixture.deriveSuspendedAmounts(result) + ")");
+		Map<String, Integer> ions = Mixture.deriveIonAmounts(result);
+		helper.assertTrue(ions.getOrDefault("Cu+2", 0) == 0, "Cu2+ should be consumed (got " + ions + ")");
+		helper.assertTrue(ions.getOrDefault("SO4-2", 0) == 100, "SO4-- spectator should remain (got " + ions + ")");
+		helper.assertTrue(ions.getOrDefault("Na+1", 0) == 400, "Na+ spectator should remain (got " + ions + ")");
+		helper.assertTrue(ions.getOrDefault("CO3-2", 0) == 100, "the carbonate excess should remain (got " + ions + ")");
+		// the slurry reads malachite green: the suspended solid is the only
+		// coloured domain left (colourless ions + green solid at full depth)
+		helper.assertTrue(Mixture.getColor(result) == SolidColors.of(copperCarbonate),
+			"the copper carbonate slurry should render malachite green (got "
+				+ Integer.toHexString(Mixture.getColor(result)) + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void rulesEngineAmmoniaMasksCopper(GameTestHelper helper) {
+		// complexation solves BEFORE minerals (SpeciesManager ordering): with
+		// ammonia present, [Cu(NH3)4]+2 ties up the copper first and the
+		// carbonate finds nothing to precipitate — masking as an emergent
+		// property of two equilibria sharing an ion.
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation ammonia = new ResourceLocation(ChemicalAddon.MODID, "ammonia");
+		ResourceLocation copperCarbonate = new ResourceLocation(ChemicalAddon.MODID, "copper_carbonate");
+		ReactorTank tank = new ReactorTank(10000, () -> {});
+		// charge check: Cu +40, Na +80, SO4 -40, CO3 -80 = 0
+		FluidStack mix = Mixture.create(
+			Map.of(water, 1000, ammonia, 2000),
+			Map.of("Cu+2", 20, "SO4-2", 20, "Na+1", 80, "CO3-2", 40),
+			3160);
+		tank.fill(mix, FluidAction.EXECUTE);
+
+		RulesEngine.apply(tank);
+
+		FluidStack result = tank.getFluids().get(0);
+		helper.assertTrue(Mixture.deriveSuspendedAmounts(result).getOrDefault(copperCarbonate, 0) == 0,
+			"ammonia-masked copper must not precipitate carbonate (got " + Mixture.deriveSuspendedAmounts(result) + ")");
+		Map<String, Integer> ions = Mixture.deriveIonAmounts(result);
+		helper.assertTrue(ions.getOrDefault("[Cu(NH3)4]+2", 0) == 20,
+			"all copper should sit in the tetraammine complex (got " + ions + ")");
+		helper.assertTrue(ions.getOrDefault("Cu+2", 0) == 0, "no free copper should remain (got " + ions + ")");
+		helper.assertTrue(ions.getOrDefault("CO3-2", 0) == 40, "carbonate should stay in solution (got " + ions + ")");
+		helper.assertTrue(Mixture.deriveAmounts(result).getOrDefault(ammonia, 0) >= 1890,
+			"4 ammonia per copper should be consumed (weak-base ionisation takes a few more, got "
+				+ Mixture.deriveAmounts(result) + ")");
+		// visibly tinted (the ammonia-dominated blend is a pale blue-green, not
+		// the pure complex blue — dissolved ammonia's own tint outweighs 20
+		// units of complex by sheer amount; the point here is that colour
+		// survives, unlike the carbonate case where everything clears)
+		helper.assertTrue(Mixture.getColor(result) != IonColors.CLEAR_TINT,
+			"the complex solution should stay visibly tinted (got "
+				+ Integer.toHexString(Mixture.getColor(result)) + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void rulesEngineCommonIonEffect(GameTestHelper helper) {
+		// excess sulfate drives Ca2+ lower than a 1:1 mix: with SO4 in excess
+		// gypsum precipitates Ca to exhaustion (0 units left); at 1:1 the
+		// equilibrium stops a unit short (a real saturated mother liquor) —
+		// the common-ion effect as an emergent property of mass action
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation gypsum = new ResourceLocation(ChemicalAddon.MODID, "gypsum");
+
+		ReactorTank excess = new ReactorTank(10000, () -> {});
+		// charge check: Ca +600, Na +400, SO4 -1000 = 0
+		excess.fill(Mixture.create(Map.of(water, 1000),
+			Map.of("Ca+2", 300, "SO4-2", 500, "Na+1", 400), 2200), FluidAction.EXECUTE);
+		RulesEngine.apply(excess);
+		Map<String, Integer> excessIons = Mixture.deriveIonAmounts(excess.getFluids().get(0));
+		helper.assertTrue(excessIons.getOrDefault("Ca+2", 0) == 0,
+			"excess sulfate should precipitate Ca to exhaustion (got " + excessIons + ")");
+		helper.assertTrue(Mixture.deriveSuspendedAmounts(excess.getFluids().get(0)).getOrDefault(gypsum, 0) == 300,
+			"300 mB gypsum should be suspended (got " + Mixture.deriveSuspendedAmounts(excess.getFluids().get(0)) + ")");
+
+		ReactorTank equal = new ReactorTank(10000, () -> {});
+		equal.fill(Mixture.create(Map.of(water, 1000),
+			Map.of("Ca+2", 100, "SO4-2", 100, "Na+1", 100, "Cl-1", 100), 1400), FluidAction.EXECUTE);
+		RulesEngine.apply(equal);
+		Map<String, Integer> equalIons = Mixture.deriveIonAmounts(equal.getFluids().get(0));
+		// the fine grid keeps a 0.5 mB saturated mother liquor — the mB view
+		// rounds it to 0 or 1
+		helper.assertTrue(equalIons.getOrDefault("Ca+2", 0) <= 1,
+			"at 1:1 the saturated mother liquor keeps ≈0.5 mB Ca (got " + equalIons + ")");
+		long gypsumMb = Mixture.deriveSuspendedAmounts(equal.getFluids().get(0)).getOrDefault(gypsum, 0);
+		helper.assertTrue(gypsumMb == 99 || gypsumMb == 100,
+			"~99.5 mB gypsum should be suspended (got " + gypsumMb + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void rulesEngineDissolvesDroppedSolidItems(GameTestHelper helper) {
+		// solid items with a solubility curve dissolve into the aqueous phase
+		// one item per tick (1 item = 1000 formula units) and STOP at
+		// saturation: the headroom check means a near-saturated brine refuses
+		// the next whole item
+		ResourceLocation water = Solution.WATER;
+		ReactorTank tank = new ReactorTank(20000, () -> {});
+		tank.fill(new FluidStack(Fluids.WATER, 5000), FluidAction.EXECUTE);
+		ItemStackHandler items = new ItemStackHandler(1);
+		items.setStackInSlot(0, new ItemStack(AllItems.ROCK_SALT.get(), 5));
+
+		RulesEngine.apply(tank, false, items);
+		Map<String, Integer> ions = Mixture.deriveIonAmounts(tank.getFluids().get(0));
+		helper.assertTrue(ions.getOrDefault("Na+1", 0) == 1000 && ions.getOrDefault("Cl-1", 0) == 1000,
+			"one rock salt item should dissolve into 1000 units Na+ + Cl- (got " + ions + ")");
+		helper.assertTrue(items.getStackInSlot(0).getCount() == 4,
+			"exactly one item should be consumed per tick (got " + items.getStackInSlot(0).getCount() + ")");
+
+		// headroom now floor(0.36 x 5000) - 1000 = 800 < 1000: the next whole
+		// item does not fit — the brine is done dissolving
+		RulesEngine.apply(tank, false, items);
+		helper.assertTrue(items.getStackInSlot(0).getCount() == 4,
+			"a brine with <1000 units of headroom must not dissolve another whole item (got "
+				+ items.getStackInSlot(0).getCount() + ")");
+		helper.assertTrue(Mixture.deriveAmounts(tank.getFluids().get(0)).getOrDefault(water, 0) == 5000,
+			"dissolution should not consume water (got " + Mixture.deriveAmounts(tank.getFluids().get(0)) + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void rulesEngineEvaporationConcentratesAndCrystallises(GameTestHelper helper) {
+		// an open boiling vessel vents water (50 mB per reaction tick),
+		// concentrating the solution until the solubility curve is exceeded and
+		// the excess crystallises — evaporative crystallisation as a pure
+		// emergent chain. A sealed vessel keeps its solvent.
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation ammoniumNitrate = new ResourceLocation(ChemicalAddon.MODID, "ammonium_nitrate");
+		ReactorTank tank = new ReactorTank(20000, () -> {});
+		FluidStack hot = Mixture.create(
+			Map.of(water, 1000),
+			Map.of("NH4+1", 500, "NO3-1", 500),
+			2000);
+		Temperature.set(hot, 100);
+		tank.fill(hot, FluidAction.EXECUTE);
+
+		// sealed control: no evaporation, no crystallisation at 100°C
+		RulesEngine.apply(tank, false, null);
+		helper.assertTrue(Mixture.deriveAmounts(tank.getFluids().get(0)).getOrDefault(water, 0) == 1000,
+			"a sealed vessel must not evaporate (got " + Mixture.deriveAmounts(tank.getFluids().get(0)) + ")");
+
+		// open: boil down to dryness. Kinetics barely crystallise on the way
+		// (the supersaturated window is metastable and short-lived at these
+		// rates) — then the EVAPORITE rule fires: no solvent left, all
+		// dissolved salt crashes out. Boiling a pot dry yields dry salt.
+		for (int i = 0; i < 25; i++) {
+			RulesEngine.apply(tank, true, null);
+		}
+		FluidStack result = tank.getFluids().get(0);
+		helper.assertTrue(Mixture.deriveAmounts(result).getOrDefault(water, 0) == 0,
+			"an open boiling vessel should vent all water (got " + Mixture.deriveAmounts(result) + ")");
+		int dried = Mixture.deriveSedimentAmounts(result).getOrDefault(ammoniumNitrate, 0);
+		helper.assertTrue(dried >= 495,
+			"boiling dry should crash out all the ammonium nitrate as evaporite (got " + dried + ")");
+		Map<String, Integer> ions = Mixture.deriveIonAmounts(result);
+		helper.assertTrue(ions.getOrDefault("NH4+1", 0) == 0,
+			"nothing stays dissolved with the solvent gone (got " + ions + ")");
 		helper.succeed();
 	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void rulesEngineCrystallisesOnCooling(GameTestHelper helper) {
-		// NH4+ + NO3- (aq) is stable hot, crystallises ammonium nitrate on cooling.
-		// 500 formula units / 200 water = 2.5 f.u./water: below the 100°C threshold
-		// (871 g/100g → 8.71) but above the 20°C threshold (192 g/100g → 1.92).
+		// NH4+ + NO3- (aq): 500 f.u. / 200 water = 2.5, below the 100°C
+		// threshold (8.71) but only 30% above the 20°C one (1.92) — under the
+		// U14 kinetics model that is INSIDE the metastable zone: cooling alone
+		// crystallises nothing, and one seed grain collapses it to equilibrium.
 		ResourceLocation water = Solution.WATER;
 		ResourceLocation ammoniumNitrate = new ResourceLocation(ChemicalAddon.MODID, "ammonium_nitrate");
 		ReactorTank tank = new ReactorTank(10000, () -> {});
@@ -1767,17 +2053,29 @@ public class ChemicalAddonGameTests {
 		helper.assertTrue(Mixture.deriveSuspendedAmounts(tank.getFluids().get(0)).isEmpty(),
 			"hot unsaturated solution should not precipitate (suspended)");
 
+		// cooled unseeded: 30% supersaturation is below the nucleation gate —
+		// the solution sits METASTABLE (this is the quench-cooled state)
 		Temperature.set(tank.getFluids().get(0), 20);
 		RulesEngine.apply(tank);
-		helper.assertTrue(Mixture.deriveSedimentAmounts(tank.getFluids().get(0)).getOrDefault(ammoniumNitrate, 0) == 500,
-			"cooling should crystallise 500 mB ammonium nitrate into sediment (got "
+		helper.assertTrue(Mixture.deriveSedimentAmounts(tank.getFluids().get(0)).isEmpty(),
+			"a shallowly supersaturated solution must stay metastable unseeded (got "
 				+ Mixture.deriveSedimentAmounts(tank.getFluids().get(0)) + ")");
-		helper.assertTrue(Mixture.deriveSuspendedAmounts(tank.getFluids().get(0)).isEmpty(),
-			"crystallisation should not leave suspended solids (got "
-				+ Mixture.deriveSuspendedAmounts(tank.getFluids().get(0)) + ")");
+
+		// drop in one grain: seeded growth runs to the curve over ticks
+		// (equilibrium target 500 - floor(1.92 x 200) = 116)
+		FluidStack cooled = tank.getFluids().get(0);
+		Map<ResourceLocation, Integer> sediment = new LinkedHashMap<>(Mixture.deriveSedimentAmounts(cooled));
+		sediment.merge(ammoniumNitrate, 1, Integer::sum);
+		tank.setContents(Mixture.deriveAmounts(cooled), Mixture.deriveIonAmounts(cooled), Map.of(), sediment, 20);
+		for (int i = 0; i < 400; i++) {
+			RulesEngine.apply(tank);
+		}
+		int crystallised = Mixture.deriveSedimentAmounts(tank.getFluids().get(0)).getOrDefault(ammoniumNitrate, 0);
+		helper.assertTrue(crystallised >= 113 && crystallised <= 117,
+			"seeding should collapse the metastable solution to its ~116 mB equilibrium (got " + crystallised + ")");
 		Map<String, Integer> ions = Mixture.deriveIonAmounts(tank.getFluids().get(0));
-		helper.assertTrue(ions.getOrDefault("NH4+1", 0) == 0 && ions.getOrDefault("NO3-1", 0) == 0,
-			"crystallisation should remove the solute ions (got " + ions + ")");
+		helper.assertTrue(ions.getOrDefault("NH4+1", 0) >= 383 && ions.getOrDefault("NH4+1", 0) <= 390,
+			"a saturated mother liquor stays behind (got " + ions + ")");
 		helper.succeed();
 	}
 
@@ -2116,6 +2414,31 @@ public class ChemicalAddonGameTests {
 		helper.setBlock(new BlockPos(1, 2, 1), Blocks.AIR.defaultBlockState()); // break the glass
 		helper.assertFalse(be.isAssembled(), "breaking a glass wall block must de-assemble the vessel");
 		helper.succeed();
+	}
+
+	// ------------------------------------------------------------------ light
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void glassPassesBlockLightLikeVanilla(GameTestHelper helper) {
+		// The light engine sees every block through getLightBlock (opacity = max(1,
+		// getLightBlock)): our glass must attenuate exactly like vanilla glass, i.e.
+		// torch light loses 1 level per glass block, not 15. Guard against regressions
+		// in the light-related overrides (getLightBlock/propagatesSkylightDown).
+		BlockPos torch = new BlockPos(1, 2, 1);
+		BlockPos wall = new BlockPos(2, 2, 1);
+		BlockPos behind = new BlockPos(3, 2, 1);
+		helper.setBlock(torch, Blocks.TORCH.defaultBlockState());
+		helper.setBlock(wall, AllBlocks.CHEMICAL_GLASS.get().defaultBlockState());
+		helper.runAfterDelay(2, () -> {
+			int chemical = helper.getLevel().getBrightness(net.minecraft.world.level.LightLayer.BLOCK, behind);
+			helper.setBlock(wall, Blocks.GLASS.defaultBlockState());
+			helper.runAfterDelay(2, () -> {
+				int vanilla = helper.getLevel().getBrightness(net.minecraft.world.level.LightLayer.BLOCK, behind);
+				helper.assertTrue(chemical == vanilla,
+					"chemical glass must pass block light like vanilla glass (chemical=" + chemical + ", vanilla=" + vanilla + ")");
+				helper.succeed();
+			});
+		});
 	}
 
 	// ------------------------------------------------------------------ helpers

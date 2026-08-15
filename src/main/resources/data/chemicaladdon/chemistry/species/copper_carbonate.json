@@ -1,0 +1,7 @@
+{
+  "formula": "Cu2(OH)2CO3",
+  "phase": "SOLID",
+  "equilibria": [
+    { "reaction": "copper_carbonate(s) = Cu+2 + CO3-2", "log_k": -10.0 }
+  ]
+}

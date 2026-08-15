@@ -1,9 +1,7 @@
 {
   "formula": "CaSO4",
   "phase": "SOLID",
-  "ksp": 1.0e-5,
-  "ions": [
-    { "ion": "Ca", "charge": 2, "count": 1 },
-    { "ion": "SO4", "charge": -2, "count": 1 }
+  "equilibria": [
+    { "reaction": "gypsum(s) = Ca+2 + SO4-2", "log_k": -4.6 }
   ]
 }

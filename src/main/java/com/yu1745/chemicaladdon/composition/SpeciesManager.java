@@ -3,6 +3,7 @@ package com.yu1745.chemicaladdon.composition;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -13,7 +14,6 @@ import javax.annotation.Nullable;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
-import com.yu1745.chemicaladdon.ChemicalAddon;
 
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -45,7 +45,7 @@ public class SpeciesManager {
 			}
 			REGISTRY.clear();
 			REGISTRY.putAll(loaded);
-			ChemicalAddon.LOGGER.info("Chemical Addon: loaded {} species definitions", REGISTRY.size());
+			Chemistry.LOGGER.info("Chemical Addon: loaded {} species definitions", REGISTRY.size());
 		}
 	};
 
@@ -56,6 +56,28 @@ public class SpeciesManager {
 
 	public static Collection<Species> all() {
 		return List.copyOf(REGISTRY.values());
+	}
+
+	/**
+	 * All equilibrium entries across every species — the global list the solver
+	 * consumes (PHREEQC's PHASES/SOLUTION_SPECIES organisation: the carrier
+	 * file is only where the entry was authored). Sorted <b>aqueous entries
+	 * (complexation) first, then minerals by log_k ascending</b>: complexation
+	 * happens in solution, so a ligand ties up its metal before any mineral can
+	 * nucleate from it (ammonia masking copper against carbonate precipitation)
+	 * — the relaxation is order-sensitive, and this order encodes that
+	 * chemistry.
+	 */
+	public static List<Equilibrium> allEquilibria() {
+		List<Equilibrium> out = new ArrayList<>();
+		for (Species s : REGISTRY.values()) {
+			out.addAll(s.equilibria());
+		}
+		out.sort((a, b) -> {
+			int byKind = Boolean.compare(!a.isAqueous(), !b.isAqueous()); // aqueous first
+			return byKind != 0 ? byKind : Double.compare(a.logK(), b.logK());
+		});
+		return out;
 	}
 
 	/**
@@ -70,18 +92,30 @@ public class SpeciesManager {
 		"caustic_soda_solution", "soda_ash_solution", "ammonium_chloride_solution",
 		"calcium_chloride_solution", "ammonia_water", "milk_of_lime",
 		"ammonium_sulfate_solution", "ammonium_nitrate_solution", "brine",
-		"gypsum_slurry", "sodium_bicarbonate_slurry", "calcium_sulfite_slurry"
+		"gypsum_slurry", "sodium_bicarbonate_slurry", "calcium_sulfite_slurry",
+		"copper_sulfate", "copper_sulfate_solution", "copper_carbonate",
+		// U14 engine-data roster (species JSON only — no items/fluids registered)
+		"silver_chloride", "barium_sulfate", "barium_carbonate", "silver_carbonate",
+		"magnesium_hydroxide", "magnesium_carbonate", "copper_hydroxide", "zinc_hydroxide",
+		"iron_hydroxide", "aluminium_hydroxide",
+		"silver_nitrate_solution", "ferric_chloride_solution", "zinc_sulfate_solution",
+		"potassium_nitrate_solution", "potassium_chloride_solution", "potassium_alum_solution",
+		"ferrous_sulfate_solution", "potassium_thiocyanate_solution"
 	};
 
+	/** Register a species programmatically — JUnit kinetics tests injecting rate-bearing entries. */
+	static void registerForTest(Species species) {
+		REGISTRY.put(species.id(), species);
+	}
+
 	/** Eagerly load the built-in species so startup consumers (creative tab, JEI) see them. */
-	public static void loadBuiltin() {
-		int loaded = 0;
+	public static void loadBuiltin() {		int loaded = 0;
 		for (String name : BUILTIN_SPECIES) {
-			ResourceLocation key = new ResourceLocation(ChemicalAddon.MODID, name);
+			ResourceLocation key = new ResourceLocation(Chemistry.MOD_ID, name);
 			if (REGISTRY.containsKey(key)) {
 				continue;
 			}
-			String path = "/data/" + ChemicalAddon.MODID + "/chemistry/species/" + name + ".json";
+			String path = "/data/" + Chemistry.MOD_ID + "/chemistry/species/" + name + ".json";
 			try (InputStream in = SpeciesManager.class.getResourceAsStream(path)) {
 				if (in == null) {
 					continue;
@@ -93,11 +127,11 @@ public class SpeciesManager {
 					loaded++;
 				}
 			} catch (IOException e) {
-				ChemicalAddon.LOGGER.error("Failed to preload builtin species {}", name, e);
+				Chemistry.LOGGER.error("Failed to preload builtin species {}", name, e);
 			}
 		}
 		if (loaded > 0) {
-			ChemicalAddon.LOGGER.info("Chemical Addon: preloaded {} builtin species", loaded);
+			Chemistry.LOGGER.info("Chemical Addon: preloaded {} builtin species", loaded);
 		}
 	}
 

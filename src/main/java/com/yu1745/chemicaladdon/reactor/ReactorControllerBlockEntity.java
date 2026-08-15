@@ -1,5 +1,6 @@
 package com.yu1745.chemicaladdon.reactor;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -8,6 +9,7 @@ import javax.annotation.Nullable;
 import com.simibubi.create.api.equipment.goggles.IHaveGoggleInformation;
 import com.simibubi.create.content.processing.burner.BlazeBurnerBlock;
 import com.yu1745.chemicaladdon.ChemicalAddon;
+import com.yu1745.chemicaladdon.composition.Solution;
 import com.yu1745.chemicaladdon.fluid.Miscibility;
 import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.fluid.Temperature;
@@ -25,6 +27,7 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraftforge.fluids.FluidStack;
@@ -70,6 +73,8 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 	 * 1.0 in U1 (plans/11 §2.1) so batch rhythm tuning lands in U5.
 	 */
 	private float stirringCoefficient = 1.0f;
+	/** Last solve's speciation report (per-solid saturation indices) — goggles diagnostics. */
+	private List<Solution.Speciation> speciation = List.of();
 
 	public ReactorControllerBlockEntity(BlockPos pos, BlockState state) {
 		super(AllBlockEntities.REACTOR_CONTROLLER.get(), pos, state, TANK_CAPACITY, ITEM_SLOTS);
@@ -294,9 +299,15 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 			setProgress(0, null);
 			return;
 		}
-		// emergent chemistry first (double displacement / precipitation / neutralisation
-		// / crystallisation derived from species data), then the whitelist recipe engine
-		RulesEngine.apply(tank);
+		// emergent chemistry first (mass-action equilibria / crystallisation /
+		// neutralisation / solid dissolution / evaporation derived from species
+		// data), then the whitelist recipe engine. The solved snapshot's
+		// speciation report feeds the goggles saturation lines (why-no-reaction
+		// diagnostics: SI < 0 means "not saturated enough", not "broken").
+		Solution solved = RulesEngine.apply(tank, isOpen(), items, stirringCoefficient);
+		if (solved != null) {
+			speciation = solved.report();
+		}
 		ChemicalReactionRecipe recipe = ReactionLogic.findRecipe(this);
 		if (recipe == null) {
 			// no fully-matching recipe: diagnose whether it is a heat problem
@@ -473,6 +484,33 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 			.append(Component.translatable("goggles.chemicaladdon.status"))
 			.append(Component.translatable("status.chemicaladdon." + status.name().toLowerCase()))
 			.withStyle(statusColor));
+
+		// saturation lines (speciation diagnostics): which solids are at / over /
+		// near their saturation. Only interesting ones are listed — a solid is
+		// shown when it moved this solve or its SI is within striking distance
+		// (≥ −3); anything deeper is "far from happening" and stays silent.
+		if (!speciation.isEmpty()) {
+			List<Component> satLines = new ArrayList<>();
+			for (Solution.Speciation s : speciation) {
+				boolean relevant = s.moved() != 0 || s.si() >= -3;
+				if (!relevant) {
+					continue;
+				}
+				var item = ForgeRegistries.ITEMS.getValue(s.target());
+				String name = item != null && item != Items.AIR ? new ItemStack(item).getHoverName().getString()
+					: s.target().getPath();
+				ChatFormatting color = s.moved() > 0 || s.si() > 0.5 ? ChatFormatting.AQUA // precipitating / supersaturated
+					: s.si() < -0.5 ? ChatFormatting.GOLD // approaching saturation
+						: ChatFormatting.GREEN; // at equilibrium with the solid present
+				satLines.add(Component.literal(spacing + " ")
+					.append(Component.literal(name + "  SI " + String.format("%.1f", s.si())))
+					.withStyle(color));
+			}
+			if (!satLines.isEmpty()) {
+				tooltip.add(Component.literal(spacing).append(Component.translatable("goggles.chemicaladdon.saturation")));
+				tooltip.addAll(satLines);
+			}
+		}
 
 		// contents — the vessel's contents are deliberately unnamed: it holds a clear
 		// solution, and "you cannot tell what is in it" is the point (plans/03 §6).

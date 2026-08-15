@@ -1,0 +1,13 @@
+{
+  "formula": "AgNO3(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "solventRatio": 10,
+  "ions": [
+    { "ion": "Ag", "charge": 1, "count": 1 },
+    { "ion": "NO3", "charge": -1, "count": 1 }
+  ],
+  "equilibria": [
+    { "reaction": "Ag+1 + 2 chemicaladdon:ammonia = [Ag(NH3)2]+1", "log_k": 7.2 }
+  ]
+}

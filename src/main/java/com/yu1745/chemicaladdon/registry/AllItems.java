@@ -80,6 +80,14 @@ public class AllItems {
 		REGISTRATE.item("calcium_sulfite", Item::new)
 			.lang("Calcium Sulfite")
 			.register();
+	public static final ItemEntry<Item> COPPER_SULFATE =
+		REGISTRATE.item("copper_sulfate", Item::new)
+			.lang("Copper Sulfate")
+			.register();
+	public static final ItemEntry<Item> COPPER_CARBONATE =
+		REGISTRATE.item("copper_carbonate", Item::new)
+			.lang("Basic Copper Carbonate")
+			.register();
 	public static final ItemEntry<Item> FILTER_CAKE =
 		REGISTRATE.item("filter_cake", Item::new)
 			.lang("Filter Cake")

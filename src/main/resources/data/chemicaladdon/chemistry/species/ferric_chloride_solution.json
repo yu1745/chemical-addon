@@ -1,0 +1,13 @@
+{
+  "formula": "FeCl3(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "solventRatio": 10,
+  "ions": [
+    { "ion": "Fe", "charge": 3, "count": 1 },
+    { "ion": "Cl", "charge": -1, "count": 3 }
+  ],
+  "equilibria": [
+    { "reaction": "Fe+3 + SCN-1 = [FeSCN]+2", "log_k": 2.1 }
+  ]
+}

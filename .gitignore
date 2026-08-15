@@ -6,3 +6,5 @@ bin/
 .idea/
 *.iml
 .zcode/
+logs/
+__pycache__/

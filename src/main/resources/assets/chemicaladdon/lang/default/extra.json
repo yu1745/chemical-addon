@@ -20,6 +20,7 @@
   "goggles.chemicaladdon.pressure_gauge_threshold": "Threshold: %s kPa",
   "goggles.chemicaladdon.pressure_gauge_alarm": "ALARM",
   "goggles.chemicaladdon.pressure_gauge_no_vessel": "Not attached to a reactor",
+  "goggles.chemicaladdon.saturation": "Saturation:",
   "thermometer.chemicaladdon.threshold": "Alarm Threshold",
   "pressure_gauge.chemicaladdon.threshold": "Alarm Threshold",
   "status.chemicaladdon.not_assembled": "Not assembled",

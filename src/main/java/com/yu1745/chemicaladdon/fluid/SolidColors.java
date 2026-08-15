@@ -29,6 +29,8 @@ public final class SolidColors {
 		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "urea"), 0xFFF0F0F0);
 		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "calcium_chloride"), 0xFFE0E8F0);
 		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "calcium_sulfite"), 0xFFE0E8E0);
+		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "copper_sulfate"), 0xFF2285D6);
+		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "copper_carbonate"), 0xFF2FA896);
 		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "filter_cake"), 0xFF908878);
 	}
 

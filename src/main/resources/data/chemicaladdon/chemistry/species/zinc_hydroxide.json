@@ -1,0 +1,7 @@
+{
+  "formula": "Zn(OH)2",
+  "phase": "SOLID",
+  "equilibria": [
+    { "reaction": "zinc_hydroxide(s) = Zn+2 + 2 OH-1", "log_k": -16.4 }
+  ]
+}

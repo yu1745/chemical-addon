@@ -1,0 +1,7 @@
+{
+  "formula": "BaSO4",
+  "phase": "SOLID",
+  "equilibria": [
+    { "reaction": "barium_sulfate(s) = Ba+2 + SO4-2", "log_k": -9.97 }
+  ]
+}

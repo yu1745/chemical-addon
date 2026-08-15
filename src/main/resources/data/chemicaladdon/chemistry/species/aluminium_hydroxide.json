@@ -1,0 +1,8 @@
+{
+  "formula": "Al(OH)3",
+  "phase": "SOLID",
+  "equilibria": [
+    { "reaction": "aluminium_hydroxide(s) = Al+3 + 3 OH-1", "log_k": -33.0 },
+    { "reaction": "aluminium_hydroxide(s) + OH-1 = [Al(OH)4]-1", "log_k": 1.3 }
+  ]
+}

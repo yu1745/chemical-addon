@@ -1,0 +1,7 @@
+{
+  "formula": "MgCO3",
+  "phase": "SOLID",
+  "equilibria": [
+    { "reaction": "magnesium_carbonate(s) = Mg+2 + CO3-2", "log_k": -7.5 }
+  ]
+}

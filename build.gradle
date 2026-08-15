@@ -131,6 +131,21 @@ dependencies {
     // dev runtime cannot apply it, dev runs that load Jade may fail. Production
     // forge1 already runs it natively and is unaffected.
     runtimeOnly(fg.deobf("curse.maven:jade-324717:8479276"))
+
+    // Engine-level unit tests (composition layer is pure Java — only
+    // ResourceLocation is touched, which works headless; see src/test/java).
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+test {
+    useJUnitPlatform()
+    // the mapped minecraft jar carries ResourceLocation; the test JVM needs no
+    // Forge bootstrap because nothing touches registries or NBT
+    testLogging {
+        events "failed", "skipped"
+        exceptionFormat "full"
+    }
 }
 
 // Example for how to get properties into the manifest for reading at runtime.

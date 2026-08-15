@@ -1,5 +1,22 @@
 # 第三方素材与代码归属
 
+## PHREEQC（USGS）— 公有领域
+
+规则引擎 v2 的**质量作用/饱和指数语义**与平衡常数数值出处：
+[PHREEQC](https://www.usgs.gov/software/phreeqc-version-3)（David Parkhurst &
+Tony Appelo，美国地质调查局，美国政府公有领域软件，可自由使用与再分发）。
+
+- **借鉴范围**：ion-association 水相模型的概念（speciation / 饱和指数
+  SI = log(Q/K) / 沉淀析出至 Q = K 留饱和母液）、平衡条目的数据组织方式
+  （每相/每物种自带一条溶解反应 + log_k）。**未复制任何代码**（PHREEQC 是
+  C/C++、molality 单位体系，与本工程的「无量纲配方单元」约定不兼容）。
+- **数值摘录**：物种 JSON `equilibria` 条目中的 log_k 取自 PHREEQC 附带
+  数据库（phreeqc.dat / minteq 系）及其常见地球化学文献值的量级，
+  按 plans/03 §8 的量纲约定（`c = 分子式单元/水 mB`，全局旋钮
+  `LOG_K_OFFSET`）重新标定——数值非逐位照抄，仅保留相对量级与排序。
+- 明确**不采用**其活度系数模型（Debye-Hückel/WATEQ/Pitzer）与 pe/Eh
+  平衡红氧（否决理由见 plans/03 §8.1）。
+
 ## Tinkers Construct（匠魂）与 Mantle — MIT License
 
 本模组的化学玻璃（`chemicaladdon:chemical_glass`）的连接纹理（connected textures）

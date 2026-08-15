@@ -1,0 +1,13 @@
+{
+  "formula": "ZnSO4(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "solventRatio": 10,
+  "ions": [
+    { "ion": "Zn", "charge": 2, "count": 1 },
+    { "ion": "SO4", "charge": -2, "count": 1 }
+  ],
+  "equilibria": [
+    { "reaction": "Zn+2 + 4 chemicaladdon:ammonia = [Zn(NH3)4]+2", "log_k": 9.5 }
+  ]
+}

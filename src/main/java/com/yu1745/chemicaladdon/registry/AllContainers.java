@@ -38,6 +38,7 @@ public class AllContainers {
 		{ "ammonia_water", "Ammonia Water" },
 		{ "ammonium_sulfate_solution", "Ammonium Sulfate Solution" },
 		{ "ammonium_nitrate_solution", "Ammonium Nitrate Solution" },
+		{ "copper_sulfate_solution", "Copper Sulfate Solution" },
 	};
 
 	/** (species id, en name) — mirrored by tools/gen_species.py SLURRIES for models + zh_cn. */

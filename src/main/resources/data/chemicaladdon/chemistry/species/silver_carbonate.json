@@ -1,0 +1,7 @@
+{
+  "formula": "Ag2CO3",
+  "phase": "SOLID",
+  "equilibria": [
+    { "reaction": "silver_carbonate(s) = 2 Ag+1 + CO3-2", "log_k": -11.1 }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "formula": "Cu(OH)2",
+  "phase": "SOLID",
+  "equilibria": [
+    { "reaction": "copper_hydroxide(s) = Cu+2 + 2 OH-1", "log_k": -19.2 }
+  ]
+}

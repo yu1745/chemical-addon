@@ -1,0 +1,23 @@
+{
+  "formula": "CuSO4(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "color": "#2285D6",
+  "solventRatio": 10,
+  "ions": [
+    { "ion": "Cu", "charge": 2, "count": 1 },
+    { "ion": "SO4", "charge": -2, "count": 1 }
+  ],
+  "solute": "chemicaladdon:copper_sulfate",
+  "solubility": [
+    { "tempC": 0, "gPer100g": 23 },
+    { "tempC": 20, "gPer100g": 32 },
+    { "tempC": 40, "gPer100g": 45 },
+    { "tempC": 60, "gPer100g": 62 },
+    { "tempC": 80, "gPer100g": 84 },
+    { "tempC": 100, "gPer100g": 114 }
+  ],
+  "equilibria": [
+    { "reaction": "Cu+2 + 4 chemicaladdon:ammonia = [Cu(NH3)4]+2", "log_k": 12.6 }
+  ]
+}

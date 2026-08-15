@@ -11,7 +11,6 @@ import javax.annotation.Nullable;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.yu1745.chemicaladdon.ChemicalAddon;
 
 import net.minecraft.resources.ResourceLocation;
 
@@ -25,7 +24,8 @@ import net.minecraft.resources.ResourceLocation;
  *
  * <p>This class also carries the thermodynamic/ionic data the emergent
  * rules engine (plans/06 §9) consumes: electrolyte dissociation ({@link #ions}),
- * precipitate solubility product ({@link #ksp}), crystallisation curve
+ * constant-K equilibrium entries ({@link #equilibria} — precipitation,
+ * complexation; plans/03 §8.2), crystallisation curve
  * ({@link #solubility}/{@link #solute}), phase
  * transitions ({@link #phaseTransitions}) and miscibility grouping
  * ({@link #miscibilityGroup}). Ions are NOT registered species — they are
@@ -140,7 +140,7 @@ public final class Species {
 	private final Set<String> dangers;
 	private final List<IonComponent> ions;
 	private final List<SuspendedComponent> suspended; // solids suspended in water (slurry)
-	private final double ksp; // NaN = not a precipitate
+	private final List<Equilibrium> equilibria; // constant-K entries (plans/03 §8.2)
 	private final List<SolubilityPoint> solubility;
 	private final ResourceLocation solute; // solid that crystallises out (nullable)
 	private final int solventRatio; // water parts per formula unit (0 = not a solution)
@@ -150,7 +150,7 @@ public final class Species {
 
 	private Species(ResourceLocation id, String formula, Phase phase, int boilingPointC, int meltingPointC,
 		List<Component> components, Set<String> dangers, List<IonComponent> ions, List<SuspendedComponent> suspended,
-		double ksp, List<SolubilityPoint> solubility, ResourceLocation solute, int solventRatio,
+		List<Equilibrium> equilibria, List<SolubilityPoint> solubility, ResourceLocation solute, int solventRatio,
 		int color, String miscibilityGroup, List<PhaseTransition> phaseTransitions) {
 		this.id = id;
 		this.formula = formula;
@@ -161,7 +161,7 @@ public final class Species {
 		this.dangers = dangers;
 		this.ions = ions;
 		this.suspended = suspended;
-		this.ksp = ksp;
+		this.equilibria = equilibria;
 		this.solubility = solubility;
 		this.solute = solute;
 		this.solventRatio = solventRatio;
@@ -227,7 +227,20 @@ public final class Species {
 				}
 			}
 
-			double ksp = getDouble(o, "ksp", Double.NaN);
+			// constant-K equilibria (plans/03 §8.2):
+			// [ { "reaction": "limestone(s) = Ca+2 + CO3-2", "log_k": -8.3, "delta_h": optional, "rate": optional kinetic } ]
+			List<Equilibrium> equilibria = new ArrayList<>();
+			if (o.has("equilibria")) {
+				for (JsonElement e : o.getAsJsonArray("equilibria")) {
+					JsonObject c = e.getAsJsonObject();
+					Equilibrium eq = Equilibrium.parse(getString(c, "reaction", ""),
+						getDouble(c, "log_k", 0), getDouble(c, "delta_h", Double.NaN),
+						getDouble(c, "rate", 0));
+					if (eq != null) {
+						equilibria.add(eq);
+					}
+				}
+			}
 
 			List<SolubilityPoint> solubility = new ArrayList<>();
 			if (o.has("solubility")) {
@@ -267,10 +280,10 @@ public final class Species {
 			}
 
 			return new Species(id, formula, phase, bp, mp, List.copyOf(components), Set.copyOf(dangers),
-				List.copyOf(ions), List.copyOf(suspended), ksp, List.copyOf(solubility), solute,
+				List.copyOf(ions), List.copyOf(suspended), List.copyOf(equilibria), List.copyOf(solubility), solute,
 				solventRatio, color, miscibilityGroup, List.copyOf(transitions));
 		} catch (Exception e) {
-			ChemicalAddon.LOGGER.error("Failed to parse species {}: {}", id, e.getMessage());
+			Chemistry.LOGGER.error("Failed to parse species {}: {}", id, e.getMessage());
 			return null;
 		}
 	}
@@ -312,14 +325,13 @@ public final class Species {
 		return !ions.isEmpty();
 	}
 
-	/** The solubility product (Ksp); NaN means "not a precipitate candidate". */
-	public double ksp() {
-		return ksp;
-	}
-
-	/** True when {@link #ksp()} is present, i.e. this species can precipitate. */
-	public boolean isPrecipitate() {
-		return !Double.isNaN(ksp);
+	/**
+	 * The constant-K equilibrium entries authored on this species (plans/03 §8.2).
+	 * The entry's carrier file is only organisation — the solver consumes the
+	 * manager-aggregated list (see {@link SpeciesManager#allEquilibria()}).
+	 */
+	public List<Equilibrium> equilibria() {
+		return equilibria;
 	}
 
 	public List<SolubilityPoint> solubility() {
@@ -356,7 +368,7 @@ public final class Species {
 	 * True when this species is a solution mode: a liquid-phase electrolyte.
 	 * Concentration is a runtime ratio of the vessel contents (ion units / water
 	 * units), not an identity — so no fixed solvent ratio is required. Precipitates
-	 * (solid, Ksp-bearing) and gases are excluded by the phase check.
+	 * (solid, equilibria-bearing) and gases are excluded by the phase check.
 	 */
 	public boolean isSolution() {
 		return phase == Phase.LIQUID && isElectrolyte();

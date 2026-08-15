@@ -8,6 +8,15 @@
     { "ion": "Na", "charge": 1, "count": 1 },
     { "ion": "Cl", "charge": -1, "count": 1 }
   ],
+  "solute": "chemicaladdon:rock_salt",
+  "solubility": [
+    { "tempC": 0, "gPer100g": 35.7 },
+    { "tempC": 20, "gPer100g": 36.0 },
+    { "tempC": 40, "gPer100g": 36.6 },
+    { "tempC": 60, "gPer100g": 37.3 },
+    { "tempC": 80, "gPer100g": 38.4 },
+    { "tempC": 100, "gPer100g": 39.8 }
+  ],
   "components": [
     { "species": "minecraft:water", "maxConcentration": 0.74 },
     { "species": "chemicaladdon:rock_salt", "maxConcentration": 0.26 }
