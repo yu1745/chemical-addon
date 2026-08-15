@@ -75,6 +75,7 @@
 | [09-resources-worldgen.md](09-resources-worldgen.md) | 原材料与资源链：5 种新矿物、世界生成、与 Create/原版复用 |
 | [10-multiblock.md](10-multiblock.md) | 多方块设计：成型、尺寸、材质分级、端口、状态可视化、故障 |
 | [11-content-scope.md](11-content-scope.md) | **开发计划（M3+ 开工顺序唯一定义）**：内容量统计、基线缺口 G1–G7、U1–U12 依赖序单元 + C 并行轨道、排程/DoD/工作量/风险 |
+| [12-instruments.md](12-instruments.md) | **读数仪器体系（唯一定义）**：测量诚实性原则、终点类型学（四类信号→四台化学仪表）、连续仪表 S02–S18 清单 + 试纸族、红石双输出族规范（比较器分箱 + 阈值）、三酸两碱+食盐精炼覆盖矩阵、Kw 解封前置、否决清单 |
 
 ---
 
