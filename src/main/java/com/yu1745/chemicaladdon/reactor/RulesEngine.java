@@ -17,6 +17,8 @@ import com.yu1745.chemicaladdon.fluid.Temperature;
 import com.yu1745.chemicaladdon.item.MixedResidueItem;
 
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.material.Fluid;
+import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -48,7 +50,7 @@ public final class RulesEngine {
 	public static final int MB_PER_ITEM = 1000;
 
 	/** {@link #MB_PER_ITEM} in solver units (1 item = one bucket of formula units). */
-	public static final long ITEM_UNITS = (long) MB_PER_ITEM * Chemistry.UNIT_PER_MB;
+	public static final long ITEM_UNITS = MB_PER_ITEM * Chemistry.QUANTA_PER_MB;
 
 	/**
 	 * Grains per item — the intermediate denomination across the item↔fluid
@@ -155,16 +157,16 @@ public final class RulesEngine {
 			if (Mixture.isMixture(stack)) {
 				total += stack.getAmount();
 				weightedTemp += (long) Temperature.get(stack) * stack.getAmount();
-				for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveUnitAmounts(stack).entrySet()) {
+				for (Map.Entry<ResourceLocation, Long> e : Mixture.deriveQuantaAmounts(stack).entrySet()) {
 					beforeMol.merge(e.getKey(), (long) e.getValue(), Long::sum);
 				}
-				for (Map.Entry<String, Integer> e : Mixture.deriveUnitIonAmounts(stack).entrySet()) {
+				for (Map.Entry<String, Long> e : Mixture.deriveQuantaIonAmounts(stack).entrySet()) {
 					beforeIons.merge(e.getKey(), (long) e.getValue(), Long::sum);
 				}
-				for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveUnitSuspendedAmounts(stack).entrySet()) {
+				for (Map.Entry<ResourceLocation, Long> e : Mixture.deriveQuantaSuspendedAmounts(stack).entrySet()) {
 					beforeSuspended.merge(e.getKey(), (long) e.getValue(), Long::sum);
 				}
-				for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveUnitSedimentAmounts(stack).entrySet()) {
+				for (Map.Entry<ResourceLocation, Long> e : Mixture.deriveQuantaSedimentAmounts(stack).entrySet()) {
 					beforeSediment.merge(e.getKey(), (long) e.getValue(), Long::sum);
 				}
 			} else if (!Miscibility.isGas(stack) && Miscibility.AQUEOUS.equals(Miscibility.groupOf(stack))) {
@@ -173,7 +175,7 @@ public final class RulesEngine {
 				weightedTemp += (long) Temperature.get(stack) * stack.getAmount();
 				ResourceLocation id = ForgeRegistries.FLUIDS.getKey(stack.getFluid());
 				if (id != null) {
-					beforeMol.merge(id, (long) stack.getAmount() * Chemistry.UNIT_PER_MB, Long::sum);
+					beforeMol.merge(id, (long) stack.getAmount() * Chemistry.QUANTA_PER_MB, Long::sum);
 				}
 			} else {
 				bystanders.add(stack); // gas or nonpolar liquid: inert
@@ -199,14 +201,21 @@ public final class RulesEngine {
 		// 5. open-vessel evaporation: boiling water vents, concentrating the
 		// solutes (the next pass's crystallisation sees the higher concentration)
 		if (openVessel && temperature >= WATER_BOILING_C) {
-			long vented = solution.evaporateWater((long) EVAPORATION_RATE_MB * Chemistry.UNIT_PER_MB);
+			long vented = solution.evaporateWater(EVAPORATION_RATE_MB * Chemistry.QUANTA_PER_MB);
 			if (ventedWater != null) {
 				ventedWater[0] += vented;
 			}
 		}
 
+		// 5.5 dissolved-gas phase separation (generic for every GAS species,
+		// Henry semantics — see Solution#degasGases): the whole-mB excess of a
+		// dissolved gas leaves the aqueous phase. Sealed vessels keep it as a
+		// gas stack in the tank; open vessels vent it to the air.
+		Map<ResourceLocation, Long> outgassed = solution.degasGases();
+
 		// 6. skip the rewrite if nothing happened (avoids sync churn on inert contents)
 		if (!itemDissolved && solution.energyJ() == 0
+			&& outgassed.isEmpty()
 			&& same(beforeMol, solution.molecular()) && same(beforeIons, solution.ions())
 			&& same(beforeSuspended, solution.suspended()) && same(beforeSediment, solution.sediment())) {
 			return solution;
@@ -215,30 +224,35 @@ public final class RulesEngine {
 		// 7. rewrite the aqueous phase (temperature + exotherm). The output maps
 		//    are the FINAL domains — replace, don't merge (dissolution must be able
 		//    to shrink them).
-		Map<ResourceLocation, Integer> molAfter = new LinkedHashMap<>();
-		for (Map.Entry<ResourceLocation, Long> e : solution.molecular().entrySet()) {
-			molAfter.put(e.getKey(), (int) Math.min(e.getValue(), Integer.MAX_VALUE));
-		}
-		Map<String, Integer> ionAfter = new LinkedHashMap<>();
-		for (Map.Entry<String, Long> e : solution.ions().entrySet()) {
-			ionAfter.put(e.getKey(), (int) Math.min(e.getValue(), Integer.MAX_VALUE));
-		}
-		Map<ResourceLocation, Integer> suspAfter = new LinkedHashMap<>();
-		for (Map.Entry<ResourceLocation, Long> e : solution.suspended().entrySet()) {
-			suspAfter.put(e.getKey(), (int) Math.min(e.getValue(), Integer.MAX_VALUE));
-		}
-		Map<ResourceLocation, Integer> sedAfter = new LinkedHashMap<>();
-		for (Map.Entry<ResourceLocation, Long> e : solution.sediment().entrySet()) {
-			sedAfter.put(e.getKey(), (int) Math.min(e.getValue(), Integer.MAX_VALUE));
-		}
+		Map<ResourceLocation, Long> molAfter = new LinkedHashMap<>(solution.molecular());
+		Map<String, Long> ionAfter = new LinkedHashMap<>(solution.ions());
+		Map<ResourceLocation, Long> suspAfter = new LinkedHashMap<>(solution.suspended());
+		Map<ResourceLocation, Long> sedAfter = new LinkedHashMap<>(solution.sediment());
 		// U16 energy ledger: the solve's ΔT is mass-coupled (ΔT = Q/(feedUnits·c)) —
 		// negative energyJ (evaporative latent cooling) cools the body here too
-		tank.setContents(molAfter, ionAfter, suspAfter, sedAfter,
+		tank.setContentsLong(molAfter, ionAfter, suspAfter, sedAfter,
 			clamp((int) Math.round(temperature + solution.heatRiseC())),
-			Chemistry.UNIT_PER_MB);
+			Chemistry.QUANTA_PER_MB);
 		// 8. re-append the inert phases untouched (gases / nonpolar liquids)
 		for (FluidStack s : bystanders) {
 			tank.fill(s.copy(), FluidAction.EXECUTE);
+		}
+		// 9. the separated gas phase: a sealed vessel keeps it (headspace
+		// pressure — the U1 model's domain); an open vessel vents it to the air
+		if (!outgassed.isEmpty()) {
+			for (Map.Entry<ResourceLocation, Long> e : outgassed.entrySet()) {
+				if (openVessel) {
+					continue; // vented
+				}
+				Fluid gas = ForgeRegistries.FLUIDS.getValue(e.getKey());
+				if (gas != null && !gas.isSame(Fluids.EMPTY)) {
+					FluidStack gasStack = new FluidStack(gas,
+						(int) (e.getValue() / Chemistry.QUANTA_PER_MB));
+					Temperature.set(gasStack, tank.getFluids().isEmpty()
+						? temperature : Temperature.get(tank.getFluids().get(0)));
+					tank.fill(gasStack, FluidAction.EXECUTE);
+				}
+			}
 		}
 		return solution;
 	}

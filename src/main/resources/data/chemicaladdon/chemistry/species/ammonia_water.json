@@ -2,7 +2,7 @@
   "formula": "NH3·H2O",
   "phase": "LIQUID",
   "miscibilityGroup": "aqueous",
-  "color": "#C8E0D0",
+  "color": "#8FB4E8",
   "solventRatio": 20,
   "ions": [
     { "ion": "NH4", "charge": 1, "count": 1 },

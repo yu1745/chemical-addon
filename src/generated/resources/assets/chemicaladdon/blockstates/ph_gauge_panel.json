@@ -1,0 +1,27 @@
+{
+  "variants": {
+    "facing=down": {
+      "model": "chemicaladdon:block/ph_gauge_panel",
+      "x": 90
+    },
+    "facing=east": {
+      "model": "chemicaladdon:block/ph_gauge_panel",
+      "y": 90
+    },
+    "facing=north": {
+      "model": "chemicaladdon:block/ph_gauge_panel"
+    },
+    "facing=south": {
+      "model": "chemicaladdon:block/ph_gauge_panel",
+      "y": 180
+    },
+    "facing=up": {
+      "model": "chemicaladdon:block/ph_gauge_panel",
+      "x": 270
+    },
+    "facing=west": {
+      "model": "chemicaladdon:block/ph_gauge_panel",
+      "y": 270
+    }
+  }
+}

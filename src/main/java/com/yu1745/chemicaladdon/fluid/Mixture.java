@@ -95,26 +95,44 @@ public final class Mixture {
 
 	// ---------------------------------------------------------- molecules domain
 
+	/**
+	 * Read one ratio part with legacy compatibility: the fine grid (U18) writes
+	 * long parts; saves from the int-part era load unchanged (parts are ratios —
+	 * any magnitude is a valid composition).
+	 */
+	/** Integer-domain view of the charge-neutrality check (display/test maps). */
+	public static boolean isChargeNeutral(Map<String, Integer> ions) {
+		long sum = 0;
+		for (Map.Entry<String, Integer> e : ions.entrySet()) {
+			sum += (long) Ion.chargeOf(e.getKey()) * e.getValue();
+		}
+		return sum == 0;
+	}
+
+	private static long part(CompoundTag c, String key) {
+		return c.contains(key, 99) ? c.getLong(key) : c.getInt(key);
+	}
+
 	/** Read the molecular composition (species id → part). Empty map if none. */
-	public static Map<ResourceLocation, Integer> getMolecules(FluidStack stack) {
-		Map<ResourceLocation, Integer> molecules = new LinkedHashMap<>();
+	public static Map<ResourceLocation, Long> getMolecules(FluidStack stack) {
+		Map<ResourceLocation, Long> molecules = new LinkedHashMap<>();
 		CompoundTag tag = stack.getTag();
 		if (tag == null) {
 			return molecules;
 		}
 		CompoundTag c = tag.getCompound(KEY_MOLECULES);
 		for (String key : c.getAllKeys()) {
-			molecules.put(new ResourceLocation(key), c.getInt(key));
+			molecules.put(new ResourceLocation(key), part(c, key));
 		}
 		return molecules;
 	}
 
 	/** Write the molecular composition and refresh the blended colour. Does not touch the amount. */
-	public static void setMolecules(FluidStack stack, Map<ResourceLocation, Integer> molecules) {
+	public static void setMolecules(FluidStack stack, Map<ResourceLocation, Long> molecules) {
 		CompoundTag c = new CompoundTag();
-		for (Map.Entry<ResourceLocation, Integer> e : molecules.entrySet()) {
+		for (Map.Entry<ResourceLocation, Long> e : molecules.entrySet()) {
 			if (e.getValue() > 0) {
-				c.putInt(e.getKey().toString(), e.getValue());
+				c.putLong(e.getKey().toString(), e.getValue());
 			}
 		}
 		stack.getOrCreateTag().put(KEY_MOLECULES, c);
@@ -124,15 +142,15 @@ public final class Mixture {
 	// --------------------------------------------------------------- ions domain
 
 	/** Read the ion multiset (ion id → part). Empty map if none. */
-	public static Map<String, Integer> getIons(FluidStack stack) {
-		Map<String, Integer> ions = new LinkedHashMap<>();
+	public static Map<String, Long> getIons(FluidStack stack) {
+		Map<String, Long> ions = new LinkedHashMap<>();
 		CompoundTag tag = stack.getTag();
 		if (tag == null) {
 			return ions;
 		}
 		CompoundTag c = tag.getCompound(KEY_IONS);
 		for (String key : c.getAllKeys()) {
-			ions.put(key, c.getInt(key));
+			ions.put(key, part(c, key));
 		}
 		return ions;
 	}
@@ -142,15 +160,15 @@ public final class Mixture {
 	 * (Σ charge × part must be 0). On rejection nothing is written and false is
 	 * returned (charge neutrality is an invariant — violating it is a bug).
 	 */
-	public static boolean setIons(FluidStack stack, Map<String, Integer> ions) {
-		if (!isChargeNeutral(ions)) {
-			ChemicalAddon.LOGGER.error("Rejected non-charge-neutral ion set: {}", ions);
+	public static boolean setIons(FluidStack stack, Map<String, Long> ions) {
+		if (!isChargeNeutralLong(ions)) {
+			ChemicalAddon.LOGGER.error("Rejected non-charge-neutral ion set: {}", ions, ions);
 			return false;
 		}
 		CompoundTag c = new CompoundTag();
-		for (Map.Entry<String, Integer> e : ions.entrySet()) {
+		for (Map.Entry<String, Long> e : ions.entrySet()) {
 			if (e.getValue() > 0) {
-				c.putInt(e.getKey(), e.getValue());
+				c.putLong(e.getKey(), e.getValue());
 			}
 		}
 		stack.getOrCreateTag().put(KEY_IONS, c);
@@ -159,10 +177,10 @@ public final class Mixture {
 	}
 
 	/** True when Σ(charge × part) == 0 (the charge-neutrality invariant). */
-	public static boolean isChargeNeutral(Map<String, Integer> ions) {
+	public static boolean isChargeNeutralLong(Map<String, Long> ions) {
 		long sum = 0;
-		for (Map.Entry<String, Integer> e : ions.entrySet()) {
-			sum += (long) Ion.chargeOf(e.getKey()) * e.getValue();
+		for (Map.Entry<String, Long> e : ions.entrySet()) {
+			sum += Ion.chargeOf(e.getKey()) * e.getValue();
 		}
 		return sum == 0;
 	}
@@ -170,15 +188,15 @@ public final class Mixture {
 	// ----------------------------------------------------- suspended solids domain
 
 	/** Read the suspended-solid composition (solid species id → part). Empty map if none. */
-	public static Map<ResourceLocation, Integer> getSuspended(FluidStack stack) {
-		Map<ResourceLocation, Integer> suspended = new LinkedHashMap<>();
+	public static Map<ResourceLocation, Long> getSuspended(FluidStack stack) {
+		Map<ResourceLocation, Long> suspended = new LinkedHashMap<>();
 		CompoundTag tag = stack.getTag();
 		if (tag == null) {
 			return suspended;
 		}
 		CompoundTag c = tag.getCompound(KEY_SUSPENDED);
 		for (String key : c.getAllKeys()) {
-			suspended.put(new ResourceLocation(key), c.getInt(key));
+			suspended.put(new ResourceLocation(key), part(c, key));
 		}
 		return suspended;
 	}
@@ -187,11 +205,11 @@ public final class Mixture {
 	 * Write the suspended-solid composition (uncharged solid species → part).
 	 * No charge-neutrality check — suspended solids are electrically neutral.
 	 */
-	public static void setSuspended(FluidStack stack, Map<ResourceLocation, Integer> suspended) {
+	public static void setSuspended(FluidStack stack, Map<ResourceLocation, Long> suspended) {
 		CompoundTag c = new CompoundTag();
-		for (Map.Entry<ResourceLocation, Integer> e : suspended.entrySet()) {
+		for (Map.Entry<ResourceLocation, Long> e : suspended.entrySet()) {
 			if (e.getValue() > 0) {
-				c.putInt(e.getKey().toString(), e.getValue());
+				c.putLong(e.getKey().toString(), e.getValue());
 			}
 		}
 		stack.getOrCreateTag().put(KEY_SUSPENDED, c);
@@ -201,15 +219,15 @@ public final class Mixture {
 	// -------------------------------------------------------- settled solids domain
 
 	/** Read the settled-solid composition (solid species id → part). Empty map if none. */
-	public static Map<ResourceLocation, Integer> getSediment(FluidStack stack) {
-		Map<ResourceLocation, Integer> sediment = new LinkedHashMap<>();
+	public static Map<ResourceLocation, Long> getSediment(FluidStack stack) {
+		Map<ResourceLocation, Long> sediment = new LinkedHashMap<>();
 		CompoundTag tag = stack.getTag();
 		if (tag == null) {
 			return sediment;
 		}
 		CompoundTag c = tag.getCompound(KEY_SEDIMENT);
 		for (String key : c.getAllKeys()) {
-			sediment.put(new ResourceLocation(key), c.getInt(key));
+			sediment.put(new ResourceLocation(key), part(c, key));
 		}
 		return sediment;
 	}
@@ -220,11 +238,11 @@ public final class Mixture {
 	 * {@link #setSuspended}, this does <b>not</b> recolor: sediment is a separate
 	 * bottom layer rendered with its own tint, not part of the fluid colour.
 	 */
-	public static void setSediment(FluidStack stack, Map<ResourceLocation, Integer> sediment) {
+	public static void setSediment(FluidStack stack, Map<ResourceLocation, Long> sediment) {
 		CompoundTag c = new CompoundTag();
-		for (Map.Entry<ResourceLocation, Integer> e : sediment.entrySet()) {
+		for (Map.Entry<ResourceLocation, Long> e : sediment.entrySet()) {
 			if (e.getValue() > 0) {
-				c.putInt(e.getKey().toString(), e.getValue());
+				c.putLong(e.getKey().toString(), e.getValue());
 			}
 		}
 		stack.getOrCreateTag().put(KEY_SEDIMENT, c);
@@ -238,80 +256,97 @@ public final class Mixture {
 	 * exist — they are computed, never stored, which keeps the ratio tag stable.
 	 */
 	public static Map<ResourceLocation, Integer> deriveAmounts(FluidStack stack) {
-		return deriveAmounts(stack, 1);
+		return narrowMol(deriveLongView(stack, 1).molecules);
 	}
 
 	/** The solver-resolution view: amounts in internal units (mB × {@link Chemistry#UNIT_PER_MB}). */
 	public static Map<ResourceLocation, Integer> deriveUnitAmounts(FluidStack stack) {
-		return deriveAmounts(stack, Chemistry.UNIT_PER_MB);
+		return narrowMol(deriveLongView(stack, Chemistry.UNIT_PER_MB).molecules);
 	}
 
-	private static Map<ResourceLocation, Integer> deriveAmounts(FluidStack stack, int scale) {
-		Map<ResourceLocation, Integer> molecules = new LinkedHashMap<>();
-		Map<String, Integer> ions = new LinkedHashMap<>();
-		Map<ResourceLocation, Integer> suspended = new LinkedHashMap<>();
-		Map<ResourceLocation, Integer> sediment = new LinkedHashMap<>();
-		deriveJoint(stack, molecules, ions, suspended, sediment, scale);
-		return molecules;
+	/** The fixed-point fraction view (U18): amounts in quanta (mB × {@link Chemistry#QUANTA_PER_MB}).
+	 * The rules engine's round trip runs on this view so sub-unit equilibrium
+	 * residuals persist in the ratio tag instead of being truncated each solve. */
+	public static Map<ResourceLocation, Long> deriveQuantaAmounts(FluidStack stack) {
+		return deriveLongView(stack, Chemistry.QUANTA_PER_MB).molecules;
 	}
 
 	/** Derive absolute per-component mB of the <b>ion</b> domain (see {@link #deriveAmounts}). */
 	public static Map<String, Integer> deriveIonAmounts(FluidStack stack) {
-		return deriveIonAmounts(stack, 1);
+		return narrowIon(deriveLongView(stack, 1).ions);
 	}
 
 	/** The solver-resolution view: amounts in internal units (mB × {@link Chemistry#UNIT_PER_MB}). */
 	public static Map<String, Integer> deriveUnitIonAmounts(FluidStack stack) {
-		return deriveIonAmounts(stack, Chemistry.UNIT_PER_MB);
+		return narrowIon(deriveLongView(stack, Chemistry.UNIT_PER_MB).ions);
 	}
 
-	private static Map<String, Integer> deriveIonAmounts(FluidStack stack, int scale) {
-		Map<ResourceLocation, Integer> molecules = new LinkedHashMap<>();
-		Map<String, Integer> ions = new LinkedHashMap<>();
-		Map<ResourceLocation, Integer> suspended = new LinkedHashMap<>();
-		Map<ResourceLocation, Integer> sediment = new LinkedHashMap<>();
-		deriveJoint(stack, molecules, ions, suspended, sediment, scale);
-		return ions;
+	/** The fixed-point fraction view (U18, see {@link #deriveQuantaAmounts}). */
+	public static Map<String, Long> deriveQuantaIonAmounts(FluidStack stack) {
+		return deriveLongView(stack, Chemistry.QUANTA_PER_MB).ions;
 	}
 
 	/** Derive absolute per-component mB of the <b>suspended-solid</b> domain (see {@link #deriveAmounts}). */
 	public static Map<ResourceLocation, Integer> deriveSuspendedAmounts(FluidStack stack) {
-		return deriveSuspendedAmounts(stack, 1);
+		return narrowMol(deriveLongView(stack, 1).suspended);
 	}
 
 	/** The solver-resolution view: amounts in internal units (mB × {@link Chemistry#UNIT_PER_MB}). */
 	public static Map<ResourceLocation, Integer> deriveUnitSuspendedAmounts(FluidStack stack) {
-		return deriveSuspendedAmounts(stack, Chemistry.UNIT_PER_MB);
+		return narrowMol(deriveLongView(stack, Chemistry.UNIT_PER_MB).suspended);
 	}
 
-	private static Map<ResourceLocation, Integer> deriveSuspendedAmounts(FluidStack stack, int scale) {
-		Map<ResourceLocation, Integer> molecules = new LinkedHashMap<>();
-		Map<String, Integer> ions = new LinkedHashMap<>();
-		Map<ResourceLocation, Integer> suspended = new LinkedHashMap<>();
-		Map<ResourceLocation, Integer> sediment = new LinkedHashMap<>();
-		deriveJoint(stack, molecules, ions, suspended, sediment, scale);
-		return suspended;
+	/** The fixed-point fraction view (U18, see {@link #deriveQuantaAmounts}). */
+	public static Map<ResourceLocation, Long> deriveQuantaSuspendedAmounts(FluidStack stack) {
+		return deriveLongView(stack, Chemistry.QUANTA_PER_MB).suspended;
 	}
 
 	/** Derive absolute per-component mB of the <b>settled-solid</b> domain (see {@link #deriveAmounts}). */
 	public static Map<ResourceLocation, Integer> deriveSedimentAmounts(FluidStack stack) {
-		return deriveSedimentAmounts(stack, 1);
+		return narrowMol(deriveLongView(stack, 1).sediment);
 	}
 
 	/** The solver-resolution view: amounts in internal units (mB × {@link Chemistry#UNIT_PER_MB}). */
 	public static Map<ResourceLocation, Integer> deriveUnitSedimentAmounts(FluidStack stack) {
-		return deriveSedimentAmounts(stack, Chemistry.UNIT_PER_MB);
+		return narrowMol(deriveLongView(stack, Chemistry.UNIT_PER_MB).sediment);
 	}
 
-	private static Map<ResourceLocation, Integer> deriveSedimentAmounts(FluidStack stack, int scale) {
-		Map<ResourceLocation, Integer> molecules = new LinkedHashMap<>();
-		Map<String, Integer> ions = new LinkedHashMap<>();
-		Map<ResourceLocation, Integer> suspended = new LinkedHashMap<>();
-		Map<ResourceLocation, Integer> sediment = new LinkedHashMap<>();
-		deriveJoint(stack, molecules, ions, suspended, sediment, scale);
-		return sediment;
+	/** The fixed-point fraction view (U18, see {@link #deriveQuantaAmounts}). */
+	public static Map<ResourceLocation, Long> deriveQuantaSedimentAmounts(FluidStack stack) {
+		return deriveLongView(stack, Chemistry.QUANTA_PER_MB).sediment;
 	}
 
+	/** The four long-domain views of one derive pass (typed holder). */
+	private static final class Views {
+		final Map<ResourceLocation, Long> molecules = new LinkedHashMap<>();
+		final Map<String, Long> ions = new LinkedHashMap<>();
+		final Map<ResourceLocation, Long> suspended = new LinkedHashMap<>();
+		final Map<ResourceLocation, Long> sediment = new LinkedHashMap<>();
+	}
+
+	private static Views deriveLongView(FluidStack stack, long scale) {
+		Views v = new Views();
+		deriveJointLong(stack, v.molecules, v.ions, v.suspended, v.sediment, scale);
+		return v;
+	}
+
+	private static Map<ResourceLocation, Integer> narrowMol(Map<ResourceLocation, Long> m) {
+		Map<ResourceLocation, Integer> out = new LinkedHashMap<>();
+		for (Map.Entry<ResourceLocation, Long> e : m.entrySet()) {
+			out.put(e.getKey(), (int) Math.min(e.getValue(), Integer.MAX_VALUE));
+		}
+		return out;
+	}
+
+	private static Map<String, Integer> narrowIon(Map<String, Long> m) {
+		Map<String, Integer> out = new LinkedHashMap<>();
+		for (Map.Entry<String, Long> e : m.entrySet()) {
+			out.put(e.getKey(), (int) Math.min(e.getValue(), Integer.MAX_VALUE));
+		}
+		return out;
+	}
+
+	
 	/**
 	 * Distribute the stack amount across the joint parts exactly once, so the
 	 * molecular + ionic + suspended + sediment amounts sum to the total with no
@@ -321,39 +356,37 @@ public final class Mixture {
 	 * the solver's 1/1000 mB grid, on which sub-mB equilibrium residuals are
 	 * representable).
 	 */
-	private static void deriveJoint(FluidStack stack, Map<ResourceLocation, Integer> molOut,
-		Map<String, Integer> ionOut, Map<ResourceLocation, Integer> suspOut,
-		Map<ResourceLocation, Integer> sedOut, int scale) {
-		Map<ResourceLocation, Integer> molParts = getMolecules(stack);
-		Map<String, Integer> ionParts = getIons(stack);
-		Map<ResourceLocation, Integer> suspParts = getSuspended(stack);
-		Map<ResourceLocation, Integer> sedParts = getSediment(stack);
-		// soft cap: unit-view totals must fit int (the solver's Long maps and the
-		// int distribution below both stay safe even for absurd external stacks)
-		long total = Math.min((long) stack.getAmount() * scale, Integer.MAX_VALUE - 8L);
-		int sum = sumParts(molParts) + sumParts(ionParts) + sumParts(suspParts) + sumParts(sedParts);
+	private static void deriveJointLong(FluidStack stack, Map<ResourceLocation, Long> molOut,
+		Map<String, Long> ionOut, Map<ResourceLocation, Long> suspOut,
+		Map<ResourceLocation, Long> sedOut, long scale) {
+		Map<ResourceLocation, Long> molParts = getMolecules(stack);
+		Map<String, Long> ionParts = getIons(stack);
+		Map<ResourceLocation, Long> suspParts = getSuspended(stack);
+		Map<ResourceLocation, Long> sedParts = getSediment(stack);
+		long total = (long) stack.getAmount() * scale;
+		long sum = sumPartsLong(molParts) + sumPartsLong(ionParts) + sumPartsLong(suspParts) + sumPartsLong(sedParts);
 		if (total <= 0 || sum <= 0) {
 			return;
 		}
 
 		// joint parts with a namespace prefix (molecule vs ion vs suspended vs
 		// sediment), inserted molecule-first
-		Map<String, Integer> joint = new LinkedHashMap<>();
-		for (Map.Entry<ResourceLocation, Integer> e : molParts.entrySet()) {
+		Map<String, Long> joint = new LinkedHashMap<>();
+		for (Map.Entry<ResourceLocation, Long> e : molParts.entrySet()) {
 			joint.put(MOLECULE_PREFIX + e.getKey(), e.getValue());
 		}
-		for (Map.Entry<String, Integer> e : ionParts.entrySet()) {
+		for (Map.Entry<String, Long> e : ionParts.entrySet()) {
 			joint.put(ION_PREFIX + e.getKey(), e.getValue());
 		}
-		for (Map.Entry<ResourceLocation, Integer> e : suspParts.entrySet()) {
+		for (Map.Entry<ResourceLocation, Long> e : suspParts.entrySet()) {
 			joint.put(SUSPENDED_PREFIX + e.getKey(), e.getValue());
 		}
-		for (Map.Entry<ResourceLocation, Integer> e : sedParts.entrySet()) {
+		for (Map.Entry<ResourceLocation, Long> e : sedParts.entrySet()) {
 			joint.put(SEDIMENT_PREFIX + e.getKey(), e.getValue());
 		}
 
-		Map<String, Integer> amounts = distribute(total, joint, sum);
-		for (Map.Entry<String, Integer> e : amounts.entrySet()) {
+		Map<String, Long> amounts = distributeLong(total, joint, sum);
+		for (Map.Entry<String, Long> e : amounts.entrySet()) {
 			if (e.getKey().startsWith(MOLECULE_PREFIX)) {
 				molOut.put(new ResourceLocation(e.getKey().substring(MOLECULE_PREFIX.length())), e.getValue());
 			} else if (e.getKey().startsWith(ION_PREFIX)) {
@@ -367,6 +400,53 @@ public final class Mixture {
 	}
 
 	/**
+	 * Integer-proportional distribution of {@code total} across {@code parts}
+	 * (mole-equivalents); the rounding remainder goes round-robin to the largest
+	 * parts so the result always sums exactly to {@code total}. Long-domain
+	 * (the fine-grid quanta view): total×part stays far inside long range for
+	 * any realistic vessel.
+	 */
+	public static Map<String, Long> distributeLong(long total, Map<String, Long> parts) {
+		return distributeLong(total, parts, sumPartsLong(parts));
+	}
+
+	private static Map<String, Long> distributeLong(long total, Map<String, Long> parts, long sum) {
+		Map<String, Long> amounts = new LinkedHashMap<>();
+		if (parts.isEmpty() || total <= 0 || sum <= 0) {
+			return amounts;
+		}
+		List<Map.Entry<String, Long>> order = new ArrayList<>(parts.entrySet());
+		order.sort((a, b) -> Long.compare(b.getValue(), a.getValue()));
+		long assigned = 0;
+		for (Map.Entry<String, Long> e : order) {
+			// 128-bit exact share: on the quanta grid total × part reaches ~1e19
+			// and overflows long (first seen as a negative sediment share) —
+			// floor via BigInteger, the round-robin below absorbs the remainders
+			long a = java.math.BigInteger.valueOf(total)
+				.multiply(java.math.BigInteger.valueOf(e.getValue()))
+				.divide(java.math.BigInteger.valueOf(sum)).longValue();
+			amounts.put(e.getKey(), a);
+			assigned += a;
+		}
+		int idx = 0;
+		while (assigned < total && idx < order.size() * 4) {
+			Map.Entry<String, Long> e = order.get(idx % order.size());
+			amounts.put(e.getKey(), amounts.get(e.getKey()) + 1);
+			assigned++;
+			idx++;
+		}
+		return amounts;
+	}
+
+	private static long sumPartsLong(Map<?, Long> parts) {
+		long total = 0;
+		for (long v : parts.values()) {
+			total += v;
+		}
+		return total;
+	}
+
+		/**
 	 * Integer-proportional distribution of {@code total} across {@code parts}
 	 * (mole-equivalents); the rounding remainder goes round-robin to the largest
 	 * parts so the result always sums exactly to {@code total}.
@@ -415,14 +495,22 @@ public final class Mixture {
 		if (tag.contains(KEY_COLOR)) {
 			return tag.getInt(KEY_COLOR);
 		}
-		int color = blendColor(getMolecules(stack), getIons(stack), getSuspended(stack));
+		int color = blendColorLong(getMolecules(stack), getIons(stack), getSuspended(stack));
 		tag.putInt(KEY_COLOR, color);
 		return color;
 	}
 
-	/** Recompute + cache the blended colour from all three namespaces. */
-	private static void recolor(FluidStack stack) {
-		stack.getOrCreateTag().putInt(KEY_COLOR, blendColor(getMolecules(stack), getIons(stack), getSuspended(stack)));
+	/**
+	 * Recompute + cache the blended colour from all three namespaces. Public so
+	 * vessel tanks can call it on fill: a creative bucket packs an opaque
+	 * display tint ({@code 0xFF000000 | species.color}) into its FluidStack so
+	 * the item renders distinctly — once that stack enters a vessel, the colour
+	 * must re-derive from the actual contents (colourless → CLEAR_TINT), not
+	 * keep the bucket's identity tint.
+	 */
+	public static void recolor(FluidStack stack) {
+		stack.getOrCreateTag().putInt(KEY_COLOR,
+			blendColorLong(getMolecules(stack), getIons(stack), getSuspended(stack)));
 	}
 
 	/**
@@ -443,12 +531,12 @@ public final class Mixture {
 	 *  Colourless ions are excluded from both the hue average and the concentration
 	 *  (they must neither wash out a coloured solute like Cu+2 nor make a colourless
 	 *  solution read as anything but {@link IonColors#CLEAR_TINT}). */
-	public static int blendColor(Map<ResourceLocation, Integer> molecules, Map<String, Integer> ions,
-			Map<ResourceLocation, Integer> suspended) {
+	public static int blendColorLong(Map<ResourceLocation, Long> molecules, Map<String, Long> ions,
+			Map<ResourceLocation, Long> suspended) {
 		long[] acc = new long[4]; // a, r, g, b
-		int total = 0;
-		int solvent = 0;
-		for (Map.Entry<ResourceLocation, Integer> e : molecules.entrySet()) {
+		long total = 0;
+		long solvent = 0;
+		for (Map.Entry<ResourceLocation, Long> e : molecules.entrySet()) {
 			if (SOLVENT.equals(e.getKey())) {
 				solvent += e.getValue();
 				continue; // colourless solvent
@@ -456,7 +544,7 @@ public final class Mixture {
 			total += e.getValue();
 			accumulate(acc, FluidColors.of(e.getKey()), e.getValue());
 		}
-		for (Map.Entry<String, Integer> e : ions.entrySet()) {
+		for (Map.Entry<String, Long> e : ions.entrySet()) {
 			int c = IonColors.of(e.getKey());
 			if (c == IonColors.CLEAR_TINT) {
 				continue; // colourless ion: no hue, no visible concentration
@@ -464,7 +552,7 @@ public final class Mixture {
 			total += e.getValue();
 			accumulate(acc, c, e.getValue());
 		}
-		for (Map.Entry<ResourceLocation, Integer> e : suspended.entrySet()) {
+		for (Map.Entry<ResourceLocation, Long> e : suspended.entrySet()) {
 			total += e.getValue();
 			accumulate(acc, SolidColors.of(e.getKey()), e.getValue());
 		}
@@ -478,13 +566,34 @@ public final class Mixture {
 		return scaleAlphaByConcentration(blended, total, solvent);
 	}
 
+	public static int blendColor(Map<ResourceLocation, Integer> molecules, Map<String, Integer> ions,
+			Map<ResourceLocation, Integer> suspended) {
+		return blendColorLong(widenMol(molecules), widenIon(ions), widenMol(suspended));
+	}
+
+	private static Map<ResourceLocation, Long> widenMol(Map<ResourceLocation, Integer> m) {
+		Map<ResourceLocation, Long> out = new LinkedHashMap<>();
+		for (Map.Entry<ResourceLocation, Integer> e : m.entrySet()) {
+			out.put(e.getKey(), e.getValue().longValue());
+		}
+		return out;
+	}
+
+	private static Map<String, Long> widenIon(Map<String, Integer> m) {
+		Map<String, Long> out = new LinkedHashMap<>();
+		for (Map.Entry<String, Integer> e : m.entrySet()) {
+			out.put(e.getKey(), e.getValue().longValue());
+		}
+		return out;
+	}
+
 	/**
 	 * Rescale {@code color}'s alpha by the coloured-solute concentration: linear
 	 * interpolation from {@link IonColors#CLEAR_TINT}'s alpha (trace solute) to the
 	 * blend's own alpha (at or above {@link #SATURATED_SOLUTE_FRACTION}). Non-aqueous
 	 * mixes (no solvent) have fraction 1 and keep full opacity.
 	 */
-	private static int scaleAlphaByConcentration(int color, int soluteParts, int solventParts) {
+	private static int scaleAlphaByConcentration(int color, long soluteParts, long solventParts) {
 		float fraction = soluteParts / (float) (soluteParts + solventParts);
 		float t = Math.min(1f, fraction / SATURATED_SOLUTE_FRACTION);
 		int clearA = (IonColors.CLEAR_TINT >>> 24) & 0xFF;
@@ -493,16 +602,16 @@ public final class Mixture {
 	}
 
 	/** Two-domain convenience (suspended empty). */
-	public static int blendColor(Map<ResourceLocation, Integer> molecules, Map<String, Integer> ions) {
-		return blendColor(molecules, ions, Map.of());
+	public static int blendColorLong(Map<ResourceLocation, Long> molecules, Map<String, Long> ions) {
+		return blendColorLong(molecules, ions, Map.of());
 	}
 
 	/** Single-domain convenience (ions + suspended empty). */
-	public static int blendColor(Map<ResourceLocation, Integer> molecules) {
-		return blendColor(molecules, Map.of(), Map.of());
+	public static int blendColorLong(Map<ResourceLocation, Long> molecules) {
+		return blendColorLong(molecules, Map.of(), Map.of());
 	}
 
-	private static void accumulate(long[] acc, int c, int amount) {
+	private static void accumulate(long[] acc, int c, long amount) {
 		acc[0] += (long) ((c >> 24) & 0xFF) * amount;
 		acc[1] += (long) ((c >> 16) & 0xFF) * amount;
 		acc[2] += (long) ((c >> 8) & 0xFF) * amount;
@@ -511,36 +620,38 @@ public final class Mixture {
 
 	// ------------------------------------------------------------------ construct
 
-	/** Build a new mixture FluidStack from a molecular ratio map and a total mB (no ions/suspended/sediment). */
 	public static FluidStack create(Map<ResourceLocation, Integer> molecules, int total) {
-		return create(molecules, Map.of(), Map.of(), Map.of(), total);
+		return createLong(widenMol(molecules), Map.of(), Map.of(), Map.of(), total);
 	}
 
-	/** Build a new mixture FluidStack from joint (molecules + ions) ratios and a total mB. */
 	public static FluidStack create(Map<ResourceLocation, Integer> molecules, Map<String, Integer> ions, int total) {
-		return create(molecules, ions, Map.of(), Map.of(), total);
+		return createLong(widenMol(molecules), widenIon(ions), Map.of(), Map.of(), total);
 	}
 
-	/** Build a new mixture FluidStack from joint (molecules + ions + suspended) ratios and a total mB. */
 	public static FluidStack create(Map<ResourceLocation, Integer> molecules, Map<String, Integer> ions,
 		Map<ResourceLocation, Integer> suspended, int total) {
-		return create(molecules, ions, suspended, Map.of(), total);
+		return createLong(widenMol(molecules), widenIon(ions), widenMol(suspended), Map.of(), total);
+	}
+
+	public static FluidStack create(Map<ResourceLocation, Integer> molecules, Map<String, Integer> ions,
+		Map<ResourceLocation, Integer> suspended, Map<ResourceLocation, Integer> sediment, int total) {
+		return createLong(widenMol(molecules), widenIon(ions), widenMol(suspended), widenMol(sediment), total);
 	}
 
 	/** Build a new mixture FluidStack from joint (molecules + ions + suspended + sediment) ratios and a total mB. */
-	public static FluidStack create(Map<ResourceLocation, Integer> molecules, Map<String, Integer> ions,
-		Map<ResourceLocation, Integer> suspended, Map<ResourceLocation, Integer> sediment, int total) {
-		int g = 0;
-		for (int v : molecules.values()) {
+	public static FluidStack createLong(Map<ResourceLocation, Long> molecules, Map<String, Long> ions,
+		Map<ResourceLocation, Long> suspended, Map<ResourceLocation, Long> sediment, int total) {
+		long g = 0;
+		for (long v : molecules.values()) {
 			g = gcd(g, v);
 		}
-		for (int v : ions.values()) {
+		for (long v : ions.values()) {
 			g = gcd(g, v);
 		}
-		for (int v : suspended.values()) {
+		for (long v : suspended.values()) {
 			g = gcd(g, v);
 		}
-		for (int v : sediment.values()) {
+		for (long v : sediment.values()) {
 			g = gcd(g, v);
 		}
 		FluidStack stack = new FluidStack(fluid(), total);
@@ -554,38 +665,38 @@ public final class Mixture {
 	}
 
 	/** GCD-reduce a molecular ratio map to its canonical smallest equivalent. */
-	public static Map<ResourceLocation, Integer> reduce(Map<ResourceLocation, Integer> molecules) {
-		int g = 0;
-		for (int v : molecules.values()) {
+	public static Map<ResourceLocation, Long> reduce(Map<ResourceLocation, Long> molecules) {
+		long g = 0;
+		for (long v : molecules.values()) {
 			g = gcd(g, v);
 		}
 		if (g <= 1) {
 			return molecules;
 		}
-		Map<ResourceLocation, Integer> reduced = new LinkedHashMap<>();
-		for (Map.Entry<ResourceLocation, Integer> e : molecules.entrySet()) {
+		Map<ResourceLocation, Long> reduced = new LinkedHashMap<>();
+		for (Map.Entry<ResourceLocation, Long> e : molecules.entrySet()) {
 			reduced.put(e.getKey(), e.getValue() / g);
 		}
 		return reduced;
 	}
 
-	private static Map<ResourceLocation, Integer> divideMolecules(Map<ResourceLocation, Integer> m, int g) {
-		Map<ResourceLocation, Integer> out = new LinkedHashMap<>();
-		for (Map.Entry<ResourceLocation, Integer> e : m.entrySet()) {
+	private static Map<ResourceLocation, Long> divideMolecules(Map<ResourceLocation, Long> m, long g) {
+		Map<ResourceLocation, Long> out = new LinkedHashMap<>();
+		for (Map.Entry<ResourceLocation, Long> e : m.entrySet()) {
 			out.put(e.getKey(), e.getValue() / g);
 		}
 		return out;
 	}
 
-	private static Map<String, Integer> divideIons(Map<String, Integer> i, int g) {
-		Map<String, Integer> out = new LinkedHashMap<>();
-		for (Map.Entry<String, Integer> e : i.entrySet()) {
+	private static Map<String, Long> divideIons(Map<String, Long> i, long g) {
+		Map<String, Long> out = new LinkedHashMap<>();
+		for (Map.Entry<String, Long> e : i.entrySet()) {
 			out.put(e.getKey(), e.getValue() / g);
 		}
 		return out;
 	}
 
-	private static int gcd(int a, int b) {
+	private static long gcd(long a, long b) {
 		return b == 0 ? a : gcd(b, a % b);
 	}
 }

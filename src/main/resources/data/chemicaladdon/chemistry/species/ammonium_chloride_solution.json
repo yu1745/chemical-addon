@@ -2,11 +2,14 @@
   "formula": "NH4Cl(aq)",
   "phase": "LIQUID",
   "miscibilityGroup": "aqueous",
-  "color": "#D0E0D0",
+  "color": "#8FB4E8",
   "solventRatio": 10,
   "ions": [
     { "ion": "NH4", "charge": 1, "count": 1 },
     { "ion": "Cl", "charge": -1, "count": 1 }
+  ],
+  "equilibria": [
+    { "reaction": "NH4+1 + water = chemicaladdon:ammonia + H+1", "log_k": -9.25 }
   ],
   "solute": "chemicaladdon:ammonium_chloride",
   "solubility": [

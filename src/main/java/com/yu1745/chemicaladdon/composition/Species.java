@@ -146,12 +146,13 @@ public final class Species {
 	private final int solventRatio; // water parts per formula unit (0 = not a solution)
 	private final int color; // RGB tint for the creative bucket (0 = derive from components)
 	private final String miscibilityGroup; // nullable
+	private final double gasSolubility; // dissolved units retained per water unit before degassing (NaN = default)
 	private final List<PhaseTransition> phaseTransitions;
 
 	private Species(ResourceLocation id, String formula, Phase phase, int boilingPointC, int meltingPointC,
 		List<Component> components, Set<String> dangers, List<IonComponent> ions, List<SuspendedComponent> suspended,
 		List<Equilibrium> equilibria, List<SolubilityPoint> solubility, ResourceLocation solute, int solventRatio,
-		int color, String miscibilityGroup, List<PhaseTransition> phaseTransitions) {
+		int color, String miscibilityGroup, double gasSolubility, List<PhaseTransition> phaseTransitions) {
 		this.id = id;
 		this.formula = formula;
 		this.phase = phase;
@@ -167,6 +168,7 @@ public final class Species {
 		this.solventRatio = solventRatio;
 		this.color = color;
 		this.miscibilityGroup = miscibilityGroup;
+		this.gasSolubility = gasSolubility;
 		this.phaseTransitions = phaseTransitions;
 	}
 
@@ -266,6 +268,9 @@ public final class Species {
 				}
 			}
 			String miscibilityGroup = getStringOrNull(o, "miscibilityGroup");
+			// dissolved-gas retention (Henry semantics): units kept per water unit
+			// before the degas step separates the excess as a pure gas phase
+			double gasSolubility = getDouble(o, "gasSolubility", Double.NaN);
 
 			List<PhaseTransition> transitions = new ArrayList<>();
 			if (o.has("phaseTransition")) {
@@ -281,7 +286,7 @@ public final class Species {
 
 			return new Species(id, formula, phase, bp, mp, List.copyOf(components), Set.copyOf(dangers),
 				List.copyOf(ions), List.copyOf(suspended), List.copyOf(equilibria), List.copyOf(solubility), solute,
-				solventRatio, color, miscibilityGroup, List.copyOf(transitions));
+				solventRatio, color, miscibilityGroup, gasSolubility, List.copyOf(transitions));
 		} catch (Exception e) {
 			Chemistry.LOGGER.error("Failed to parse species {}: {}", id, e.getMessage());
 			return null;
@@ -508,6 +513,11 @@ public final class Species {
 	@Nullable
 	public String miscibilityGroup() {
 		return miscibilityGroup;
+	}
+
+	/** Dissolved units retained per water unit before degassing ({@link #GAS_SOLUBILITY_DEFAULT} when unauthored). */
+	public double gasSolubility() {
+		return gasSolubility;
 	}
 
 	public List<PhaseTransition> phaseTransitions() {

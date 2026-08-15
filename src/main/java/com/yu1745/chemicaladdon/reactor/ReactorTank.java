@@ -119,6 +119,15 @@ public class ReactorTank implements IFluidHandler {
 			return 0;
 		}
 		if (action.execute()) {
+			// a mixture's cached colour is display state, not chemistry: a creative
+			// bucket packs an opaque identity tint that must not ride into the vessel.
+			// Normalise on a copy so same-composition stacks merge (isFluidEqual
+			// compares the whole NBT tag, colour included) and the caller's stack
+			// (e.g. the bucket item's own) keeps its display tint.
+			if (Mixture.isMixture(resource)) {
+				resource = resource.copy();
+				Mixture.recolor(resource);
+			}
 			Fluid fluid = sourceOf(resource);
 			boolean incomingMix = Mixture.isMixture(resource);
 			for (FluidStack f : fluids) {
@@ -945,11 +954,15 @@ public class ReactorTank implements IFluidHandler {
 		for (long v : units.values()) {
 			total += v;
 		}
-		long items = total / RulesEngine.ITEM_UNITS;
+		// this method aggregates the UNIT grid (deriveUnit* views), so the item
+		// denomination must be unit-scale too — RulesEngine.ITEM_UNITS is the
+		// quanta-grid twin used by the solver paths
+		long itemUnits = (long) RulesEngine.MB_PER_ITEM * Chemistry.UNIT_PER_MB;
+		long items = total / itemUnits;
 		if (items <= 0) {
 			return 0; // sub-item remainder only: the heirloom seed stays put
 		}
-		long extracted = items * RulesEngine.ITEM_UNITS;
+		long extracted = items * itemUnits;
 
 		// ---- U16.5 entrainment: the lump's pore liquor rides along ----
 		// proportional shares of the vessel's liquid (water + solutes + ions),
@@ -1278,7 +1291,75 @@ public class ReactorTank implements IFluidHandler {
 	 * solver bug (large imbalance) is still left for the invariant to reject
 	 * loudly.
 	 */
-	private static void repairTraceChargeImbalance(Map<String, Integer> ions) {
+	/**
+	 * Fine-grid write-back (U18, the rules engine's path): same contract as the
+	 * unit-aware {@link #setContents} overload but on the quanta scale (mB ×
+	 * {@link Chemistry#QUANTA_PER_MB}) in long maps — sub-unit equilibrium
+	 * residuals survive the round trip in the ratio tag instead of being
+	 * truncated at every solve.
+	 */
+	public void setContentsLong(Map<ResourceLocation, Long> molecules, Map<String, Long> ions,
+		Map<ResourceLocation, Long> suspended, Map<ResourceLocation, Long> sediment, int temperature, long scale) {
+		fluids.clear();
+		molecules.values().removeIf(v -> v <= 0);
+		ions.values().removeIf(v -> v <= 0);
+		suspended.values().removeIf(v -> v <= 0);
+		sediment.values().removeIf(v -> v <= 0);
+		repairTraceChargeImbalanceLong(ions);
+		if (molecules.isEmpty() && ions.isEmpty() && suspended.isEmpty() && sediment.isEmpty()) {
+			onChanged.run();
+			return;
+		}
+		FluidStack target;
+		if (molecules.size() == 1 && ions.isEmpty() && suspended.isEmpty() && sediment.isEmpty()) {
+			Map.Entry<ResourceLocation, Long> only = molecules.entrySet().iterator().next();
+			Fluid pf = ForgeRegistries.FLUIDS.getValue(only.getKey());
+			if (pf == null || pf == Fluids.EMPTY) {
+				onChanged.run();
+				return;
+			}
+			target = new FluidStack(pf, (int) Math.max(1, only.getValue() / scale));
+		} else {
+			long totalUnits = 0;
+			for (long v : molecules.values()) totalUnits += v;
+			for (long v : ions.values()) totalUnits += v;
+			for (long v : suspended.values()) totalUnits += v;
+			for (long v : sediment.values()) totalUnits += v;
+			int totalMb = (int) Math.round((double) totalUnits / scale);
+			target = Mixture.createLong(molecules, ions, suspended, sediment, Math.max(1, totalMb));
+		}
+		Temperature.set(target, temperature);
+		fluids.add(target);
+		onChanged.run();
+	}
+
+	/** Long-domain twin of {@link #repairTraceChargeImbalance} (same contract). */
+	private static void repairTraceChargeImbalanceLong(Map<String, Long> ions) {
+		long imbalance = 0;
+		for (Map.Entry<String, Long> e : ions.entrySet()) {
+			imbalance += (long) com.yu1745.chemicaladdon.composition.Ion.chargeOf(e.getKey()) * e.getValue();
+		}
+		int guard = 0;
+		while (imbalance != 0 && guard++ < 64) {
+			String pick = null;
+			for (Map.Entry<String, Long> e : ions.entrySet()) {
+				int q = com.yu1745.chemicaladdon.composition.Ion.chargeOf(e.getKey());
+				if ((imbalance > 0 && q > 0) || (imbalance < 0 && q < 0)
+					&& (pick == null || e.getValue() > ions.get(pick))) {
+					pick = e.getKey();
+				}
+			}
+			if (pick == null) {
+				break;
+			}
+			if (ions.merge(pick, -1L, Long::sum) <= 0) {
+				ions.remove(pick);
+			}
+			imbalance -= com.yu1745.chemicaladdon.composition.Ion.chargeOf(pick);
+		}
+	}
+
+		private static void repairTraceChargeImbalance(Map<String, Integer> ions) {
 		long imbalance = 0;
 		for (Map.Entry<String, Integer> e : ions.entrySet()) {
 			imbalance += (long) com.yu1745.chemicaladdon.composition.Ion.chargeOf(e.getKey()) * e.getValue();

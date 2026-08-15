@@ -2,6 +2,7 @@
   "formula": "FeCl3(aq)",
   "phase": "LIQUID",
   "miscibilityGroup": "aqueous",
+  "color": "#B87830",
   "solventRatio": 10,
   "ions": [
     { "ion": "Fe", "charge": 3, "count": 1 },

@@ -286,7 +286,16 @@ M3 首单元（plans/11 §2.1）：修掉 G1/G2/G3 三条公共地基缺口，�
 - **S18 电导率计**（仪表族第三台，plans/12 §2）：读数=10×(Σ离子 units/水 units) 声明 mS 标尺——**分子溶质不导电**（氨水 0 mS vs 铵盐高，波美计做不了的区分）；方块/面板双形式（S03 模式复制），绿针表盘（gen_species）；**报警方向反转**（基类新钩子 `alarmWhenBelow`）：信号=电导率**降至**设定点以下——洗涤完成/水净的终点事件，默认 5 mS。
 - 踩坑：mixture mB 视图经比例 tag 往返有 ±1 重分配（units 精确）——床完好断言放宽 ±2；裸 tank 补清水后要 `collapseIfNeeded()` 并相（真釜里规则引擎每 tick 做）。
 
-### U17 · 分析化学层 + 终点控制
+### U18 · 定点分数（量子网格 10⁷/mB）
+
+把规则引擎的求解刻度从 10⁴/mB 细化到 10⁷/mB（`Chemistry.QUANTA_PER_UNIT=1000`、`QUANTA_PER_MB=10⁷`），亚单位平衡残差在 ratio-tag 里存活而不是每次求解被截断。GameTest 102/102 + JUnit 66/66 全绿。后续（焓记账退休最后两条热护栏）见 plans/13。
+
+- **Mixture long 通道**：parts 存取 `putLong`/`getLong`（legacy int tag 经 `contains(key,99)` 升级），四域 get*/set* 与混合视图 `deriveLongView`/`distributeLong` 全 long 域；`blendColorLong`/`createLong` 为 long 核、Integer 版为兼容委托（泛型擦除不能重载）；量子视图 `deriveQuanta*Amounts`（求解器往返用）、unit/mB 视图保留（运输/显示/测试）。
+- **RulesEngine 量子往返**：读 `deriveQuanta*` → 求解 → `ReactorTank.setContentsLong`（镜像 Integer 版，含 `repairTraceChargeImbalanceLong`）写回；`ITEM_UNITS`/蒸发/纯水入料同步量子化。
+- **修三个真 bug**：①`distributeLong` 的 `total×part` 在量子刻度达 ~1e19 **溢出 long**（症状：沉底份额变负、状态错乱）→ BigInteger 精确 floor；②`coupleDeficits` 每次只动 1 量子、迭代护栏固定 1e5 → 网格越细真实吞吐越低（malachite 在釜内只沉 19%）→ 验证单事件后**按矿物可吸收量分块**（supplier 分块 + 矿物 bisect 边界，网格无关且不 overshoot）；③`extractSolids` 聚合 unit 视图却除以量子化后的 `ITEM_UNITS`（1000× 错位 → 整坨取出全灭）→ 局部 unit 刻度物品面额。
+- **平衡重钉**：细网格解到真质量作用平衡——釜内 malachite 与 JUnit 一致为 50/0/CO₃⁻49/HCO₃⁻101（旧 35/30 混合碱式碳酸盐是粗网格截断伪影），GameTest 钉随之更新。
+
+
 
 测量诚实性（plans/03 §6）全面落地：玩家仪器只读物理间接量，SI/speciation 降级 dev 化验。GameTest 102/102 + JUnit 66/66 全绿。**这一单元把「终点判断」从上帝视角还给化学**：反应完了没，由波美计/pH 计/浊度计/试纸回答，不由机器看穿成分回答——三酸两碱、索尔维碳化（pH≈8.2）、食盐精制的终点从此都有世界内的物理表达。
 

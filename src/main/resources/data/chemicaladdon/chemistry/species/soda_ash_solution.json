@@ -2,10 +2,14 @@
   "formula": "Na2CO3(aq)",
   "phase": "LIQUID",
   "miscibilityGroup": "aqueous",
-  "color": "#E0E8E0",
+  "color": "#8FB4E8",
   "solventRatio": 10,
   "ions": [
     { "ion": "Na", "charge": 1, "count": 2 },
     { "ion": "CO3", "charge": -2, "count": 1 }
+  ],
+  "equilibria": [
+    { "reaction": "CO3-2 + water = HCO3-1 + OH-1", "log_k": -3.67 },
+    { "reaction": "HCO3-1 = chemicaladdon:carbon_dioxide + OH-1", "log_k": -7.65 }
   ]
 }

@@ -5,9 +5,10 @@ import java.util.Map;
 
 /**
  * Colour table for ions, keyed by canonical ion id (e.g. "H+1", "SO4-2").
- * Most inorganic ions are colourless → {@link #CLEAR_TINT} (faint white), so a
- * clear solution of them reads as clear water — a deliberate property: "you
- * cannot tell what is in it" pushes the player toward in-world assay tools.
+ * Most inorganic ions are colourless → {@link #CLEAR_TINT} (the canonical
+ * low-alpha white), so a clear solution of them reads as clear water — a
+ * deliberate property: "you cannot tell what is in it" pushes the player
+ * toward in-world assay tools.
  *
  * <p>Coloured ions (Cu+2 blue …) get their opaque ARGB here;
  * {@link Mixture#blendColor} then tints the mixture by its actual ion content,
@@ -16,12 +17,13 @@ import java.util.Map;
 public final class IonColors {
 
 	/**
-	 * The faint tint of colourless contents (clear water / colourless ions): a
-	 * low-alpha white. Low enough that a white precipitate (CaCO₃, rendered
-	 * opaque) reads clearly against it, but non-zero so the liquid surface stays
-	 * visible. Tune this one alpha to shift "clear" vs "turbid" contrast.
+	 * The definition of "colourless" (clear water / colourless ions / trace
+	 * solute): a low-alpha white — {@code 0x48FFFFFF} is the canonical
+	 * colourless tint for this engine, do not change it. A white precipitate
+	 * (CaCO₃, rendered opaque) still reads clearly against it. Tune the alpha
+	 * only to shift "clear" vs "turbid" contrast.
 	 */
-	public static final int CLEAR_TINT = 0x48FFFFFF; // ~28% opacity faint white
+	public static final int CLEAR_TINT = 0x48FFFFFF; // canonical colourless: ~28% (0x48) white
 
 	private static final Map<String, Integer> COLORS = new HashMap<>();
 	static {

@@ -2,6 +2,7 @@
   "formula": "FeSO4(aq)",
   "phase": "LIQUID",
   "miscibilityGroup": "aqueous",
+  "color": "#8FB08F",
   "solventRatio": 10,
   "ions": [
     { "ion": "Fe", "charge": 2, "count": 1 },

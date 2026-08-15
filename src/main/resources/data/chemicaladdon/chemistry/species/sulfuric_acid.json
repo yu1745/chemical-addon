@@ -2,7 +2,7 @@
   "formula": "H2SO4(aq)",
   "phase": "LIQUID",
   "miscibilityGroup": "aqueous",
-  "color": "#E8E0C0",
+  "color": "#8FB4E8",
   "solventRatio": 20,
   "ions": [
     { "ion": "H", "charge": 1, "count": 2 },

@@ -220,6 +220,51 @@ public final class Solution {
 	 * @return the units actually vented (clamped by the water present) — the
 	 *         crystalliser condenses exactly this much back as distillate.
 	 */
+	/**
+	 * Default dissolved-gas retention (Henry-flavoured): units of a GAS-phase
+	 * molecular species kept per unit of water before the excess separates as
+	 * a pure gas phase. Applies to every gas species that does not author its
+	 * own {@code gasSolubility} (e.g. ammonia's is far higher — 1:700 by
+	 * volume in reality — or the Solvay ammoniated brine would strip).
+	 */
+	public static final double GAS_SOLUBILITY_DEFAULT = 1e-3;
+
+	/**
+	 * Separate the dissolved-gas phase (generic for EVERY gas species — no
+	 * per-gas special cases): each molecular species whose registered phase is
+	 * GAS keeps up to {@code gasSolubility × water} units dissolved; the whole-mB
+	 * excess leaves the solution. Called by the rules engine right after
+	 * {@link #solve()} — the caller decides the separated gas's fate (sealed
+	 * vessel: it stays as a gas stack in the tank; open vessel: it vents).
+	 */
+	public Map<ResourceLocation, Long> degasGases() {
+		Map<ResourceLocation, Long> out = new LinkedHashMap<>();
+		long water = molecular.getOrDefault(WATER, 0L);
+		if (water <= 0) {
+			return out;
+		}
+		for (Map.Entry<ResourceLocation, Long> e : molecular.entrySet()) {
+			Species species = SpeciesManager.get(e.getKey());
+			if (species == null || species.phase() != Species.Phase.GAS) {
+				continue;
+			}
+			double retention = Double.isNaN(species.gasSolubility())
+				? GAS_SOLUBILITY_DEFAULT : species.gasSolubility();
+			long excess = e.getValue() - (long) (retention * water);
+			// only whole mB leaves — sub-mB fractions stay dissolved (the
+			// transport/display granularity is the mB, not the solver unit)
+			excess = excess / Chemistry.QUANTA_PER_MB * Chemistry.QUANTA_PER_MB;
+			if (excess > 0) {
+				out.put(e.getKey(), excess);
+			}
+		}
+		for (Map.Entry<ResourceLocation, Long> e : out.entrySet()) {
+			mergeMolecular(e.getKey(), -e.getValue());
+		}
+		removeNonPositive(molecular);
+		return out;
+	}
+
 	public long evaporateWater(long units) {
 		long vented = Math.min(units, molecular.getOrDefault(WATER, 0L));
 		if (vented <= 0) {
@@ -316,13 +361,187 @@ public final class Solution {
 				if (eq.rate() > 0 && (pass > 0 || round > 0)) {
 					continue; // kinetic entries advance once per solve (their tick budget)
 				}
+				if (hasTerm(eq.right(), H) && bulkAcid()) {
+					// strong-acid regime: an acid-producing entry (e.g. NH4+1 +
+					// water = ammonia + H+1) would relax BACKWARD and silently
+					// protonate the bulk H+ (no heat bookkeeping) before the
+					// driven routes below can consume it — freeze such entries
+					// while H+ is macroscopic; the equilibrium layer owns the
+					// pH only at trace levels (below STRONG_ION_FRACTION).
+					continue;
+				}
 				movedTotal += Math.abs(solveEntry(eq));
 			}
+			movedTotal += coupleDeficits();
 			movedTotal += neutralise();
 			if (movedTotal == 0) {
 				break;
 			}
 		}
+	}
+
+	/**
+	 * Macroscopic-strong-ion threshold: a strong ion counts as BULK once it
+	 * exceeds {@link #STRONG_ION_FRACTION} of the feed (≈pH 4 at any scale).
+	 * Below it, driven neutralisation stops forcing pairs — otherwise the
+	 * driver would eat the H⁺/OH⁻ that a weak-acid/base equilibrium itself
+	 * produces (e.g. NH₄⁺ hydrolysis), re-relax it, and pump
+	 * {@link Chemistry#NEUTRALISATION_J_PER_PAIR} out of every round forever.
+	 */
+	private static final double STRONG_ION_FRACTION = 1e-4;
+
+
+	/**
+	 * Coupled co-move: the microscopic-reality fix for integer-floor deadlocks.
+	 * In a real solution two coupled reactions happen as ONE molecular event - a
+	 * mineral grabs its second OH- at the very instant hydrolysis sheds it. The
+	 * sequential single-entry relaxation cannot express that: when a
+	 * supersaturated mineral needs {@code c >= 2} units of a shared reactant and
+	 * only {@code < c} remain, {@code maxMovable} floors to 0 and BOTH entries
+	 * freeze at a false fixed point with {@code Q != K} (first seen with
+	 * malachite: 82 Cu2+ stuck in solution with OH- pinned at 1). This pass
+	 * lets the mineral's affinity DRAG its supplier: while the mineral is
+	 * supersaturated and blocked, push any aqueous entry that produces the
+	 * deficient ion one step in the producing direction, then take the
+	 * mineral's own step - the generalisation of {@code driveWeakElectrolytes}'s
+	 * H+/OH- pairing to arbitrary shared ions.
+	 *
+	 * <p>Guard rails: only supersaturated MINERALS are driven (their pull is
+	 * the thermodynamic engine); H+ is never supplied here (the neutralise
+	 * machinery owns it); no supplier means a genuine equilibrium floor, stop.
+	 * Whole reaction sets move, so charge neutrality is preserved.
+	 *
+	 * @return reaction events co-moved this call (feeds the round's progress test)
+	 */
+	private long coupleDeficits() {
+		long events = 0;
+		for (Equilibrium mineral : SpeciesManager.allEquilibria()) {
+			if (mineral.solid() == null) {
+				continue; // driven side: minerals only
+			}
+			for (int guard = 0; guard < 100_000; guard++) {
+				if (logQ(mineral, 0) <= effectiveLogK(mineral)) {
+					break; // no longer supersaturated: the normal relaxation owns it
+				}
+				// deficit analysis on the mineral's aqueous reactants (right side)
+				Equilibrium.Term deficit = null;
+				for (Equilibrium.Term t : mineral.right()) {
+					if (isAqueous(t) && amountOf(t) < t.count()) {
+						deficit = t;
+						break;
+					}
+				}
+				if (deficit == null) {
+					break; // not blocked: the normal relaxation owns it
+				}
+				if (deficit.key().equals(H)) {
+					break; // H+ belongs to the neutralise machinery
+				}
+				// a supplier: an aqueous entry that produces the deficient ion —
+				// but ONLY when the COUPLED event is net-downhill, exactly the
+				// microscopic criterion (two reactions proceed together when the
+				// combined event has negative ΔG). Without this guard the pass
+				// would unwind complexes through the trace-ion floor: e.g. drag
+				// [Zn(NH3)4]2- apart one unit at a time to feed Zn(OH)2 that is
+				// only "supersaturated" because 1 leftover Zn unit is the grid's
+				// smallest representable trace.
+				double mineralPull = logQ(mineral, 0) - effectiveLogK(mineral);
+				Equilibrium supplierFound = null;
+				int supplyDir = 0;
+				List<Equilibrium.Term> consumedSide = null;
+				for (Equilibrium supplier : SpeciesManager.allEquilibria()) {
+					if (supplier.solid() != null || supplier == mineral) {
+						continue;
+					}
+					for (int d : SUPPLY_DIRECTIONS) {
+						List<Equilibrium.Term> produced = d > 0 ? supplier.right() : supplier.left();
+						List<Equilibrium.Term> consumed = d > 0 ? supplier.left() : supplier.right();
+						if (!hasTerm(produced, deficit.key()) || maxMovable(consumed) <= 0) {
+							continue;
+						}
+						if (!consumesWater(consumed)) {
+							// only SOLVENT-mediated steps may be dragged: a weak
+							// electrolyte ionising (water on its reactant side) is
+							// the microscopic picture — the mineral tears OH- out of
+							// water. Anything else (a complex dissociating to feed a
+							// trace metal) is grid noise unwinding, not coupling.
+							continue;
+						}
+						// the supplier step's own affinity in direction d (log K − log Q
+						// for forward, reversed for backward)
+						double supplierAffinity = d > 0
+							? effectiveLogK(supplier) - logQ(supplier, 0)
+							: logQ(supplier, 0) - effectiveLogK(supplier);
+						if (mineralPull + supplierAffinity <= 0) {
+							continue; // the coupled event is net-uphill: not microscopically real
+						}
+						supplierFound = supplier;
+						supplyDir = d;
+						consumedSide = consumed;
+						break;
+					}
+					if (supplierFound != null) {
+						break;
+					}
+				}
+				if (supplierFound == null) {
+					break; // a real floor: nothing can supply the deficit
+				}
+				// the mineral's step, now that the deficit is covered. The event
+				// is validated at ONE unit, then (U18 grid-fineness fix) moved in
+				// BULK: supply exactly what the mineral can absorb — its extent
+				// as limited by every OTHER aqueous reactant — and let it take
+				// its own equilibrium-bounded step (the same bisected backward
+				// relax solveEntry uses). One quantum at a time would tie total
+				// progress to the iteration guard, so a finer grid would
+				// precipitate slower in real terms; draining the supplier's whole
+				// capacity instead floods the solution far past what
+				// precipitation takes back out and the round budget ends mid-
+				// restore. The absorb-sized chunk keeps the co-move grid-agnostic
+				// without overshoot; any small leftover is relaxed back.
+				long extent = Long.MAX_VALUE;
+				for (Equilibrium.Term t : mineral.right()) {
+					if (isAqueous(t) && !t.key().equals(deficit.key())) {
+						extent = Math.min(extent, amountOf(t) / t.count());
+					}
+				}
+				long producedPerEvent = 1;
+				for (Equilibrium.Term t : supplyDir > 0 ? supplierFound.right() : supplierFound.left()) {
+					if (t.key().equals(deficit.key())) {
+						producedPerEvent = t.count();
+					}
+				}
+				long need = extent == Long.MAX_VALUE ? Long.MAX_VALUE
+					: (long) Math.ceil((double) (extent * deficit.count() - amountOf(deficit)) / producedPerEvent);
+				long chunk = Math.max(1, Math.min(need, maxMovable(consumedSide)));
+				if (chunk > 1) {
+					applyMove(supplierFound, supplyDir * chunk);
+					long m = bisect(mineral, 0, maxMovable(mineral.right()), effectiveLogK(mineral), false);
+					if (m > 0) {
+						applyMove(mineral, -m);
+						events += m;
+					} else if (maxMovable(mineral.right()) > 0) {
+						applyMove(mineral, -1); // sub-count tail (deficit count > 1 per event)
+						events++;
+					}
+				} else if (maxMovable(mineral.right()) > 0) {
+					applyMove(mineral, -1);
+					events++;
+				}
+			}
+		}
+		return events;
+	}
+
+	/** Both relaxation directions for the supplier search (forward, backward). */
+	private static final int[] SUPPLY_DIRECTIONS = { 1, -1 };
+
+	private boolean bulkAcid() {
+		return bulkIon(ions.getOrDefault(H, 0L));
+	}
+
+	private boolean bulkIon(long units) {
+		return units >= Math.max(1, (long) (feedUnits * STRONG_ION_FRACTION));
 	}
 
 	/**
@@ -488,6 +707,16 @@ public final class Solution {
 		return t.phase() == Equilibrium.TermPhase.MOLECULE && t.species() != null && t.species().getPath().equals("water");
 	}
 
+	/** True when the side consumes the solvent (a weak-electrolyte ionisation step). */
+	private static boolean consumesWater(List<Equilibrium.Term> side) {
+		for (Equilibrium.Term t : side) {
+			if (isSolvent(t)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private long amountOf(Equilibrium.Term t) {
 		return switch (t.phase()) {
 			case ION -> ions.getOrDefault(t.key(), 0L);
@@ -517,8 +746,13 @@ public final class Solution {
 	}
 
 	private long neutraliseDirect() {
-		long n = Math.min(ions.getOrDefault(H, 0L), ions.getOrDefault(OH, 0L));
-		if (n <= 0) {
+		long h = ions.getOrDefault(H, 0L);
+		long oh = ions.getOrDefault(OH, 0L);
+		long n = Math.min(h, oh);
+		// both ions must be BULK: if only one is macroscopic the minority ion is
+		// equilibrium-trace (e.g. the H⁺ that NH₄⁺ hydrolysis sheds into an
+		// alkaline liquor) and consuming it per round would pump heat forever
+		if (n <= 0 || !bulkIon(h) || !bulkIon(oh)) {
 			return 0;
 		}
 		mergeIon(H, -n);
@@ -548,10 +782,10 @@ public final class Solution {
 			}
 			for (int guard = 0; guard < 100_000; guard++) {
 				boolean did = false;
-				if (ohRight && ions.getOrDefault(H, 0L) > 0 && maxMovable(eq.left()) > 0) {
+				if (ohRight && bulkAcid() && maxMovable(eq.left()) > 0) {
 					applyMove(eq, 1); // shed one OH⁻ ...
 					did = consumeHydroxideWithAcid();
-				} else if (ohLeft && ions.getOrDefault(H, 0L) > 0 && maxMovable(eq.right()) > 0) {
+				} else if (ohLeft && bulkAcid() && maxMovable(eq.right()) > 0) {
 					applyMove(eq, -1); // ... or release one OH⁻ from the product side
 					did = consumeHydroxideWithAcid();
 				}

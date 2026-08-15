@@ -1,6 +1,6 @@
 # AGENTS.md - chemical-addon（Create 化学附属）
 
-本仓库是 **Create Forge 6.0.8 的无机化工附属**（Forge 1.20.1，Java 17），设计计划书在 `plans/`（主索引 `plans/README.md`，生态盘点与平台决策 `plans/00-ecosystem-recon.md`），**开发进度在 `docs/progress.md`**（M0–M2.5 + **U1 容器状态层** + **U13 规则引擎 v2**（统一 equilibria 平衡条目 + 质量作用求解器，PHREEQC 语义；引擎边界：自发的归规则引擎、红氧归配方层）+ **U14 JUnit 引擎测试层**（`./gradlew test`，composition 层剥离 MC）+ **U15 晶粒、投种与混合固体物品**（晶粒 1/16 面额 + 投种 + mixed_residue 整坨取出：「取出禁止选物种，严格单物种即纯，混合=盐渣」）+ **U16 反应热能量记账**（J/unit 账本，ΔT=Q/(feedUnits×4.18)，蒸发潜热自限）+ **U16.5 湿饼夹带与洗涤**（取出夹带母液、再浆/置换洗涤、S18 电导率计）+ **U17 分析化学层 + 终点控制**（S16 pH 计/S04 波美计/S17 浊度计/试纸族 7 件、护目镜 SI 降级 dev 化验、M08 终点结晶器）完成，GameTest 102/102 + JUnit 66/66；**M3+ 开工顺序以 `plans/11-content-scope.md` §2 为唯一定义**；改代码前先看它了解现状）。
+本仓库是 **Create Forge 6.0.8 的无机化工附属**（Forge 1.20.1，Java 17），设计计划书在 `plans/`（主索引 `plans/README.md`，生态盘点与平台决策 `plans/00-ecosystem-recon.md`），**开发进度在 `docs/progress.md`**（M0–M2.5 + **U1 容器状态层** + **U13 规则引擎 v2**（统一 equilibria 平衡条目 + 质量作用求解器，PHREEQC 语义；引擎边界：自发的归规则引擎、红氧归配方层）+ **U14 JUnit 引擎测试层**（`./gradlew test`，composition 层剥离 MC）+ **U15 晶粒、投种与混合固体物品**（晶粒 1/16 面额 + 投种 + mixed_residue 整坨取出：「取出禁止选物种，严格单物种即纯，混合=盐渣」）+ **U16 反应热能量记账**（J/unit 账本，ΔT=Q/(feedUnits×4.18)，蒸发潜热自限）+ **U16.5 湿饼夹带与洗涤**（取出夹带母液、再浆/置换洗涤、S18 电导率计）+ **U17 分析化学层 + 终点控制**（S16 pH 计/S04 波美计/S17 浊度计/试纸族 7 件、护目镜 SI 降级 dev 化验、M08 终点结晶器）+ **U18 定点分数**（求解刻度量子化 10⁷/mB：Mixture long 通道 + 引擎量子往返 + 分块协同移动；下一步焓记账见 plans/13）完成，GameTest 102/102 + JUnit 66/66；**M3+ 开工顺序以 `plans/11-content-scope.md` §2 为唯一定义**；改代码前先看它了解现状）。
 
 ## 核心架构（改动前必读 plans/03-substance-model.md）
 

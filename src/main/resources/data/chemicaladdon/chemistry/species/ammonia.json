@@ -1,9 +1,13 @@
 {
   "formula": "NH3",
   "phase": "GAS",
+  "gasSolubility": 0.5,
   "boilingPointC": -33,
   "meltingPointC": -78,
   "equilibria": [
-    { "reaction": "chemicaladdon:ammonia + water = NH4+1 + OH-1", "log_k": -4.75 }
+    {
+      "reaction": "chemicaladdon:ammonia + water = NH4+1 + OH-1",
+      "log_k": -4.75
+    }
   ]
 }

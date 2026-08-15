@@ -36,6 +36,14 @@ public final class Chemistry {
 	 */
 	public static final int UNIT_PER_MB = 10_000;
 
+	/** The fixed-point fraction grid (U18): the solver's round trip runs at
+	 * QUANTA_PER_UNIT × the legacy unit grid — 1/10,000,000 mB — so equilibrium
+	 * residuals three orders below any display/transport resolution persist in
+	 * the ratio tag instead of being truncated at every write-back. Long math
+	 * throughout; parts are ratios so legacy int-tagged saves load unchanged. */
+	public static final long QUANTA_PER_UNIT = 1_000;
+	public static final long QUANTA_PER_MB = (long) UNIT_PER_MB * QUANTA_PER_UNIT;
+
 	/** Slf4j logger under the same name the mod uses; safe headless. */
 	public static final Logger LOGGER = LogUtils.getLogger();
 

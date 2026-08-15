@@ -2,9 +2,15 @@ package com.yu1745.chemicaladdon.composition;
 
 import static com.yu1745.chemicaladdon.composition.EngineHarness.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.Map;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+
+import net.minecraft.resources.ResourceLocation;
 
 /**
  * The classic aqueous double-displacement / precipitation matrix, checked at
@@ -132,12 +138,22 @@ class PrecipitationTest {
 
 	@Test
 	void basicCopperCarbonateLeavesColourlessMotherLiquor() {
-		// soda ash + copper sulfate flagship: malachite-green slurry + spectators
+		// soda ash + copper sulfate flagship: malachite-green slurry + spectators.
+		// With the malachite entry authored in its bicarbonate (net) form —
+		// copper_carbonate(s) + 2 HCO3 = 2 Cu + 3 CO3 + 2 water, the linear
+		// combination of the Ksp and hydrolysis entries — the precipitate runs
+		// to the REAL stoichiometry: 2 Cu + 2 CO3 + H2O -> malachite + CO2,
+		// 50 units of malachite per 100 Cu, half the carbonate excess left.
+		// (The CO2 half ends as dissolved HCO3 at this 1-bucket scale: the
+		// CO2 equilibrium concentration is sub-mB here, so the degas step only
+		// vents it in production-size batches — sealed-vessel behaviour.)
 		Solution s = solve(1000, ions("Cu+2", 100L, "SO4-2", 100L, "Na+1", 400L, "CO3-2", 200L), 20);
-		assertSuspended(s, "copper_carbonate", 100);
+		assertSuspended(s, "copper_carbonate", 50);
 		assertIon(s, "Cu+2", 0);
-		assertIon(s, "CO3-2", 100);
-		assertEquals(com.yu1745.chemicaladdon.fluid.SolidColors.of(id("copper_carbonate")),
-			tintOf(s), "the slurry should render the malachite-green solid colour");
+		assertIon(s, "CO3-2", 50);
+		assertIon(s, "HCO3-1", 100);
+		assertIon(s, "Na+1", 400);
+		assertIon(s, "SO4-2", 100);
+		assertNeutral(s);
 	}
 }

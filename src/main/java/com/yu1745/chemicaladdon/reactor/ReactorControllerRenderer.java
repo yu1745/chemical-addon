@@ -302,14 +302,14 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 		// settled solids (sediment): a textured bottom layer tinted by the solid's
 		// colour (the same "decolorised texture × tint" pipeline as fluids), height
 		// proportional to the amount (levelHeight × sediment/total).
-		Map<ResourceLocation, Integer> sedParts = new LinkedHashMap<>();
+		Map<ResourceLocation, Long> sedParts = new LinkedHashMap<>();
 		int sedimentAmount = 0;
 		for (FluidStack f : fluids) {
 			if (!Mixture.isMixture(f)) {
 				continue;
 			}
-			for (Map.Entry<ResourceLocation, Integer> e : Mixture.getSediment(f).entrySet()) {
-				sedParts.merge(e.getKey(), e.getValue(), Integer::sum);
+			for (Map.Entry<ResourceLocation, Long> e : Mixture.getSediment(f).entrySet()) {
+				sedParts.merge(e.getKey(), e.getValue(), Long::sum);
 			}
 			for (int v : Mixture.deriveSedimentAmounts(f).values()) {
 				sedimentAmount += v;
@@ -317,7 +317,7 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 		}
 		float sedimentHeight = levelHeight * sedimentAmount / total;
 		if (sedimentHeight > 1 / 1024f) {
-			renderTintedBox(Mixture.blendColor(Map.of(), Map.of(), sedParts),
+			renderTintedBox(Mixture.blendColorLong(Map.<ResourceLocation, Long>of(), Map.<String, Long>of(), sedParts),
 				ix1, 0, iz1, ix2, sedimentHeight, iz2, ms, buffer, light);
 		}
 
@@ -369,7 +369,7 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 			// a turbid suspension: render the fluid body opaque, tinted by the suspended
 			// solid's colour (CaCO3 → white). Reuses the neutral texture + tint pipeline;
 			// only the tint is forced opaque so it reads as milky, not clear.
-			int turbid = Mixture.blendColor(Map.of(), Map.of(), Mixture.getSuspended(fluid)) | 0xFF000000;
+			int turbid = Mixture.blendColorLong(Map.<ResourceLocation, Long>of(), Map.<String, Long>of(), Mixture.getSuspended(fluid)) | 0xFF000000;
 			render = new FluidStack(Mixture.fluid(), fluid.getAmount());
 			render.getOrCreateTag().putInt(Mixture.KEY_COLOR, turbid);
 		} else {

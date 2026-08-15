@@ -2,7 +2,7 @@
   "formula": "NH4NO3(aq)",
   "phase": "LIQUID",
   "miscibilityGroup": "aqueous",
-  "color": "#E0E8E8",
+  "color": "#8FB4E8",
   "solventRatio": 10,
   "ions": [
     { "ion": "NH4", "charge": 1, "count": 1 },
