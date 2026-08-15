@@ -1,18 +1,25 @@
 package com.yu1745.chemicaladdon.registry;
 
 import com.yu1745.chemicaladdon.ChemicalAddon;
+import com.yu1745.chemicaladdon.reactor.BaumeGaugeBlockEntity;
+import com.yu1745.chemicaladdon.reactor.BaumeGaugePanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ConductivityGaugeBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ConductivityGaugePanelBlockEntity;
+import com.yu1745.chemicaladdon.reactor.CrystallizerControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.DecantHoseBlockEntity;
 import com.yu1745.chemicaladdon.reactor.DecantPortBlockEntity;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlockEntity;
+import com.yu1745.chemicaladdon.reactor.PhGaugeBlockEntity;
+import com.yu1745.chemicaladdon.reactor.PhGaugePanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.PressureGaugeBlockEntity;
 import com.yu1745.chemicaladdon.reactor.PressureGaugePanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.SettlingBasinBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ThermometerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ThermometerPanelBlockEntity;
+import com.yu1745.chemicaladdon.reactor.TurbidityGaugeBlockEntity;
+import com.yu1745.chemicaladdon.reactor.TurbidityGaugePanelBlockEntity;
 
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -85,6 +92,42 @@ public class AllBlockEntities {
 		REGISTER.register("conductivity_gauge_panel",
 			() -> BlockEntityType.Builder.of(ConductivityGaugePanelBlockEntity::new,
 				AllBlocks.CONDUCTIVITY_GAUGE_PANEL.get())
+				.build(null));
+
+	public static final RegistryObject<BlockEntityType<PhGaugeBlockEntity>> PH_GAUGE =
+		REGISTER.register("ph_gauge",
+			() -> BlockEntityType.Builder.of(PhGaugeBlockEntity::new, AllBlocks.PH_GAUGE.get())
+				.build(null));
+
+	public static final RegistryObject<BlockEntityType<PhGaugePanelBlockEntity>> PH_GAUGE_PANEL =
+		REGISTER.register("ph_gauge_panel",
+			() -> BlockEntityType.Builder.of(PhGaugePanelBlockEntity::new, AllBlocks.PH_GAUGE_PANEL.get())
+				.build(null));
+
+	public static final RegistryObject<BlockEntityType<BaumeGaugeBlockEntity>> BAUME_GAUGE =
+		REGISTER.register("baume_gauge",
+			() -> BlockEntityType.Builder.of(BaumeGaugeBlockEntity::new, AllBlocks.BAUME_GAUGE.get())
+				.build(null));
+
+	public static final RegistryObject<BlockEntityType<BaumeGaugePanelBlockEntity>> BAUME_GAUGE_PANEL =
+		REGISTER.register("baume_gauge_panel",
+			() -> BlockEntityType.Builder.of(BaumeGaugePanelBlockEntity::new, AllBlocks.BAUME_GAUGE_PANEL.get())
+				.build(null));
+
+	public static final RegistryObject<BlockEntityType<TurbidityGaugeBlockEntity>> TURBIDITY_GAUGE =
+		REGISTER.register("turbidity_gauge",
+			() -> BlockEntityType.Builder.of(TurbidityGaugeBlockEntity::new, AllBlocks.TURBIDITY_GAUGE.get())
+				.build(null));
+
+	public static final RegistryObject<BlockEntityType<TurbidityGaugePanelBlockEntity>> TURBIDITY_GAUGE_PANEL =
+		REGISTER.register("turbidity_gauge_panel",
+			() -> BlockEntityType.Builder.of(TurbidityGaugePanelBlockEntity::new, AllBlocks.TURBIDITY_GAUGE_PANEL.get())
+				.build(null));
+
+	public static final RegistryObject<BlockEntityType<CrystallizerControllerBlockEntity>> CRYSTALLIZER_CONTROLLER =
+		REGISTER.register("crystallizer_controller",
+			() -> BlockEntityType.Builder.of(CrystallizerControllerBlockEntity::new,
+				AllBlocks.CRYSTALLIZER_CONTROLLER.get())
 				.build(null));
 
 	public static void register(IEventBus modEventBus) {

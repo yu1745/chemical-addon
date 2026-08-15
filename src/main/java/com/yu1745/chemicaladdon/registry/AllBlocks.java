@@ -5,19 +5,26 @@ import com.tterrag.registrate.util.entry.BlockEntry;
 import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.client.connected.ConnectedModelBuilder;
 import com.yu1745.chemicaladdon.item.GaugeBlockItem;
+import com.yu1745.chemicaladdon.reactor.BaumeGaugeBlock;
+import com.yu1745.chemicaladdon.reactor.BaumeGaugePanelBlock;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlock;
 import com.yu1745.chemicaladdon.reactor.ChemicalGlassBlock;
 import com.yu1745.chemicaladdon.reactor.ConductivityGaugeBlock;
 import com.yu1745.chemicaladdon.reactor.ConductivityGaugePanelBlock;
+import com.yu1745.chemicaladdon.reactor.CrystallizerControllerBlock;
 import com.yu1745.chemicaladdon.reactor.DecantHoseBlock;
 import com.yu1745.chemicaladdon.reactor.DecantPortBlock;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlock;
+import com.yu1745.chemicaladdon.reactor.PhGaugeBlock;
+import com.yu1745.chemicaladdon.reactor.PhGaugePanelBlock;
 import com.yu1745.chemicaladdon.reactor.PressureGaugeBlock;
 import com.yu1745.chemicaladdon.reactor.PressureGaugePanelBlock;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlock;
 import com.yu1745.chemicaladdon.reactor.SettlingBasinBlockEntity.SettlingBasinBlock;
 import com.yu1745.chemicaladdon.reactor.ThermometerBlock;
 import com.yu1745.chemicaladdon.reactor.ThermometerPanelBlock;
+import com.yu1745.chemicaladdon.reactor.TurbidityGaugeBlock;
+import com.yu1745.chemicaladdon.reactor.TurbidityGaugePanelBlock;
 
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.Direction;
@@ -198,19 +205,116 @@ public class AllBlocks {
 
 	/** S18 conductivity gauge (电导率计, 薄板形式, U16.5): thin face-mounted plate reading ionic strength. */
 	public static final BlockEntry<ConductivityGaugePanelBlock> CONDUCTIVITY_GAUGE_PANEL =
-		REGISTRATE.block("conductivity_gauge_panel", ConductivityGaugePanelBlock::new)
-			.properties(p -> p.mapColor(MapColor.METAL).strength(1.5f, 4.0f)
-				.noOcclusion()
-				.isRedstoneConductor((a, b, c) -> false)
-				.isSuffocating((a, b, c) -> false)
-				.isViewBlocking((a, b, c) -> false))
-			.lang("Conductivity Gauge Panel")
-			.blockstate((ctx, prov) -> plateVariants(prov, ctx.get(), ctx.getName()))
-			.item(GaugeBlockItem::new)
-			.model((ctx, prov) -> prov.getBuilder(ctx.getName())
-	.parent(new ModelFile.UncheckedModelFile("builtin/entity")))
-			.build()
-			.register();
+			REGISTRATE.block("conductivity_gauge_panel", ConductivityGaugePanelBlock::new)
+				.properties(p -> p.mapColor(MapColor.METAL).strength(1.5f, 4.0f)
+					.noOcclusion()
+					.isRedstoneConductor((a, b, c) -> false)
+					.isSuffocating((a, b, c) -> false)
+					.isViewBlocking((a, b, c) -> false))
+				.lang("Conductivity Gauge Panel")
+				.blockstate((ctx, prov) -> plateVariants(prov, ctx.get(), ctx.getName()))
+				.item(GaugeBlockItem::new)
+				.model((ctx, prov) -> prov.getBuilder(ctx.getName())
+					.parent(new ModelFile.UncheckedModelFile("builtin/entity")))
+				.build()
+				.register();
+
+	/** S16 pH gauge (pH 计, 方块形式, U17): vessel shell block reading H⁺ activity (Kw on the alkaline side). */
+	public static final BlockEntry<PhGaugeBlock> PH_GAUGE =
+			REGISTRATE.block("ph_gauge", PhGaugeBlock::new)
+				.properties(p -> p.mapColor(MapColor.METAL).strength(2.0f, 6.0f))
+				.lang("pH Gauge")
+				.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(),
+					prov.models().cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
+				.item(GaugeBlockItem::new)
+				.model((ctx, prov) -> prov.getBuilder(ctx.getName())
+					.parent(new ModelFile.UncheckedModelFile("builtin/entity")))
+				.build()
+				.register();
+
+	/** S16 pH gauge (pH 计, 薄板形式, U17): thin face-mounted plate reading H⁺ activity. */
+	public static final BlockEntry<PhGaugePanelBlock> PH_GAUGE_PANEL =
+			REGISTRATE.block("ph_gauge_panel", PhGaugePanelBlock::new)
+				.properties(p -> p.mapColor(MapColor.METAL).strength(1.5f, 4.0f)
+					.noOcclusion()
+					.isRedstoneConductor((a, b, c) -> false)
+					.isSuffocating((a, b, c) -> false)
+					.isViewBlocking((a, b, c) -> false))
+				.lang("pH Gauge Panel")
+				.blockstate((ctx, prov) -> plateVariants(prov, ctx.get(), ctx.getName()))
+				.item(GaugeBlockItem::new)
+				.model((ctx, prov) -> prov.getBuilder(ctx.getName())
+					.parent(new ModelFile.UncheckedModelFile("builtin/entity")))
+				.build()
+				.register();
+
+	/** S04 Baumé gauge (波美计, 方块形式, U17): vessel shell block reading dissolved-solids density. */
+	public static final BlockEntry<BaumeGaugeBlock> BAUME_GAUGE =
+			REGISTRATE.block("baume_gauge", BaumeGaugeBlock::new)
+				.properties(p -> p.mapColor(MapColor.METAL).strength(2.0f, 6.0f))
+				.lang("Baumé Gauge")
+				.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(),
+					prov.models().cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
+				.item(GaugeBlockItem::new)
+				.model((ctx, prov) -> prov.getBuilder(ctx.getName())
+					.parent(new ModelFile.UncheckedModelFile("builtin/entity")))
+				.build()
+				.register();
+
+	/** S04 Baumé gauge (波美计, 薄板形式, U17): thin face-mounted plate reading dissolved-solids density. */
+	public static final BlockEntry<BaumeGaugePanelBlock> BAUME_GAUGE_PANEL =
+			REGISTRATE.block("baume_gauge_panel", BaumeGaugePanelBlock::new)
+				.properties(p -> p.mapColor(MapColor.METAL).strength(1.5f, 4.0f)
+					.noOcclusion()
+					.isRedstoneConductor((a, b, c) -> false)
+					.isSuffocating((a, b, c) -> false)
+					.isViewBlocking((a, b, c) -> false))
+				.lang("Baumé Gauge Panel")
+				.blockstate((ctx, prov) -> plateVariants(prov, ctx.get(), ctx.getName()))
+				.item(GaugeBlockItem::new)
+				.model((ctx, prov) -> prov.getBuilder(ctx.getName())
+					.parent(new ModelFile.UncheckedModelFile("builtin/entity")))
+				.build()
+				.register();
+
+	/** S17 turbidity gauge (浊度计, 方块形式, U17): vessel shell block reading suspended solids in 4 bins. */
+	public static final BlockEntry<TurbidityGaugeBlock> TURBIDITY_GAUGE =
+			REGISTRATE.block("turbidity_gauge", TurbidityGaugeBlock::new)
+				.properties(p -> p.mapColor(MapColor.METAL).strength(2.0f, 6.0f))
+				.lang("Turbidity Gauge")
+				.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(),
+					prov.models().cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
+				.item(GaugeBlockItem::new)
+				.model((ctx, prov) -> prov.getBuilder(ctx.getName())
+					.parent(new ModelFile.UncheckedModelFile("builtin/entity")))
+				.build()
+				.register();
+
+	/** S17 turbidity gauge (浊度计, 薄板形式, U17): thin face-mounted plate reading suspended solids in 4 bins. */
+	public static final BlockEntry<TurbidityGaugePanelBlock> TURBIDITY_GAUGE_PANEL =
+			REGISTRATE.block("turbidity_gauge_panel", TurbidityGaugePanelBlock::new)
+				.properties(p -> p.mapColor(MapColor.METAL).strength(1.5f, 4.0f)
+					.noOcclusion()
+					.isRedstoneConductor((a, b, c) -> false)
+					.isSuffocating((a, b, c) -> false)
+					.isViewBlocking((a, b, c) -> false))
+				.lang("Turbidity Gauge Panel")
+				.blockstate((ctx, prov) -> plateVariants(prov, ctx.get(), ctx.getName()))
+				.item(GaugeBlockItem::new)
+				.model((ctx, prov) -> prov.getBuilder(ctx.getName())
+					.parent(new ModelFile.UncheckedModelFile("builtin/entity")))
+				.build()
+				.register();
+
+	/** M08 endpoint crystalliser (终点结晶器, U17): reactor multiblock + Baumé setpoint + condensate recovery. */
+	public static final BlockEntry<CrystallizerControllerBlock> CRYSTALLIZER_CONTROLLER =
+			REGISTRATE.block("crystallizer_controller", CrystallizerControllerBlock::new)
+				.properties(p -> p.mapColor(MapColor.METAL).strength(3.0f, 6.0f))
+				.lang("Crystallizer Controller")
+				.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
+					.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
+				.simpleItem()
+				.register();
 
 	public static void register() {
 	}

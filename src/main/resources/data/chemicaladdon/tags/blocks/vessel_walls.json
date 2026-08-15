@@ -6,6 +6,9 @@
     "chemicaladdon:decant_port",
     "chemicaladdon:thermometer",
     "chemicaladdon:pressure_gauge",
-    "chemicaladdon:conductivity_gauge"
+    "chemicaladdon:conductivity_gauge",
+    "chemicaladdon:ph_gauge",
+    "chemicaladdon:baume_gauge",
+    "chemicaladdon:turbidity_gauge"
   ]
 }

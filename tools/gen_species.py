@@ -111,6 +111,26 @@ BLOCKS = [
     ("pressure_gauge_panel", "压力表面板", "Pressure Gauge Panel", 0x6A7282),
     ("conductivity_gauge",     "电导率计", "Conductivity Gauge",      0x5A7262),
     ("conductivity_gauge_panel", "电导率计面板", "Conductivity Gauge Panel", 0x6A8272),
+    ("ph_gauge",               "pH 计",   "pH Gauge",           0x5A5A72),
+    ("ph_gauge_panel",         "pH 计面板", "pH Gauge Panel",   0x6A6A82),
+    ("baume_gauge",            "波美计",  "Baumé Gauge",        0x6E6252),
+    ("baume_gauge_panel",      "波美计面板", "Baumé Gauge Panel", 0x7E7262),
+    ("turbidity_gauge",        "浊度计",  "Turbidity Gauge",    0x62685A),
+    ("turbidity_gauge_panel",  "浊度计面板", "Turbidity Gauge Panel", 0x72786A),
+    ("crystallizer_controller", "终点结晶器", "Crystallizer Controller", 0x6E7A6E),
+]
+
+# Consumable test papers / qualitative reagents (U17, plans/12 §2.2): one-time
+# "what is in there" probes — the chemistry the continuous gauges never do.
+# (id, cn, en, TestPaperItem.Kind, indicator colour)
+TEST_PAPERS = [
+    ("litmus_paper",               "石蕊试纸",     "Litmus Paper",                  "LITMUS", 0x9B4DCA),
+    ("phenolphthalein_paper",      "酚酞试纸",     "Phenolphthalein Paper",         "PHENOLPHTHALEIN", 0xE89BB8),
+    ("wide_ph_paper",              "广泛pH试纸",   "Wide-Range pH Paper",           "WIDE_PH", 0x6BB86B),
+    ("silver_nitrate_paper",       "硝酸银试纸",   "Silver Nitrate Paper",          "SILVER_NITRATE", 0xC8C8D8),
+    ("barium_chloride_paper",      "氯化钡试纸",   "Barium Chloride Paper",         "BARIUM_CHLORIDE", 0xD8D8C0),
+    ("potassium_thiocyanate_paper", "硫氰酸钾试纸", "Potassium Thiocyanate Paper",  "POTASSIUM_THIOCYANATE", 0xA03030),
+    ("cobalt_glass",               "蓝钴玻璃焰色镜", "Cobalt-Glass Flame Scope",    "COBALT_GLASS", 0x3A5AC8),
 ]
 
 # Solution modes ("species = mode", plans/03 §4): NOT registered fluids — only a
@@ -289,6 +309,41 @@ def make_grain_texture(rgb):
     return rows
 
 
+def make_paper_texture(rgb):
+    """Test paper item (U17): a pale paper strip with a coloured indicator pad
+    across its middle — the pad is the dipped reagent zone."""
+    r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
+    rows = [[0, 0, 0, 0] * 16 for _ in range(16)]
+    for y in range(16):
+        for x in range(16):
+            # strip: diagonal-ish band from (3,2)..(12,13)
+            if 3 <= x <= 12 and 2 <= y <= 13:
+                edge = x in (3, 12) or y in (2, 13)
+                rows[y][x * 4:x * 4 + 4] = (
+                    [214, 210, 198, 255] if edge else [238, 234, 222, 255])
+    for y in range(6, 10):
+        for x in range(5, 11):
+            rows[y][x * 4:x * 4 + 4] = [r, g, b, 255]
+    return rows
+
+
+def make_cobalt_glass_texture():
+    """The cobalt-glass flame scope (U17): a deep-blue glass square with a
+    lighter bezel — look through it and sodium's yellow disappears."""
+    rows = [[0, 0, 0, 0] * 16 for _ in range(16)]
+    for y in range(16):
+        for x in range(16):
+            if 2 <= x <= 13 and 2 <= y <= 13:
+                edge = x in (2, 13) or y in (2, 13)
+                if edge:
+                    rows[y][x * 4:x * 4 + 4] = [42, 52, 96, 255]
+                else:
+                    rows[y][x * 4:x * 4 + 4] = [58, 90, 200, 200]
+    for x in range(6, 10):  # glint
+        rows[4][x * 4:x * 4 + 4] = [120, 150, 230, 220]
+    return rows
+
+
 def make_residue_texture(rgb):
     """Mixed-residue item: an irregular mottled lump (multi-species salt cake)
     in neutral grey — the real colour is a runtime blend of the NBT composition
@@ -398,6 +453,11 @@ def gen_textures():
         write_png(os.path.join(d, f"{sid}_grain.png"), make_grain_texture(solid_colors[sid]))
     # mixed residue: neutral lump, tinted at runtime by its NBT composition
     write_png(os.path.join(d, "mixed_residue.png"), make_residue_texture(0x9A9A94))
+    # test papers / reagents (U17): white strip + indicator pad; the cobalt
+    # glass scope is a blue glass square instead
+    for pid, _, _, _, color in TEST_PAPERS:
+        write_png(os.path.join(d, f"{pid}.png"),
+                  make_paper_texture(color) if pid != "cobalt_glass" else make_cobalt_glass_texture())
     # the generic sample vial (hand-written item, not a species): glass base +
     # fluid mask for the DynamicFluidContainerModel
     write_png(os.path.join(d, "fluid_vial.png"), make_vial_texture())
@@ -635,6 +695,15 @@ def gen_block_textures():
     write_png(os.path.join(d, "pressure_gauge_panel.png"), make_dial_texture(0x6A7282, needle=(72, 108, 188), dial=(226, 232, 244)))
     write_png(os.path.join(d, "conductivity_gauge.png"), make_dial_texture(0x5A7262, needle=(62, 158, 110), dial=(228, 240, 232)))
     write_png(os.path.join(d, "conductivity_gauge_panel.png"), make_dial_texture(0x6A8272, needle=(62, 158, 110), dial=(228, 240, 232)))
+    # U17 gauge trio: pH (magenta needle, center-zero scale), Baumé (amber),
+    # turbidity (olive, 4 bins) + the M08 crystalliser's panel block
+    write_png(os.path.join(d, "ph_gauge.png"), make_dial_texture(0x5A5A72, needle=(170, 60, 120), dial=(240, 234, 240)))
+    write_png(os.path.join(d, "ph_gauge_panel.png"), make_dial_texture(0x6A6A82, needle=(170, 60, 120), dial=(240, 234, 240)))
+    write_png(os.path.join(d, "baume_gauge.png"), make_dial_texture(0x6E6252, needle=(196, 124, 44), dial=(242, 234, 222)))
+    write_png(os.path.join(d, "baume_gauge_panel.png"), make_dial_texture(0x7E7262, needle=(196, 124, 44), dial=(242, 234, 222)))
+    write_png(os.path.join(d, "turbidity_gauge.png"), make_dial_texture(0x62685A, needle=(150, 133, 78), dial=(236, 238, 228)))
+    write_png(os.path.join(d, "turbidity_gauge_panel.png"), make_dial_texture(0x72786A, needle=(150, 133, 78), dial=(236, 238, 228)))
+    write_png(os.path.join(d, "crystallizer_controller.png"), make_panel_texture(0x6E7A6E))
     # decant_hose was missing from here since D18.5 — runData's blockstate
     # provider for it failed on the absent texture (U1 fix)
     write_png(os.path.join(d, "decant_hose.png"), make_coil_texture(0xB87333))
@@ -671,10 +740,54 @@ EXTRA_LANG_ZH = {
     "goggles.chemicaladdon.conductivity_gauge_threshold": "设定点：%s mS",
     "goggles.chemicaladdon.conductivity_gauge_clean": "达标：电导率已降至设定点",
     "goggles.chemicaladdon.conductivity_gauge_no_vessel": "未连接反应釜",
+    # U17 instrument trio + M08 crystalliser + test papers
+    "goggles.chemicaladdon.ph": "pH：%s",
+    "goggles.chemicaladdon.ph_gauge_threshold": "阈值：pH %s（%s报警）",
+    "goggles.chemicaladdon.ph_gauge_below": "跌破",
+    "goggles.chemicaladdon.ph_gauge_above": "升破",
+    "goggles.chemicaladdon.ph_gauge_no_vessel": "未连接反应釜",
+    "goggles.chemicaladdon.ph_gauge_endpoint": "报警：终点到达",
+    "goggles.chemicaladdon.baume": "波美度：%s°Bé",
+    "goggles.chemicaladdon.baume_gauge_threshold": "设定点：%s°Bé",
+    "goggles.chemicaladdon.baume_gauge_no_vessel": "未连接反应釜",
+    "goggles.chemicaladdon.baume_gauge_endpoint": "报警：已达设定浓度",
+    "goggles.chemicaladdon.turbidity": "浊度：%s",
+    "goggles.chemicaladdon.turbidity_bin_0": "清",
+    "goggles.chemicaladdon.turbidity_bin_1": "微浑",
+    "goggles.chemicaladdon.turbidity_bin_2": "浑",
+    "goggles.chemicaladdon.turbidity_bin_3": "浆",
+    "goggles.chemicaladdon.turbidity_gauge_threshold": "报警阈值：%s",
+    "goggles.chemicaladdon.turbidity_gauge_no_vessel": "未连接反应釜",
+    "goggles.chemicaladdon.turbidity_gauge_alarm": "报警：初浑",
+    "goggles.chemicaladdon.crystallizer_condensate": "馏出水量：%s mB",
+    "goggles.chemicaladdon.crystallizer_state": "状态：",
+    "goggles.chemicaladdon.crystallizer_endpoint": "已到终点（停热）",
+    "goggles.chemicaladdon.crystallizer_concentrating": "蒸发浓缩中",
+    "paper.chemicaladdon.litmus_red": "石蕊试纸：变红（酸性）",
+    "paper.chemicaladdon.litmus_blue": "石蕊试纸：变蓝（碱性）",
+    "paper.chemicaladdon.litmus_purple": "石蕊试纸：紫色（中性）",
+    "paper.chemicaladdon.phenolphthalein_pink": "酚酞试纸：粉红（pH ≥ 8，碱性）",
+    "paper.chemicaladdon.phenolphthalein_clear": "酚酞试纸：无色（非碱性）",
+    "paper.chemicaladdon.wide_ph": "广泛pH试纸：pH ≈ %s",
+    "paper.chemicaladdon.agno3_positive": "硝酸银试纸：白色浑浊——检出氯离子",
+    "paper.chemicaladdon.agno3_negative": "硝酸银试纸：无变化——未检出氯离子",
+    "paper.chemicaladdon.bacl2_positive": "氯化钡试纸：白色沉淀——检出硫酸根",
+    "paper.chemicaladdon.bacl2_negative": "氯化钡试纸：无变化——未检出硫酸根",
+    "paper.chemicaladdon.kscn_positive": "KSCN 试纸：血红色——检出铁离子",
+    "paper.chemicaladdon.kscn_negative": "KSCN 试纸：无色——未检出铁离子",
+    "paper.chemicaladdon.flame_potassium": "透过蓝钴玻璃：紫色火焰——含钾",
+    "paper.chemicaladdon.flame_sodium": "焰色反应：黄色火焰——含钠",
+    "paper.chemicaladdon.flame_calcium": "焰色反应：砖红色火焰——含钙",
+    "paper.chemicaladdon.flame_none": "焰色反应：无特征焰色",
+    "paper.chemicaladdon.hint": "%s：对反应釜控制器或壁砖右键蘸取",
     "goggles.chemicaladdon.saturation": "饱和态：",
     "thermometer.chemicaladdon.threshold": "报警阈值",
     "pressure_gauge.chemicaladdon.threshold": "报警阈值",
     "conductivity_gauge.chemicaladdon.threshold": "设定点",
+    "ph_gauge.chemicaladdon.threshold": "报警阈值",
+    "baume_gauge.chemicaladdon.threshold": "设定点",
+    "turbidity_gauge.chemicaladdon.threshold": "报警阈值",
+    "crystallizer.chemicaladdon.setpoint": "终点设定（°Bé）",
     "status.chemicaladdon.not_assembled": "未成型",
     "status.chemicaladdon.reacting": "反应中",
     "status.chemicaladdon.temperature": "温度不满足",
@@ -724,10 +837,54 @@ EXTRA_LANG_EN = {
     "goggles.chemicaladdon.conductivity_gauge_threshold": "Setpoint: %s mS",
     "goggles.chemicaladdon.conductivity_gauge_clean": "CLEAN: conductivity at/below setpoint",
     "goggles.chemicaladdon.conductivity_gauge_no_vessel": "Not attached to a reactor",
+    # U17 instrument trio + M08 crystalliser + test papers
+    "goggles.chemicaladdon.ph": "pH: %s",
+    "goggles.chemicaladdon.ph_gauge_threshold": "Threshold: pH %s (alarm when reading %s)",
+    "goggles.chemicaladdon.ph_gauge_below": "falls below",
+    "goggles.chemicaladdon.ph_gauge_above": "rises above",
+    "goggles.chemicaladdon.ph_gauge_no_vessel": "Not attached to a reactor",
+    "goggles.chemicaladdon.ph_gauge_endpoint": "ALARM: endpoint reached",
+    "goggles.chemicaladdon.baume": "Density: %s°Bé",
+    "goggles.chemicaladdon.baume_gauge_threshold": "Setpoint: %s°Bé",
+    "goggles.chemicaladdon.baume_gauge_no_vessel": "Not attached to a reactor",
+    "goggles.chemicaladdon.baume_gauge_endpoint": "ALARM: setpoint density reached",
+    "goggles.chemicaladdon.turbidity": "Turbidity: %s",
+    "goggles.chemicaladdon.turbidity_bin_0": "clear",
+    "goggles.chemicaladdon.turbidity_bin_1": "slight haze",
+    "goggles.chemicaladdon.turbidity_bin_2": "turbid",
+    "goggles.chemicaladdon.turbidity_bin_3": "slurry",
+    "goggles.chemicaladdon.turbidity_gauge_threshold": "Threshold: %s",
+    "goggles.chemicaladdon.turbidity_gauge_no_vessel": "Not attached to a reactor",
+    "goggles.chemicaladdon.turbidity_gauge_alarm": "ALARM: first clouding",
+    "goggles.chemicaladdon.crystallizer_condensate": "Distillate: %s mB",
+    "goggles.chemicaladdon.crystallizer_state": "Status:",
+    "goggles.chemicaladdon.crystallizer_endpoint": "endpoint reached (heat cut)",
+    "goggles.chemicaladdon.crystallizer_concentrating": "evaporating",
+    "paper.chemicaladdon.litmus_red": "Litmus paper: red (acidic)",
+    "paper.chemicaladdon.litmus_blue": "Litmus paper: blue (alkaline)",
+    "paper.chemicaladdon.litmus_purple": "Litmus paper: purple (neutral)",
+    "paper.chemicaladdon.phenolphthalein_pink": "Phenolphthalein paper: pink (pH ≥ 8)",
+    "paper.chemicaladdon.phenolphthalein_clear": "Phenolphthalein paper: colourless",
+    "paper.chemicaladdon.wide_ph": "Wide-range pH paper: pH ≈ %s",
+    "paper.chemicaladdon.agno3_positive": "AgNO₃ paper: white turbidity — chloride detected",
+    "paper.chemicaladdon.agno3_negative": "AgNO₃ paper: no change — no chloride",
+    "paper.chemicaladdon.bacl2_positive": "BaCl₂ paper: white precipitate — sulfate detected",
+    "paper.chemicaladdon.bacl2_negative": "BaCl₂ paper: no change — no sulfate",
+    "paper.chemicaladdon.kscn_positive": "KSCN paper: blood red — ferric iron detected",
+    "paper.chemicaladdon.kscn_negative": "KSCN paper: colourless — no ferric iron",
+    "paper.chemicaladdon.flame_potassium": "Through cobalt glass: lilac flame — potassium",
+    "paper.chemicaladdon.flame_sodium": "Flame test: yellow flame — sodium",
+    "paper.chemicaladdon.flame_calcium": "Flame test: brick-red flame — calcium",
+    "paper.chemicaladdon.flame_none": "Flame test: no characteristic flame",
+    "paper.chemicaladdon.hint": "%s: right-click a reactor controller or wall brick to dip",
     "goggles.chemicaladdon.saturation": "Saturation:",
     "thermometer.chemicaladdon.threshold": "Alarm Threshold",
     "pressure_gauge.chemicaladdon.threshold": "Alarm Threshold",
     "conductivity_gauge.chemicaladdon.threshold": "Setpoint",
+    "ph_gauge.chemicaladdon.threshold": "Alarm Threshold",
+    "baume_gauge.chemicaladdon.threshold": "Setpoint",
+    "turbidity_gauge.chemicaladdon.threshold": "Alarm Threshold",
+    "crystallizer.chemicaladdon.setpoint": "Endpoint Setpoint (°Bé)",
     "status.chemicaladdon.not_assembled": "Not assembled",
     "status.chemicaladdon.reacting": "Reacting",
     "status.chemicaladdon.temperature": "Temperature not met",
@@ -759,6 +916,8 @@ def gen_lang():
         zh[f"item.chemicaladdon.{sid}_bucket"] = cn + "桶"
     for sid, cn, _, _ in BLOCKS:
         zh[f"block.chemicaladdon.{sid}"] = cn
+    for pid, cn, _, _, _ in TEST_PAPERS:
+        zh[f"item.chemicaladdon.{pid}"] = cn
     import json as _json
     with open(os.path.join(ASSETS, "lang/zh_cn.json"), "w", encoding="utf-8") as f:
         _json.dump(zh, f, ensure_ascii=False, indent=2)
@@ -886,6 +1045,7 @@ def gen_items_java():
              "import com.tterrag.registrate.util.entry.ItemEntry;",
              "import com.yu1745.chemicaladdon.ChemicalAddon;",
              "import com.yu1745.chemicaladdon.item.MixedResidueItem;",
+             "import com.yu1745.chemicaladdon.item.TestPaperItem;",
              "import net.minecraft.world.item.Item;",
              "",
              "public class AllItems {",
@@ -910,6 +1070,13 @@ def gen_items_java():
                  "\t\tREGISTRATE.item(\"mixed_residue\", MixedResidueItem::new)\n"
                  "\t\t\t.lang(\"Mixed Salt Residue\")\n"
                  "\t\t\t.register();")
+    # test papers / qualitative reagents (U17, plans/12 §2.2): consumable
+    # "what is in there" probes — dip on a reactor, read the colour, lose the paper
+    for pid, _, en, kind, _ in TEST_PAPERS:
+        parts.append(f"\tpublic static final ItemEntry<TestPaperItem> {kind} =\n"
+                     f"\t\tREGISTRATE.item(\"{pid}\", p -> new TestPaperItem(p, TestPaperItem.Kind.{kind}))\n"
+                     f"\t\t\t.lang(\"{en}\")\n"
+                     "\t\t\t.register();")
     parts += ["", "\tpublic static void register() {", "\t}", "}", ""]
     with open(os.path.join(JAVA, "AllItems.java"), "w", encoding="utf-8") as f:
         f.write("\n".join(parts))

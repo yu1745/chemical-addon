@@ -18,9 +18,10 @@
 | U15 晶粒投种混合固体 | 晶粒 1/16 + 投种 + mixed_residue 整坨取出 + 苦卤盐曲线 | ✅ 完成（插队） |
 | U16 反应热能量记账 | J/unit 账本 + ΔT=Q/(feedUnits×c) + 蒸发潜热 + deltaHeat 质量耦合 | ✅ 完成（插队） |
 | U16.5 湿饼夹带与洗涤 | 残液率夹带 + residue 母液相 + 再浆/置换洗涤 + S18 电导率计 | ✅ 完成（插队） |
+| U17 分析化学层 | Kw 读数层 + S16 pH/S04 波美/S17 浊度 + 试纸族 + SI 降级 + M08 终点结晶器 | ✅ 完成（插队） |
 | M3+ 其余 | FE 接线 / 竖窑 / 索尔维 / 连续流 / 高压 / 零排放 | ⏳ 未开始（顺序见 plans/11 §2.1） |
 
-**自动化测试**：`./gradlew runGameTestServer` → **96/96 通过**；`./gradlew test` → **60/60 JUnit**。
+**自动化测试**：`./gradlew runGameTestServer` → **102/102 通过**；`./gradlew test` → **66/66 JUnit**。
 
 ## 已完成明细
 
@@ -285,6 +286,19 @@ M3 首单元（plans/11 §2.1）：修掉 G1/G2/G3 三条公共地基缺口，�
 - **S18 电导率计**（仪表族第三台，plans/12 §2）：读数=10×(Σ离子 units/水 units) 声明 mS 标尺——**分子溶质不导电**（氨水 0 mS vs 铵盐高，波美计做不了的区分）；方块/面板双形式（S03 模式复制），绿针表盘（gen_species）；**报警方向反转**（基类新钩子 `alarmWhenBelow`）：信号=电导率**降至**设定点以下——洗涤完成/水净的终点事件，默认 5 mS。
 - 踩坑：mixture mB 视图经比例 tag 往返有 ±1 重分配（units 精确）——床完好断言放宽 ±2；裸 tank 补清水后要 `collapseIfNeeded()` 并相（真釜里规则引擎每 tick 做）。
 
+### U17 · 分析化学层 + 终点控制
+
+测量诚实性（plans/03 §6）全面落地：玩家仪器只读物理间接量，SI/speciation 降级 dev 化验。GameTest 102/102 + JUnit 66/66 全绿。**这一单元把「终点判断」从上帝视角还给化学**：反应完了没，由波美计/pH 计/浊度计/试纸回答，不由机器看穿成分回答——三酸两碱、索尔维碳化（pH≈8.2）、食盐精制的终点从此都有世界内的物理表达。
+
+- **引擎读数层 `composition/Analyte`**（纯函数，JUnit 直测）：pH（酸侧直读 / 碱侧 [H⁺]=Kw/[OH⁻] / 中和定点两离子皆零 → pH 7，三例穷尽）、波美（溶解 units/水 units 声明式线性换算，锚=曲线饱和盐水 2×0.36=0.72 → 30°Bé，离子计数系数进锚点）、浊度（悬浮份额 1%/5%/20% 四档，**沉底床不计**——清液盖晶床读清）。**Kw 决策**：`Chemistry.KW=1e-14` 落读数层常数而非求解器 equilibria 条目——真实自电离对（1000 mB 中恰好 1 unit）会改 mixture GCD ratio-tag 身份（已解液 vs 新装桶永不堆叠），且对一切机制不可见；解析计算免费获得等价语义。
+- **S16 pH 计**（方块+面板，双形式照 S03 复制）：**固定中心零点表盘**（pH 0–14 线性满刻度、pH 7=12 点钟——对数标尺线性分箱语义天然正确）；比较器 1 级=1 pH；**空手右键切触发方向**（跌破/升破——碳化终点「pH≤8 停」与碱化终点「pH≥10 停」都要）；阈值滚动步进 1 pH。等当点一滴跳 pH 即红石跳变（AnalyteTest：±1 mB 跳 11↔7↔3）。
+- **S04 波美计**：物种盲密度读数（1 级=2°Bé，量程 0–30），默认设定点 24°Bé（近饱和盐田终点）；到点报警=浓缩终点。
+- **S17 浊度计**：4 档针位（0/90/180/270°）、比较器 0/5/10/15、默认阈值=微浑——**初浑报警**（除杂「刚不再浑」的逆运用：该清不清=杂质穿透，断料止损；亚稳区+慢动力学是止损窗）。
+- **试纸/试剂族 7 件**（`TestPaperItem`，gen_species TEST_PAPERS 表单一数据源）：石蕊（<5 红/>8 蓝/其间紫）、酚酞（pH≥8 粉红——索尔维碳化终点历史判据）、广泛 pH（±1 档）、AgNO₃ 检 Cl⁻、BaCl₂ 检 SO₄²⁻、KSCN 检 Fe³⁺、蓝钴玻璃焰色镜（K 紫透过镜优先于 Na 黄/Ca 砖红）。对釜控制器或任意壁砖右键蘸取 → 消耗 1 张 → 动作栏反馈；空釜不消耗。**定性归化学、定量归仪器**——试纸永不升级出「浓度读数」。
+- **护目镜 SI 行降级**：speciation 饱和态行包进 `ChemicalAddon.ASSAY_ON`（dev 化验指令），玩家常态只有温度/压力/状态/总量四行 + 世界内仪表。
+- **M08 终点结晶器**（`CrystallizerControllerBlockEntity`，ReactorControllerBlockEntity 子类 + `CrystallizerControllerBlock`）：°Bé 设定点世界内滚动（步进 2 与 S04 对齐，默认 24）+ **到点切热**（`heatTarget()` 覆写回环境温度——浓缩自动停在设定点）+ 终点强充能 15 / 比较器 °Bé 进度 + **冷凝回收**（`RulesEngine.apply` 新增通气量累加参数；内置 4000 mB 馏出罐，被动推向相邻非容器流体消费方——蒸出水为产物）。「只析 A 不析 B」由设定点低于 B 的饱和线挣得：KNO₃+NaCl 母液浓缩到 30°Bé → 冷却 → 亚稳 → 投种只析 KNO₃（~81 mB），NaCl 全留母液——**机器零物种知识，选择性来自物理量+化学**。
+- 踩坑：①GameTest 里 `level.getBlockEntity` 需绝对坐标（`helper.absolutePos`），结构坐标只用于 helper 自家 API；②KNO₃ 20°C 曲线是 31.6 g/100g（13 是 0°C）——终点母液浓度算错会「不过饱和、投种无效」；③**钉温调试棒优先于 heatTarget 切热**：方块级测试若钉 100 放任不管会把釜煮干（水干后 `baumeOf` 归零、终点事件反跳）——测试须轮询到终点即撤钉，让真正的切热路径（降温弛豫）跑一段再钉 20 快进冷却。
+
 ### U14 · JUnit 引擎测试层 + 常用无机材料矩阵（引擎数据层 only）
 
 composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor 静态）剥离 MC 跑纯 JUnit（`./gradlew test`），GameTest 86/86 + JUnit 52/52 全绿。含后续追加的**动力学层**与 **10⁴ 细网格**。
@@ -358,7 +372,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 5. **基础设施**：流体桶（S08）、GUI 美化、datagen 接入（配方/模型 provider）、Jade 集成（流体显示/温度/进度 tooltip）、JEI 配方展示
 6. **混合物流体系统（Mixture）**：✅ 互溶性（D18）已落地——`miscibilityGroup` 声明式溶剂族、按组合并、按密度分相抽出。**剩余**：液-液分离手段见新增 **D18.5 分液软管** 条目；给 M9 加「不互溶共管=混液炸管」的输送约束
 7. **已知限制**：沉淀池/过滤机无 GUI；方块纹理为程序生成色块；砖无连接纹理（多变体方案待做）；压力/相态/催化未实现（计划 M3+）。（~~反应热集总常数~~ ✅ U16 已改能量记账；底面尺寸已参数化为任意 W×W×H 3..7；轻相抽出已由 D18.5 分液软管落地）
-8. **设计定案待实施（2026-08 讨论批，plans/11 §2.1）**：~~**U15 晶粒、投种与混合固体物品**~~（✅ 已完成，见「已完成明细」；~~MgCl₂/CaCl₂ 苦卤盐数据首位~~ 一并落地）；~~**U16 反应热能量记账**~~（✅ 已完成，见「已完成明细」——J/unit 账本 + ΔT=Q/(feedUnits×4.18) + 蒸发潜热自限 + deltaHeat 质量耦合）；~~**U16.5 湿饼夹带与洗涤**~~（✅ 已完成，见「已完成明细」——残液率夹带 + residue 母液相 + 再浆/置换洗涤两路 + 电导率计 S18 落地；否决共沉淀，03 §12）；**U17 分析化学层 + 终点控制**（测量诚实性原则 03 §6：玩家仪器只读物理间接量——波美计/沸点/pH/试纸/浊度，SI 对玩家侧不可见、护目镜 SI 行降级 dev 化验——`Chemistry.ASSAY` 旋钮已就绪、mixed_residue 百分比已接；M08→终点结晶器（物理量设定点+分馏模式）、S04→波美计；试纸族=消耗性阈值探测器；**仪器体系唯一定义见 plans/12-instruments.md**——连续化学仪表封顶四台（pH/波美/浊度/电导，终点类型学）、红石统一双输出（比较器分箱+阈值强充能）、pH 计定案首批（前置=解封 Kw 条目））；远期弹性见 plans/11（rate 数据授权 / 底排口零头打包晶粒 / 萃取独立系统；~~Kw 条目~~已提前为 U17 前置）。
+8. **设计定案待实施（2026-08 讨论批，plans/11 §2.1）**：~~**U15 晶粒、投种与混合固体物品**~~（✅ 已完成，见「已完成明细」；~~MgCl₂/CaCl₂ 苦卤盐数据首位~~ 一并落地）；~~**U16 反应热能量记账**~~（✅ 已完成，见「已完成明细」——J/unit 账本 + ΔT=Q/(feedUnits×4.18) + 蒸发潜热自限 + deltaHeat 质量耦合）；~~**U16.5 湿饼夹带与洗涤**~~（✅ 已完成，见「已完成明细」——残液率夹带 + residue 母液相 + 再浆/置换洗涤两路 + 电导率计 S18 落地；否决共沉淀，03 §12）；~~**U17 分析化学层 + 终点控制**~~（✅ 已完成，见「已完成明细」——Kw 读数层常数 + S16/S04/S17 三表 + 试纸族 7 件 + SI 降级 + M08 终点结晶器）；远期弹性见 plans/11（rate 数据授权 / 底排口零头打包晶粒 / 萃取独立系统）。
 9. **D18.5 分液（分液口 + 软管滑轮）**：✅ **已实现**——`decant_port`（壁块，只抽最重相，锁相）+ `decant_hose`（Create 软管滑轮装**开口釜上方** → Forge `EntityPlaceEvent` 转化为分液软管；`FLUID_HANDLER` 只抽最轻相/锁相，扳手切「只抽上层/全部抽」，敲掉/中键掉回原版 `create:hose_pulley`）。**视觉已实现**：`DecantHoseRenderer` 照抄 Create `AbstractPulleyRenderer`（coil 滚动 + 下垂 rope + magnet，复用 Create 的 hose_pulley 部分模型与 `HOSE_PULLEY_COIL` sprite shift），块体直接引用 `create:block/hose_pulley/block` 模型（占位贴图废弃）；软管 `offset`（BE 内 `LerpedFloat`，客户端 tick 用 `Chaser.EXP` 缓动追 `ReactorControllerBlockEntity.getLiquidSurfaceY`）从 0 **慢慢下放**到液面、液面升降自动跟随、无手动收放；转化瞬间播**铁砧放置音**（`SoundEvents.ANVIL_PLACE`）提示。**剩余**：Ponder 提示。详见 plans/05 §M7。
 
 ## 常用命令
@@ -366,7 +380,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 ```bash
 ./gradlew build              # 构建
 ./gradlew test               # 引擎 JUnit（composition 层，无需 MC 启动）
-./gradlew runGameTestServer  # 96/96 自动化测试
+./gradlew runGameTestServer  # 102/102 自动化测试
 ./run-server.sh              # 服务端冒烟（自动关闭）
 ./gradlew runClient          # 客户端（自动进 "New World"，-PquickPlayWorld= 覆盖）
 python3 tools/gen_species.py # 改物种后重新生成资源/注册代码

@@ -41,6 +41,13 @@ public class ChemicalAddonClient {
 		BlockEntityRenderers.register(AllBlockEntities.PRESSURE_GAUGE_PANEL.get(), VesselGaugeRenderer::new);
 		BlockEntityRenderers.register(AllBlockEntities.CONDUCTIVITY_GAUGE.get(), VesselGaugeRenderer::new);
 		BlockEntityRenderers.register(AllBlockEntities.CONDUCTIVITY_GAUGE_PANEL.get(), VesselGaugeRenderer::new);
+		// U17 gauge trio: pH (S16, fixed center-zero dial), Baumé (S04), turbidity (S17, 4-bin)
+		BlockEntityRenderers.register(AllBlockEntities.PH_GAUGE.get(), VesselGaugeRenderer::new);
+		BlockEntityRenderers.register(AllBlockEntities.PH_GAUGE_PANEL.get(), VesselGaugeRenderer::new);
+		BlockEntityRenderers.register(AllBlockEntities.BAUME_GAUGE.get(), VesselGaugeRenderer::new);
+		BlockEntityRenderers.register(AllBlockEntities.BAUME_GAUGE_PANEL.get(), VesselGaugeRenderer::new);
+		BlockEntityRenderers.register(AllBlockEntities.TURBIDITY_GAUGE.get(), VesselGaugeRenderer::new);
+		BlockEntityRenderers.register(AllBlockEntities.TURBIDITY_GAUGE_PANEL.get(), VesselGaugeRenderer::new);
 
 		// per-stack fluid tint for every DynamicFluidContainerModel item: the sample
 		// vial (any fluid with NBT) and every species bucket (still sprite + tint).

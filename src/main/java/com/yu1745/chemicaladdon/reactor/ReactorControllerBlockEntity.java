@@ -77,7 +77,13 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 	private List<Solution.Speciation> speciation = List.of();
 
 	public ReactorControllerBlockEntity(BlockPos pos, BlockState state) {
-		super(AllBlockEntities.REACTOR_CONTROLLER.get(), pos, state, TANK_CAPACITY, ITEM_SLOTS);
+		this(AllBlockEntities.REACTOR_CONTROLLER.get(), pos, state);
+	}
+
+	/** Subclass form (M08 crystalliser): the vessel template with a different BE type. */
+	protected ReactorControllerBlockEntity(net.minecraft.world.level.block.entity.BlockEntityType<?> type,
+			BlockPos pos, BlockState state) {
+		super(type, pos, state, TANK_CAPACITY, ITEM_SLOTS);
 	}
 
 	// ------------------------------------------------------------ shape hooks
@@ -243,14 +249,7 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 			}
 			return;
 		}
-		// heating from a Blaze Burner directly below the vessel's bottom layer
-		// (controller sits on the first wall layer; bottom is one below, burner two)
-		BlockState below = level.getBlockState(worldPosition.below(2));
-		int target = switch (BlazeBurnerBlock.getHeatLevelOf(below)) {
-			case KINDLED -> 500;
-			case SEETHING -> 900;
-			default -> AMBIENT_TEMP;
-		};
+		int target = heatTarget();
 		// U1/G1: the contents carry the temperature, and EVERY phase relaxes
 		// toward the burner's target (or back to ambient when unheated). After
 		// D18 a gas bystander phase is permanent, so the old "exactly one stack"
@@ -269,6 +268,23 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 			setChanged();
 			sync();
 		}
+	}
+
+	/**
+	 * The °C the contents relax toward: a Blaze Burner directly below the
+	 * vessel's bottom layer (controller sits on the first wall layer; bottom is
+	 * one below, burner two), else ambient. The M08 crystalliser overrides this
+	 * — its physical setpoint gates the burner.
+	 */
+	protected int heatTarget() {
+		// heating from a Blaze Burner directly below the vessel's bottom layer
+		// (controller sits on the first wall layer; bottom is one below, burner two)
+		BlockState below = level.getBlockState(worldPosition.below(2));
+		return switch (BlazeBurnerBlock.getHeatLevelOf(below)) {
+			case KINDLED -> 500;
+			case SEETHING -> 900;
+			default -> AMBIENT_TEMP;
+		};
 	}
 
 	/** Debug/dev: hold the vessel at {@code t} °C, or {@code -1} to resume normal heating. */
@@ -293,7 +309,12 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 	// (matching + completion live in ReactionLogic; this is the progress/status
 	// orchestration)
 
-	private void tickReaction() {
+	/** The vessel's stirring coefficient — also the M08 subclass's solve parameter. */
+	protected float stirringCoefficient() {
+		return stirringCoefficient;
+	}
+
+	protected void tickReaction() {
 		if (!isAssembled()) {
 			setStatus(ReactorStatus.NOT_ASSEMBLED);
 			setProgress(0, null);
@@ -306,7 +327,7 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 		// diagnostics: SI < 0 means "not saturated enough", not "broken").
 		Solution solved = RulesEngine.apply(tank, isOpen(), items, stirringCoefficient);
 		if (solved != null) {
-			speciation = solved.report();
+			recordSpeciation(solved.report());
 		}
 		ChemicalReactionRecipe recipe = ReactionLogic.findRecipe(this);
 		if (recipe == null) {
@@ -330,6 +351,11 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 		} else {
 			setProgress(next, recipe.getId());
 		}
+	}
+
+	/** Store the last solve's speciation report — shared by the reactor and M08 solve loops. */
+	protected void recordSpeciation(List<Solution.Speciation> report) {
+		speciation = report;
 	}
 
 	private void setStatus(ReactorStatus value) {
@@ -473,23 +499,13 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 				.withStyle(ChatFormatting.AQUA));
 
 		// status (why it is / is not reacting)
-		ChatFormatting statusColor = switch (status) {
-			case REACTING -> ChatFormatting.GREEN;
-			case TEMPERATURE -> ChatFormatting.GOLD;
-			case OUTPUT_FULL -> ChatFormatting.RED;
-			case NOT_ASSEMBLED -> ChatFormatting.RED;
-			case NO_RECIPE -> ChatFormatting.GRAY;
-		};
-		tooltip.add(Component.literal(spacing)
-			.append(Component.translatable("goggles.chemicaladdon.status"))
-			.append(Component.translatable("status.chemicaladdon." + status.name().toLowerCase()))
-			.withStyle(statusColor));
+		addGoggleStatus(tooltip, spacing);
 
-		// saturation lines (speciation diagnostics): which solids are at / over /
-		// near their saturation. Only interesting ones are listed — a solid is
-		// shown when it moved this solve or its SI is within striking distance
-		// (≥ −3); anything deeper is "far from happening" and stays silent.
-		if (!speciation.isEmpty()) {
+		// saturation lines (speciation diagnostics): U17 measurement honesty —
+		// engine-internal knowledge is dev-assay only. A player reads endpoints
+		// with instruments (S02–S18) and test papers, never with saturation
+		// indices (plans/03 §6, plans/12 §5).
+		if (ChemicalAddon.ASSAY_ON && !speciation.isEmpty()) {
 			List<Component> satLines = new ArrayList<>();
 			for (Solution.Speciation s : speciation) {
 				boolean relevant = s.moved() != 0 || s.si() >= -3;
@@ -606,6 +622,25 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 			return "goggles.chemicaladdon.heat.heated";
 		}
 		return "goggles.chemicaladdon.heat.none";
+	}
+
+	/**
+	 * The status line of the goggles HUD — a protected hook because the M08
+	 * crystalliser replaces it with its own physical-setpoint vocabulary
+	 * (setpoint / current °Bé / endpoint state) instead of recipe states.
+	 */
+	protected void addGoggleStatus(List<Component> tooltip, String spacing) {
+		ChatFormatting statusColor = switch (status) {
+			case REACTING -> ChatFormatting.GREEN;
+			case TEMPERATURE -> ChatFormatting.GOLD;
+			case OUTPUT_FULL -> ChatFormatting.RED;
+			case NOT_ASSEMBLED -> ChatFormatting.RED;
+			case NO_RECIPE -> ChatFormatting.GRAY;
+		};
+		tooltip.add(Component.literal(spacing)
+			.append(Component.translatable("goggles.chemicaladdon.status"))
+			.append(Component.translatable("status.chemicaladdon." + status.name().toLowerCase()))
+			.withStyle(statusColor));
 	}
 
 }

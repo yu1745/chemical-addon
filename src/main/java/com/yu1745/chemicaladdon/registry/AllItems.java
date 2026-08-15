@@ -4,6 +4,7 @@ import com.simibubi.create.foundation.data.CreateRegistrate;
 import com.tterrag.registrate.util.entry.ItemEntry;
 import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.item.MixedResidueItem;
+import com.yu1745.chemicaladdon.item.TestPaperItem;
 import net.minecraft.world.item.Item;
 
 public class AllItems {
@@ -148,6 +149,34 @@ public class AllItems {
 	public static final ItemEntry<MixedResidueItem> MIXED_RESIDUE =
 		REGISTRATE.item("mixed_residue", MixedResidueItem::new)
 			.lang("Mixed Salt Residue")
+			.register();
+	public static final ItemEntry<TestPaperItem> LITMUS =
+		REGISTRATE.item("litmus_paper", p -> new TestPaperItem(p, TestPaperItem.Kind.LITMUS))
+			.lang("Litmus Paper")
+			.register();
+	public static final ItemEntry<TestPaperItem> PHENOLPHTHALEIN =
+		REGISTRATE.item("phenolphthalein_paper", p -> new TestPaperItem(p, TestPaperItem.Kind.PHENOLPHTHALEIN))
+			.lang("Phenolphthalein Paper")
+			.register();
+	public static final ItemEntry<TestPaperItem> WIDE_PH =
+		REGISTRATE.item("wide_ph_paper", p -> new TestPaperItem(p, TestPaperItem.Kind.WIDE_PH))
+			.lang("Wide-Range pH Paper")
+			.register();
+	public static final ItemEntry<TestPaperItem> SILVER_NITRATE =
+		REGISTRATE.item("silver_nitrate_paper", p -> new TestPaperItem(p, TestPaperItem.Kind.SILVER_NITRATE))
+			.lang("Silver Nitrate Paper")
+			.register();
+	public static final ItemEntry<TestPaperItem> BARIUM_CHLORIDE =
+		REGISTRATE.item("barium_chloride_paper", p -> new TestPaperItem(p, TestPaperItem.Kind.BARIUM_CHLORIDE))
+			.lang("Barium Chloride Paper")
+			.register();
+	public static final ItemEntry<TestPaperItem> POTASSIUM_THIOCYANATE =
+		REGISTRATE.item("potassium_thiocyanate_paper", p -> new TestPaperItem(p, TestPaperItem.Kind.POTASSIUM_THIOCYANATE))
+			.lang("Potassium Thiocyanate Paper")
+			.register();
+	public static final ItemEntry<TestPaperItem> COBALT_GLASS =
+		REGISTRATE.item("cobalt_glass", p -> new TestPaperItem(p, TestPaperItem.Kind.COBALT_GLASS))
+			.lang("Cobalt-Glass Flame Scope")
 			.register();
 
 	public static void register() {

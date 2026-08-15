@@ -216,14 +216,18 @@ public final class Solution {
 	 * cooling the remaining body — without a heat source a boiling pot
 	 * quenches itself below the boiling point; a burner's input is what keeps
 	 * it boiling (the U16 self-limiting negative feedback).
+	 *
+	 * @return the units actually vented (clamped by the water present) — the
+	 *         crystalliser condenses exactly this much back as distillate.
 	 */
-	public void evaporateWater(long units) {
+	public long evaporateWater(long units) {
 		long vented = Math.min(units, molecular.getOrDefault(WATER, 0L));
 		if (vented <= 0) {
-			return;
+			return 0;
 		}
 		mergeMolecular(WATER, -vented);
 		energyJ -= vented * Chemistry.VAPORISATION_J_PER_UNIT;
+		return vented;
 	}
 
 	/** Per-solid diagnosis of this solve (see {@link Speciation}); empty never — always one entry per candidate. */

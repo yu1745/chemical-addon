@@ -1,0 +1,22 @@
+{
+  "parent": "minecraft:block/block",
+  "textures": {
+    "face": "chemicaladdon:block/turbidity_gauge_panel",
+    "side": "chemicaladdon:block/turbidity_gauge_panel",
+    "particle": "chemicaladdon:block/turbidity_gauge_panel"
+  },
+  "elements": [
+    {
+      "from": [0, 0, 14],
+      "to": [16, 16, 16],
+      "faces": {
+        "north": {"uv": [0, 0, 16, 16], "texture": "#face"},
+        "south": {"uv": [0, 0, 16, 16], "texture": "#face"},
+        "east":  {"uv": [0, 0, 2, 16], "texture": "#side"},
+        "west":  {"uv": [0, 0, 2, 16], "texture": "#side"},
+        "up":    {"uv": [0, 0, 16, 2], "texture": "#side"},
+        "down":  {"uv": [0, 0, 16, 2], "texture": "#side"}
+      }
+    }
+  ]
+}

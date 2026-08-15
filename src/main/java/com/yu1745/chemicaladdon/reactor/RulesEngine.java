@@ -123,6 +123,18 @@ public final class RulesEngine {
 	 */
 	@Nullable
 	public static Solution apply(ReactorTank tank, boolean openVessel, @Nullable IItemHandler items, double stirring) {
+		return apply(tank, openVessel, items, stirring, null);
+	}
+
+	/**
+	 * Full form with a vented-steam accumulator (M08 crystalliser condensate):
+	 * {@code ventedWater[0]} receives the units of water this solve vented from
+	 * a boiling open vessel — exactly the distillate the condenser port
+	 * recovers as its product. Nullable to keep the reactor path allocation-free.
+	 */
+	@Nullable
+	public static Solution apply(ReactorTank tank, boolean openVessel, @Nullable IItemHandler items, double stirring,
+			@Nullable long[] ventedWater) {
 		// 1. settle phases (gases stay separate, liquids merge per miscibility group)
 		tank.collapseIfNeeded();
 
@@ -185,9 +197,12 @@ public final class RulesEngine {
 		solution.solve();
 
 		// 5. open-vessel evaporation: boiling water vents, concentrating the
-		//    solutes (the next pass's crystallisation sees the higher concentration)
+		// solutes (the next pass's crystallisation sees the higher concentration)
 		if (openVessel && temperature >= WATER_BOILING_C) {
-			solution.evaporateWater((long) EVAPORATION_RATE_MB * Chemistry.UNIT_PER_MB);
+			long vented = solution.evaporateWater((long) EVAPORATION_RATE_MB * Chemistry.UNIT_PER_MB);
+			if (ventedWater != null) {
+				ventedWater[0] += vented;
+			}
 		}
 
 		// 6. skip the rewrite if nothing happened (avoids sync churn on inert contents)

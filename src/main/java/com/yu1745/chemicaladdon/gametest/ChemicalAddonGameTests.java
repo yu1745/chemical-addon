@@ -13,10 +13,16 @@ import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.fluid.SolidColors;
 import com.yu1745.chemicaladdon.fluid.Temperature;
 import com.yu1745.chemicaladdon.item.MixedResidueItem;
+import com.yu1745.chemicaladdon.item.TestPaperItem;
+import com.yu1745.chemicaladdon.reactor.AbstractBaumeGaugeBlockEntity;
+import com.yu1745.chemicaladdon.reactor.BaumeGaugeBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlock;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlockEntity;
+import com.yu1745.chemicaladdon.reactor.CrystallizerControllerBlock;
+import com.yu1745.chemicaladdon.reactor.CrystallizerControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.DecantHoseBlockEntity;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlockEntity;
+import com.yu1745.chemicaladdon.reactor.PhGaugeBlockEntity;
 import com.yu1745.chemicaladdon.reactor.PressureGaugeBlockEntity;
 import com.yu1745.chemicaladdon.reactor.PressureGaugePanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlock;
@@ -27,6 +33,7 @@ import com.yu1745.chemicaladdon.reactor.SettlingBasinBlockEntity;
 import com.yu1745.chemicaladdon.reactor.SpillLogic;
 import com.yu1745.chemicaladdon.reactor.ThermometerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ThermometerPanelBlockEntity;
+import com.yu1745.chemicaladdon.reactor.TurbidityGaugeBlockEntity;
 import com.yu1745.chemicaladdon.registry.AllBlocks;
 import com.yu1745.chemicaladdon.registry.AllContainers;
 import com.yu1745.chemicaladdon.registry.AllFluids;
@@ -42,6 +49,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.gametest.framework.GameTestSequence;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -2487,9 +2495,320 @@ public class ChemicalAddonGameTests {
 		reactor.getTank().clear();
 		reactor.getTank().fill(new FluidStack(Fluids.WATER, 1000), FluidAction.EXECUTE);
 		gauge.tick();
-		helper.assertTrue(gauge.isAlarm(),
-			"the inverted alarm fires when conductivity falls to/below the setpoint (washing-complete)");
+			helper.assertTrue(gauge.isAlarm(),
+				"the inverted alarm fires when conductivity falls to/below the setpoint (washing-complete)");
+			helper.succeed();
+		}
+
+	// ------------------------------------------------------- U17 instruments
+
+	/** The minimal 3×3×3 reactor with one wall slot replaced by a gauge block. */
+	private static ReactorControllerBlockEntity buildReactorWithGauge(GameTestHelper helper,
+			net.minecraft.world.level.block.Block gauge) {
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick);
+				helper.setBlock(new BlockPos(x, 3, z), brick);
+			}
+		}
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				if (x == 2 && z == 2) {
+					continue;
+				}
+				BlockPos p = new BlockPos(x, 2, z);
+				helper.setBlock(p, (x == 2 && z == 1) ? controller : (x == 3 && z == 1) ? gauge.defaultBlockState() : brick);
+			}
+		}
+		ReactorControllerBlockEntity reactor = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 1));
+		helper.assertTrue(reactor.tryAssemble().ok(), "reactor with a gauge wall should assemble");
+		return reactor;
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void phGaugeReadsTitrationEndpoint(GameTestHelper helper) {
+		// S16 (U17): pH = −log[H⁺] (alkaline side via Kw). The wall gauge reads
+		// the vessel live; the default below-trigger setpoint (pH 8) fires when a
+		// caustic feed is neutralised past it — the titration/carbonisation
+		// endpoint as a redstone event. Empty-hand right-click flips direction.
+		ResourceLocation water = Solution.WATER;
+		ReactorControllerBlockEntity reactor = buildReactorWithGauge(helper, AllBlocks.PH_GAUGE.get());
+		PhGaugeBlockEntity gauge = (PhGaugeBlockEntity) helper.getBlockEntity(new BlockPos(3, 2, 1));
+		helper.assertTrue(gauge != null && gauge.getMasterPos() != null, "the pH wall gauge must be bound");
+
+		// caustic feed: [OH⁻]=0.1 → pH 13 (360 mB — the 3×3×3 vessel holds 1000)
+		reactor.getTank().fill(Mixture.create(Map.of(water, 300), Map.of("Na+1", 30, "OH-1", 30), 360),
+			FluidAction.EXECUTE);
+		gauge.tick();
+		helper.assertTrue(gauge.isAttached() && gauge.getPh() == 13,
+			"the gauge reads the caustic feed (got " + gauge.getPh() + ")");
+		helper.assertTrue(!gauge.isAlarm(), "pH 13 vs below-trigger setpoint 8: no endpoint yet");
+
+		// neutralise: the vessel's rules engine consumes H⁺+OH⁻ → the salt reads pH 7
+		reactor.getTank().fill(Mixture.create(Map.of(water, 300), Map.of("H+1", 30, "Cl-1", 30), 360),
+			FluidAction.EXECUTE);
+		gauge.tick();
+		helper.assertTrue(gauge.getPh() <= 4,
+			"pre-solve the coexisting ions read on the acid side (got " + gauge.getPh() + ")");
+		helper.startSequence()
+			.thenIdle(TICKS)
+			.thenExecute(() -> {
+				helper.assertTrue(gauge.getPh() == 7, "a neutralised salt solution reads pH 7 (got " + gauge.getPh() + ")");
+				helper.assertTrue(gauge.isAlarm(), "pH fell to/below the setpoint 8: the endpoint event fires");
+				gauge.toggleTriggerDirection(); // empty-hand right-click in-world
+				helper.assertTrue(!gauge.isAlarm(), "above-trigger at pH 7 vs 8: alarm off after the toggle");
+				helper.assertTrue(gauge.analogSignal() == 7, "comparator: 1 level = 1 pH (got " + gauge.analogSignal() + ")");
+			})
+			.thenSucceed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void baumeGaugeReadsDissolvedSolids(GameTestHelper helper) {
+		// S04 (U17, redefined as the Baumé hydrometer): °Bé = declared linear
+		// function of total dissolved units / water units — species-blind. The
+		// curve-saturated brine (2 × 0.36 f.u./water) anchors 30 °Bé.
+		ResourceLocation water = Solution.WATER;
+		ReactorControllerBlockEntity reactor = buildReactorWithGauge(helper, AllBlocks.BAUME_GAUGE.get());
+		BaumeGaugeBlockEntity gauge = (BaumeGaugeBlockEntity) helper.getBlockEntity(new BlockPos(3, 2, 1));
+
+		// exactly saturated NaCl brine: (144 + 144)/400 = 0.72 → 30 °Bé
+		reactor.getTank().fill(Mixture.create(Map.of(water, 400), Map.of("Na+1", 144, "Cl-1", 144), 688),
+			FluidAction.EXECUTE);
+		gauge.tick();
+		helper.assertTrue(gauge.isAttached() && gauge.getBaume() == 30,
+			"saturated brine anchors 30°Bé (got " + gauge.getBaume() + ")");
+		helper.assertTrue(gauge.isAlarm(), "30°Bé vs setpoint 24: the concentration endpoint fires");
+
+		reactor.getTank().clear();
+		reactor.getTank().fill(Mixture.create(Map.of(water, 400), Map.of("Na+1", 72, "Cl-1", 72), 544),
+			FluidAction.EXECUTE);
+		gauge.tick();
+		helper.assertTrue(gauge.getBaume() == 15, "half concentration reads 15°Bé (got " + gauge.getBaume() + ")");
+		helper.assertTrue(!gauge.isAlarm(), "15°Bé is below the setpoint");
 		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void turbidityGaugeBinsFirstClouding(GameTestHelper helper) {
+		// S17 (U17): 4 bins over the suspended fraction (清/微浑/浑/浆), the
+		// settled bed excluded — clear liquor over a crystal bed reads clear.
+		// Default threshold 微浑 = the first-clouding cut-the-feed alarm.
+		ResourceLocation water = Solution.WATER;
+		ReactorControllerBlockEntity reactor = buildReactorWithGauge(helper, AllBlocks.TURBIDITY_GAUGE.get());
+		TurbidityGaugeBlockEntity gauge = (TurbidityGaugeBlockEntity) helper.getBlockEntity(new BlockPos(3, 2, 1));
+
+		// a clear solution: bin 0, no alarm
+		reactor.getTank().fill(Mixture.create(Map.of(water, 400), Map.of("Na+1", 50, "Cl-1", 50), 500),
+			FluidAction.EXECUTE);
+		gauge.tick();
+		helper.assertTrue(gauge.isAttached() && gauge.getTurbidity() == 0, "a clear solution reads 清");
+		helper.assertTrue(!gauge.isAlarm(), "clear vs 微浑 threshold: no alarm");
+
+		// suspended limestone (insoluble mineral): 200/800 = 25% → bin 3 (浆)
+		ResourceLocation limestone = new ResourceLocation(ChemicalAddon.MODID, "limestone");
+		reactor.getTank().clear();
+		reactor.getTank().fill(Mixture.create(Map.of(water, 800), Map.of(), Map.of(limestone, 200), 1000),
+			FluidAction.EXECUTE);
+		gauge.tick();
+		helper.assertTrue(gauge.getTurbidity() == 3, "a 25% slurry reads 浆 (got " + gauge.getTurbidity() + ")");
+		helper.assertTrue(gauge.isAlarm(), "first clouding past 微浑 raises the alarm");
+		helper.assertTrue(gauge.analogSignal() == 15, "4 bins map onto 0/5/10/15 (got " + gauge.analogSignal() + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void testPapersReportQualitativeVerdicts(GameTestHelper helper) {
+		// the consumable probe family (plans/12 §2.2): dip a reactor, read the
+		// colour, lose the paper — "what is in there", never "how much".
+		buildReactor(helper);
+		ReactorControllerBlockEntity reactor = reactor(helper);
+		ResourceLocation water = Solution.WATER;
+
+		// an acid chloride liquor (HCl): litmus red, phenolphthalein colourless,
+		// AgNO₃ positive, no sulfate, no iron, no flame colours
+		reactor.getTank().fill(Mixture.create(Map.of(water, 500), Map.of("H+1", 100, "Cl-1", 100), 700),
+			FluidAction.EXECUTE);
+		helper.assertTrue(TestPaperItem.verdictKey(TestPaperItem.Kind.LITMUS, reactor).equals("paper.chemicaladdon.litmus_red"),
+			"litmus on acid reads red");
+		helper.assertTrue(TestPaperItem.verdictKey(TestPaperItem.Kind.PHENOLPHTHALEIN, reactor)
+			.equals("paper.chemicaladdon.phenolphthalein_clear"), "phenolphthalein on acid stays colourless");
+		helper.assertTrue(TestPaperItem.verdictKey(TestPaperItem.Kind.WIDE_PH, reactor).equals("paper.chemicaladdon.wide_ph"),
+			"the wide-range paper carries its reading");
+		helper.assertTrue(TestPaperItem.verdictKey(TestPaperItem.Kind.SILVER_NITRATE, reactor)
+			.equals("paper.chemicaladdon.agno3_positive"), "AgNO₃ detects chloride");
+		helper.assertTrue(TestPaperItem.verdictKey(TestPaperItem.Kind.BARIUM_CHLORIDE, reactor)
+			.equals("paper.chemicaladdon.bacl2_negative"), "no sulfate to find");
+		helper.assertTrue(TestPaperItem.verdictKey(TestPaperItem.Kind.POTASSIUM_THIOCYANATE, reactor)
+			.equals("paper.chemicaladdon.kscn_negative"), "no ferric iron to find");
+		helper.assertTrue(TestPaperItem.verdictKey(TestPaperItem.Kind.COBALT_GLASS, reactor)
+			.equals("paper.chemicaladdon.flame_none"), "no flame colours");
+
+		// a caustic potash feed: litmus blue, phenolphthalein pink, and through
+		// the cobalt glass potassium's lilac wins over sodium's yellow
+		reactor.getTank().clear();
+		reactor.getTank().fill(
+			Mixture.create(Map.of(water, 500), Map.of("Na+1", 60, "OH-1", 60, "K+1", 40, "Cl-1", 40), 700),
+			FluidAction.EXECUTE);
+		helper.assertTrue(TestPaperItem.verdictKey(TestPaperItem.Kind.LITMUS, reactor).equals("paper.chemicaladdon.litmus_blue"),
+			"litmus on alkali reads blue");
+		helper.assertTrue(TestPaperItem.verdictKey(TestPaperItem.Kind.PHENOLPHTHALEIN, reactor)
+			.equals("paper.chemicaladdon.phenolphthalein_pink"), "phenolphthalein turns pink at pH ≥ 8");
+		helper.assertTrue(TestPaperItem.verdictKey(TestPaperItem.Kind.COBALT_GLASS, reactor)
+			.equals("paper.chemicaladdon.flame_potassium"), "through cobalt glass potassium's lilac shows");
+
+		// ferric contamination: the KSCN spot test runs blood red
+		reactor.getTank().clear();
+		reactor.getTank().fill(Mixture.create(Map.of(water, 500), Map.of("Fe+3", 30, "Cl-1", 90), 620),
+			FluidAction.EXECUTE);
+		helper.assertTrue(TestPaperItem.verdictKey(TestPaperItem.Kind.POTASSIUM_THIOCYANATE, reactor)
+			.equals("paper.chemicaladdon.kscn_positive"), "KSCN detects ferric iron");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void crystallizerEndpointIsPhysicalAndSelective(GameTestHelper helper) {
+		// M08 as the executor reading the S04 quantity (engine-level): boiling
+		// concentrates the liquor; at the °Bé setpoint the heat is cut; cooling
+		// + one seed grain crystallises ONLY the target species while the
+		// co-salt stays dissolved — "只析 A 不析 B" earned by the setpoint choice.
+		// Numbers: 2000 water + 240 KNO₃ + 12 NaCl (mB-equiv); endpoint 30°Bé
+		// (dissolved/water = 0.72) lands at ~700 water — KNO₃ at 240/700 = 0.343
+		// is past its 20°C curve (0.316), NaCl at 12/700 = 0.017 far under 0.36.
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation kno3 = new ResourceLocation(ChemicalAddon.MODID, "potassium_nitrate");
+		ReactorTank tank = new ReactorTank(10000, () -> {});
+		FluidStack liquor = Mixture.create(
+			Map.of(water, 2000),
+			Map.of("K+1", 240, "NO3-1", 240, "Na+1", 12, "Cl-1", 12),
+			2504);
+		Temperature.set(liquor, 100);
+		tank.fill(liquor, FluidAction.EXECUTE);
+
+		// the crystalliser loop: boil (re-pinned = the burner's job) until the
+		// Baumé setpoint (30°Bé) is reached, condensing every vented unit
+		int baume = 0;
+		long condensateMb = 0;
+		for (int i = 0; i < 100; i++) {
+			Temperature.set(tank.getFluids().get(0), 100); // below the endpoint the burner runs
+			long[] vented = new long[1];
+			RulesEngine.apply(tank, true, null, 1.0, vented);
+			condensateMb += vented[0] / Chemistry.UNIT_PER_MB;
+			baume = AbstractBaumeGaugeBlockEntity.baumeOf(tank);
+			if (baume >= 30) {
+				break; // endpoint: the burner is cut — the boil stops
+			}
+		}
+		helper.assertTrue(baume >= 30, "boiling must reach the °Bé setpoint (got " + baume + ")");
+		helper.assertTrue(condensateMb >= 1000, "the distillate is recovered as product (got " + condensateMb + " mB)");
+		helper.assertTrue(Mixture.deriveSedimentAmounts(tank.getFluids().get(0)).isEmpty(),
+			"a hot liquor at the endpoint holds everything dissolved");
+		helper.assertTrue(!Mixture.deriveSuspendedAmounts(tank.getFluids().get(0)).containsKey(kno3),
+			"no premature clouding before the endpoint");
+
+		// cooled to ambient the liquor is metastable (1.09× over the curve is
+		// inside the nucleation gate — the stop-loss window); unseeded nothing moves
+		Temperature.set(tank.getFluids().get(0), 20);
+		RulesEngine.apply(tank);
+		helper.assertTrue(Mixture.deriveSedimentAmounts(tank.getFluids().get(0)).isEmpty(),
+			"the cooled endpoint liquor sits metastable unseeded");
+
+		// one seed grain of the target collapses it — and only the target
+		ItemStackHandler items = new ItemStackHandler(1);
+		items.setStackInSlot(0, new ItemStack(AllItems.POTASSIUM_NITRATE_GRAIN.get(), 1));
+		for (int i = 0; i < 50; i++) {
+			RulesEngine.apply(tank, false, items, 1.0);
+		}
+		int crystal = Mixture.deriveSedimentAmounts(tank.getFluids().get(0)).getOrDefault(kno3, 0);
+		helper.assertTrue(crystal >= 70 && crystal <= 95,
+			"the target crystallises at the endpoint (grain + excess, got " + crystal + " mB)");
+		helper.assertTrue(ionAmount(tank.getFluids().get(0), "Na+1") == 12,
+			"the co-salt stays fully dissolved (got " + ionAmount(tank.getFluids().get(0), "Na+1") + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 95)
+	public static void crystallizerMultiblockEndpointsAndCondenses(GameTestHelper helper) {
+		// M08 block-level: the reactor multiblock with the crystalliser
+		// controller — setpoint scroll, the endpoint redstone event, the heat
+		// cut, the condensate tank, all on the open 3×3×5 template. The pin
+		// plays the burner BELOW the endpoint; the moment the endpoint fires
+		// the pin is dropped so the real heatTarget() gating (ambient) runs.
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.CRYSTALLIZER_CONTROLLER.get().defaultBlockState();
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick); // floor
+			}
+		}
+		for (int y = 2; y <= 4; y++) {
+			for (int x = 1; x <= 3; x++) {
+				for (int z = 1; z <= 3; z++) {
+					if (x == 2 && z == 2) {
+						continue; // interior column
+					}
+					helper.setBlock(new BlockPos(x, y, z), x == 2 && z == 1 && y == 3 ? controller : brick);
+				}
+			}
+		}
+		CrystallizerControllerBlockEntity be =
+			(CrystallizerControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 3, 1));
+		helper.assertTrue(be.tryAssemble().ok(), "the crystalliser multiblock should assemble");
+		helper.assertTrue(be.getSetpoint() == 24, "the default setpoint is 24°Bé (got " + be.getSetpoint() + ")");
+		be.setSetpointBe(30); // this run aims at full scale (see the engine-level test)
+
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation kno3 = new ResourceLocation(ChemicalAddon.MODID, "potassium_nitrate");
+		FluidStack liquor = Mixture.create(
+			Map.of(water, 2000),
+			Map.of("K+1", 240, "NO3-1", 240, "Na+1", 12, "Cl-1", 12),
+			2504);
+		Temperature.set(liquor, 100);
+		be.getTank().fill(liquor, FluidAction.EXECUTE);
+		be.setPinnedTemperature(100); // the burner's job during concentration
+
+		// poll for the endpoint in 5 s stages; at the endpoint drop the pin —
+		// the unpinned heatTarget() override returns ambient (the real heat cut)
+		GameTestSequence seq = helper.startSequence();
+		for (int i = 0; i < 10; i++) {
+			seq.thenIdle(TICKS * 5).thenExecute(() -> {
+				if (be.atEndpoint() && be.getPinnedTemperature() == 100) {
+					be.setPinnedTemperature(-1); // cut the burner
+				}
+			});
+		}
+		seq.thenExecute(() -> {
+				helper.assertTrue(be.atEndpoint(), "the endpoint event fires at the °Bé setpoint");
+				helper.assertTrue(be.getCondensateMb() >= 1000,
+					"the vented steam condenses as the distillate product (got " + be.getCondensateMb() + " mB)");
+				BlockState state = helper.getBlockState(new BlockPos(2, 3, 1));
+				BlockPos absolute = helper.absolutePos(new BlockPos(2, 3, 1)); // Level reads need world coords
+				helper.assertTrue(AllBlocks.CRYSTALLIZER_CONTROLLER.get()
+					.getAnalogOutputSignal(state, helper.getLevel(), absolute) == 15,
+					"the endpoint drives the redstone output to 15");
+			})
+			.thenIdle(TICKS * 10)
+			.thenExecute(() -> {
+				helper.assertTrue(be.getTemperature() < 100,
+					"the endpoint cut the heat — the vessel is cooling (got " + be.getTemperature() + "°C)");
+				be.setPinnedTemperature(20); // fast-forward the cool to ambient (the debug stick)
+			})
+			.thenIdle(TICKS * 2)
+			.thenExecute(() -> {
+				// drop a seed grain through the item buffer (the player's hand)
+				be.getItems().setStackInSlot(0, new ItemStack(AllItems.POTASSIUM_NITRATE_GRAIN.get(), 1));
+			})
+			.thenIdle(TICKS * 15)
+			.thenExecute(() -> {
+				int crystal = Mixture.deriveSedimentAmounts(be.getTank().getFluids().get(0))
+					.getOrDefault(kno3, 0);
+				helper.assertTrue(crystal >= 70 && crystal <= 95,
+					"seeded at the endpoint only KNO₃ crystallises (got " + crystal + " mB)");
+				helper.assertTrue(ionAmount(be.getTank().getFluids().get(0), "Na+1") == 12,
+					"NaCl stays in the mother liquor (got " + ionAmount(be.getTank().getFluids().get(0), "Na+1") + ")");
+			})
+			.thenSucceed();
 	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 40)

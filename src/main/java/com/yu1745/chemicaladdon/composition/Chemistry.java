@@ -65,6 +65,20 @@ public final class Chemistry {
 	public static final double VAPORISATION_J_PER_UNIT = 2260.0;
 
 	/**
+	 * The ionic product of water Kw = [H⁺]·[OH⁻] = 1e-14, in the engine's own
+	 * concentration units (units / water units — the same scale every log_k is
+	 * authored on). U17 (plans/12 §5): the pH gauge's alkaline side reads
+	 * {@code [H⁺] = Kw / [OH⁻]} and pure water (neither ion present) is pH 7 by
+	 * definition. Deliberately <b>not</b> a solver entry: a real autoionisation
+	 * pair injected into the ion domain would change the mixture's GCD ratio
+	 * tag (a solved vessel's contents would no longer stack with a freshly
+	 * packed bucket of the same composition), and at the 10⁻⁷ resolution gate
+	 * the pair is exactly 1 unit in 1000 mB — invisible to every mechanism
+	 * except the reading, which computes it analytically instead.
+	 */
+	public static final double KW = 1e-14;
+
+	/**
 	 * Dev assay mode (U17 measurement-honesty knob): when true, engine-internal
 	 * knowledge (speciation lines, mixed-residue percentages) is revealed —
 	 * the developer's god-view. Player-facing instruments must never read this
