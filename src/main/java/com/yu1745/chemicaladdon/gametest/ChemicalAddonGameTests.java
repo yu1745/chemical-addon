@@ -1776,8 +1776,41 @@ public class ChemicalAddonGameTests {
 		helper.assertTrue(ions.getOrDefault("Cl-1", 0) == 500, "Cl- should remain (got " + ions + ")");
 		helper.assertTrue(Mixture.deriveAmounts(result).getOrDefault(water, 0) == 1500,
 			"neutralisation should produce water (got " + Mixture.deriveAmounts(result) + ")");
-		helper.assertTrue(Temperature.get(result) > 20,
-			"neutralisation is exothermic (got " + Temperature.get(result) + "°C)");
+		// U16 energy ledger: 500 mB of pairs × 3172 J over a 3000 mB feed body
+		// → ΔT = 126 °C (mass-coupled; was a flat +25 °C lump before)
+		int t = Temperature.get(result);
+		helper.assertTrue(t >= 140 && t <= 152,
+			"neutralisation is exothermic, ΔT mass-coupled ≈126 °C (got " + t + "°C)");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void neutralisationExothermScalesWithConcentration(GameTestHelper helper) {
+		// U16 acceptance, both directions: the same neutralisation heat
+		// released into a concentrated feed flashes hot enough to cross the
+		// boiling point (self-boil), while a big dilute vessel barely warms —
+		// the mass coupling ΔT = Q/(Σunits × 4.18) that the old flat
+		// "+X °C per solve" constant could not express (plans/03 §12).
+		ResourceLocation water = Solution.WATER;
+
+		// concentrated 1:1:1 water:H+:OH- → ΔT = 3172/(3 × 4.18) ≈ 253 °C
+		ReactorTank hot = new ReactorTank(10000, () -> {});
+		hot.fill(Mixture.create(Map.of(water, 500), Map.of("H+1", 500, "OH-1", 500), 1500),
+			FluidAction.EXECUTE);
+		RulesEngine.apply(hot);
+		int tHot = Temperature.get(hot.getFluids().get(0));
+		helper.assertTrue(tHot >= 260 && tHot <= 290,
+			"concentrated 1:1:1 neutralisation self-boils (ΔT≈253 °C, got " + tHot + "°C)");
+
+		// the same reaction amount diluted in a near-full 10-bucket body
+		// (96:1:1): single-digit rise — big-vessel dilution is safe
+		ReactorTank big = new ReactorTank(10000, () -> {});
+		big.fill(Mixture.create(Map.of(water, 9600), Map.of("H+1", 100, "OH-1", 100), 9800),
+			FluidAction.EXECUTE);
+		RulesEngine.apply(big);
+		int tBig = Temperature.get(big.getFluids().get(0));
+		helper.assertTrue(tBig >= 24 && tBig <= 32,
+			"the same heat in a full dilute vessel warms single digits (got " + tBig + "°C)");
 		helper.succeed();
 	}
 
@@ -2013,11 +2046,31 @@ public class ChemicalAddonGameTests {
 		helper.assertTrue(Mixture.deriveAmounts(tank.getFluids().get(0)).getOrDefault(water, 0) == 1000,
 			"a sealed vessel must not evaporate (got " + Mixture.deriveAmounts(tank.getFluids().get(0)) + ")");
 
-		// open: boil down to dryness. Kinetics barely crystallise on the way
-		// (the supersaturated window is metastable and short-lived at these
-		// rates) — then the EVAPORITE rule fires: no solvent left, all
-		// dissolved salt crashes out. Boiling a pot dry yields dry salt.
+		// U16 latent heat: one open vent of 50 mB steam carries 2260 J/unit
+		// away — over a 2000 mB feed that is -13 °C, so without a heat source
+		// the body quenches itself below the boiling point and STOPS venting
+		// (boiling needs energy; the self-limiting negative feedback)
+		RulesEngine.apply(tank, true, null);
+		FluidStack vented = tank.getFluids().get(0);
+		helper.assertTrue(Mixture.deriveAmounts(vented).getOrDefault(water, 0) == 950,
+			"one open tick should vent 50 mB of steam (got " + Mixture.deriveAmounts(vented) + ")");
+		helper.assertTrue(Temperature.get(vented) < 100,
+			"latent heat must cool the body below the boil (got " + Temperature.get(vented) + "°C)");
+		RulesEngine.apply(tank, true, null);
+		helper.assertTrue(Mixture.deriveAmounts(tank.getFluids().get(0)).getOrDefault(water, 0) == 950,
+			"no heat source: a quenched body must stop venting (got " + Mixture.deriveAmounts(tank.getFluids().get(0)) + ")");
+
+		// with a heat source (the burner's job — updateHeat in a live reactor;
+		// here re-pinned each tick) the boil continues to dryness. Kinetics
+		// barely crystallise on the way (the supersaturated window is metastable
+		// and short-lived at these rates) — then the EVAPORITE rule fires: no
+		// solvent left, all dissolved salt crashes out. Boiling a pot dry
+		// yields dry salt.
 		for (int i = 0; i < 25; i++) {
+			FluidStack stack = tank.getFluids().get(0);
+			if (!Mixture.deriveAmounts(stack).getOrDefault(water, 0).equals(0)) {
+				Temperature.set(stack, 100); // the burner holding the boil
+			}
 			RulesEngine.apply(tank, true, null);
 		}
 		FluidStack result = tank.getFluids().get(0);

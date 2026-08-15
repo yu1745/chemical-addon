@@ -99,7 +99,10 @@ public final class Solution {
 	private final Map<ResourceLocation, Long> suspended = new LinkedHashMap<>(); // precipitated solid species → mB (slurry)
 	private final Map<ResourceLocation, Long> sediment = new LinkedHashMap<>(); // crystallised solid species → mB (settles)
 	private final int temperature;
-	private double heat; // °C added by exothermic neutralisation (accumulated sub-unit exact)
+	/** Net reaction energy released this solve, in J (negative = cooling demand, e.g. latent heat of vented steam). */
+	private double energyJ;
+	/** The solve's feed mass in units (all four domains as constructed) — the heat-capacity basis of {@link #heatRiseC()}. */
+	private final long feedUnits;
 	/** Mass-transfer coefficient 0.3–1.0 (kinetic rates scale with it; 1.0 = unstirred default). */
 	private double stirring = 1.0;
 	private final Map<ResourceLocation, Long> netMoved = new LinkedHashMap<>(); // report accumulator (net solid units moved)
@@ -140,6 +143,12 @@ public final class Solution {
 			}
 		}
 		this.temperature = temperature;
+		long units = 0;
+		for (long v : this.molecular.values()) units += v;
+		for (long v : this.ions.values()) units += v;
+		for (long v : this.suspended.values()) units += v;
+		for (long v : this.sediment.values()) units += v;
+		this.feedUnits = units;
 	}
 
 	/** Set the vessel's stirring (mass-transfer) coefficient before solving; kinetic rates scale with it. */
@@ -181,21 +190,40 @@ public final class Solution {
 		return sediment;
 	}
 
-	/** °C rise from exothermic reactions (apply to the tank contents). */
-	public int heat() {
-		return (int) heat;
+	/** Net reaction energy of this solve in J (U16 ledger; positive = released, negative = absorbed). */
+	public double energyJ() {
+		return energyJ;
+	}
+
+	/**
+	 * The solve's temperature effect, °C (U16 energy ledger, plans/03 §12):
+	 * {@code ΔT = Q / (feedUnits × c)} with the declared {@code 1 unit ≡ 1 g}
+	 * body and water's specific heat — a fixed reaction heat warms a big
+	 * vessel less, which is exactly the mass coupling the old lumped "+X °C
+	 * per solve" constant could not express. The basis is the feed mass (the
+	 * body that absorbed the heat as it reacted).
+	 */
+	public double heatRiseC() {
+		return feedUnits <= 0 ? 0 : energyJ / (feedUnits * Chemistry.HEAT_CAPACITY_PER_UNIT);
 	}
 
 	/**
 	 * Remove {@code mB} of water in solver units (open-vessel evaporation —
 	 * the solvent vents as steam while the solutes stay, concentrating the
 	 * solution). Called by the rules engine after solving; the next solve's
-	 * crystallisation then sees the higher concentration. Latent-heat cooling
-	 * is left to {@code updateHeat}'s relaxation toward the heat source
-	 * (documented simplification).
+	 * crystallisation then sees the higher concentration. Each vented unit
+	 * also carries its latent heat away ({@code energyJ -= units × 2260}),
+	 * cooling the remaining body — without a heat source a boiling pot
+	 * quenches itself below the boiling point; a burner's input is what keeps
+	 * it boiling (the U16 self-limiting negative feedback).
 	 */
 	public void evaporateWater(long units) {
-		mergeMolecular(WATER, -Math.min(units, molecular.getOrDefault(WATER, 0L)));
+		long vented = Math.min(units, molecular.getOrDefault(WATER, 0L));
+		if (vented <= 0) {
+			return;
+		}
+		mergeMolecular(WATER, -vented);
+		energyJ -= vented * Chemistry.VAPORISATION_J_PER_UNIT;
 	}
 
 	/** Per-solid diagnosis of this solve (see {@link Speciation}); empty never — always one entry per candidate. */
@@ -492,7 +520,7 @@ public final class Solution {
 		mergeIon(H, -n);
 		mergeIon(OH, -n);
 		mergeMolecular(WATER, n);
-		heat += n * NEUTRALISATION_HEAT_PER_UNIT;
+		energyJ += n * Chemistry.NEUTRALISATION_J_PER_PAIR;
 		return n;
 	}
 
@@ -538,7 +566,7 @@ public final class Solution {
 			mergeIon(H, -1);
 			mergeIon(OH, -1);
 			mergeMolecular(WATER, 1);
-			heat += NEUTRALISATION_HEAT_PER_UNIT;
+			energyJ += Chemistry.NEUTRALISATION_J_PER_PAIR;
 			return true;
 		}
 		return false;
@@ -729,7 +757,4 @@ public final class Solution {
 	private static void removeNonPositive(Map<?, Long> map) {
 		map.values().removeIf(v -> v <= 0);
 	}
-
-	/** °C added per UNIT of water formed by neutralisation (+50°C per 1000 mB; amounts are in solver units). */
-	private static final double NEUTRALISATION_HEAT_PER_UNIT = 0.05 / Chemistry.UNIT_PER_MB;
 }

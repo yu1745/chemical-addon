@@ -9,6 +9,7 @@ import com.simibubi.create.content.processing.recipe.HeatCondition;
 import com.simibubi.create.content.processing.recipe.ProcessingOutput;
 import com.simibubi.create.foundation.fluid.FluidIngredient;
 import com.yu1745.chemicaladdon.ChemicalAddon;
+import com.yu1745.chemicaladdon.composition.Chemistry;
 import com.yu1745.chemicaladdon.composition.Species;
 import com.yu1745.chemicaladdon.composition.SpeciesManager;
 import com.yu1745.chemicaladdon.fluid.Mixture;
@@ -228,13 +229,29 @@ final class ReactionLogic {
 		// heat effect (exothermic raises temperature) — U1/G2: the reaction
 		// happens throughout the fluid body, so every phase takes the delta
 		// (per-stack +Δ keeps phase temperature differences intact and lifts the
-		// amount-weighted vessel average by exactly Δ)
+		// amount-weighted vessel average by exactly Δ).
+		//
+		// U16 energy ledger (plans/03 §12): {@code deltaHeat} declares the °C
+		// rise this batch would give a reference one-bucket body; the actual
+		// rise is mass-coupled — ΔT = Q/(Σunits·c) with Q = deltaHeat·REF·c,
+		// i.e. ΔT = deltaHeat × (one bucket / vessel contents). A fixed batch
+		// of reaction heat warms a full big vessel by single digits, the same
+		// batch in a nearly-empty one flashes hot — concentrated dilution /
+		// neutralisation runaway becomes emergent instead of a flat constant.
 		if (recipe.getDeltaHeat() != 0) {
 			tank.collapseIfNeeded();
+			long totalUnits = 0;
 			for (FluidStack stack : tank.getFluids()) {
-				int t = Math.max(ReactorControllerBlockEntity.AMBIENT_TEMP,
-					Math.min(ReactorControllerBlockEntity.MAX_TEMP, Temperature.get(stack) + recipe.getDeltaHeat()));
-				Temperature.set(stack, t);
+				totalUnits += (long) stack.getAmount() * Chemistry.UNIT_PER_MB;
+			}
+			if (totalUnits > 0) {
+				int delta = (int) Math
+					.round((double) recipe.getDeltaHeat() * RulesEngine.ITEM_UNITS / totalUnits);
+				for (FluidStack stack : tank.getFluids()) {
+					int t = Math.max(ReactorControllerBlockEntity.AMBIENT_TEMP,
+						Math.min(ReactorControllerBlockEntity.MAX_TEMP, Temperature.get(stack) + delta));
+					Temperature.set(stack, t);
+				}
 			}
 		}
 	}

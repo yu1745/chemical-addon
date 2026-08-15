@@ -16,9 +16,10 @@
 | U13 规则引擎 v2 | equilibria 质量作用求解器 + 物品投料 + 蒸发浓缩 + speciation | ✅ 完成（插队） |
 | U14 引擎测试层 | JUnit 剥离 MC + 10⁴ 细网格 + 动力学 + 21 物种 | ✅ 完成（插队） |
 | U15 晶粒投种混合固体 | 晶粒 1/16 + 投种 + mixed_residue 整坨取出 + 苦卤盐曲线 | ✅ 完成（插队） |
+| U16 反应热能量记账 | J/unit 账本 + ΔT=Q/(feedUnits×c) + 蒸发潜热 + deltaHeat 质量耦合 | ✅ 完成（插队） |
 | M3+ 其余 | FE 接线 / 竖窑 / 索尔维 / 连续流 / 高压 / 零排放 | ⏳ 未开始（顺序见 plans/11 §2.1） |
 
-**自动化测试**：`./gradlew runGameTestServer` → **89/89 通过**；`./gradlew test` → **56/56 JUnit**。
+**自动化测试**：`./gradlew runGameTestServer` → **90/90 通过**；`./gradlew test` → **60/60 JUnit**。
 
 ## 已完成明细
 
@@ -261,6 +262,17 @@ M3 首单元（plans/11 §2.1）：修掉 G1/G2/G3 三条公共地基缺口，�
 - **GameTest +3**：真实晶粒投种塌缩（0.45 vs 0.36 亚稳 + 1 岩盐晶粒 → 80 mB 沉淀 + 饱和母液 72 mB）；整坨取出双路（3000 mB 混合沉底→3 盐渣（NBT 双成分）/ 2500 mB 单物种→2 纯物品 + 500 mB 传家宝 / 62.5 mB 不可取出）；盐渣溶解展开守恒（Na⁺/Mg²⁺/Cl⁻ 精确、电中性）。
 - 踩坑记录：`ItemStack(Item,int,CompoundTag)` 在 1.20.1 第三参是 **capNBT** 不是物品 tag（盐渣 NBT 全空）→ 改 `copy()+setCount`；mixture 构造时 total 与 parts 和不一致会整体重归一化（绝对量被 ratio 洗掉），测试需令 Σparts = total mB；datagen 的 en extra lang 与 registrate `.lang()` 撞键直接崩——`.lang()` 已覆盖的键不进 EXTRA_LANG_EN。
 
+### U16 · 反应热能量记账
+
+热从「集总 °C 常数」改为 **J/unit 能量记账**（plans/03 §12 修法落地）。GameTest 90/90 + JUnit 60/60 全绿。**这一单元让「热失控 vs 大釜稀释」两个方向都判对**：同一份反应热，浓料小锅自沸、大釜稀释只升个位数；开口釜排汽带潜热，无热源自熄。
+
+- **三常数声明口径**（`composition/Chemistry`，声明 1 unit ≡ 1 g，与溶解度曲线声明同族）：`HEAT_CAPACITY_PER_UNIT=4.18` J/unit·°C（水）、`NEUTRALISATION_J_PER_PAIR=3172`（57.1 kJ/mol ÷ 18 g/mol）、`VAPORISATION_J_PER_UNIT=2260`（水汽化潜热）。
+- **Solution 账本**：`energyJ`（double，负值=冷却需求）替换旧 `heat`（°C 集总，删 `NEUTRALISATION_HEAT_PER_UNIT=0.05/10⁴`）；`heatRiseC() = Q/(feedUnits×c)`，**feed 基准=构造时四域总量**（吸热的是当时那锅料——1:1:1 中和 ΔT=3172/(3×4.18)≈253°C，正是计划书验收锚点）；直接中和对与 `driveWeakElectrolytes` 驱动对**同价计热**（滴定链每求解步记账）。
+- **蒸发潜热自限**：`evaporateWater` 每排 1 unit 汽记 −2260 J——开口釜排 50 mB 使 2000 mB 体冷却 ~13°C，**无热源自熄**（降到沸点下停排）、有热源（烈焰人放松弛回温）持续沸腾但被钳在 ~100–130°C 振荡，不再免费越过 100°C。煮干出盐链不变（热源供能）。
+- **配方 deltaHeat 同口径**：JSON 语义=「参考一桶（10⁷ units）体的温升」，实际 `ΔT = deltaHeat × (一桶/釜内总量)` 质量反比缩放——现有 150/100 两个配方 JSON **零改动**，满釜行为与旧版一致、大釜自动降为个位数。
+- **测试**：新增 `EnergyLedgerTest` 4 例（1:1:1→253±2 / 稀释线性 63.25=253×(3000/12000) / 潜热 −13.5 / 弱碱滴定全程计热 54.2——fixpoint 跨步累计 ΔT，正是釜每 tick 的记账方式）；GameTest +1 `neutralisationExothermScalesWithConcentration`（浓 1:1:1 实测 273°C vs 96:1:1 大釜 28°C 双向）；基线重定：`rulesEngineNeutralisesAcidAndBase` 温升 >20 → 140–152（ΔT≈126 质量耦合），蒸发测试改写为「无热源排 50 mB 冷 13°C 停沸 → 热源回温煮干蒸干出盐」三段。
+- 踩坑记录：`solveToFixpoint` 每轮新建 Solution，**返回的是静息轮账本（=0）**——跨步放热要在测试里累计 `heatRiseC()`，不能用末轮快照。
+
 ### U14 · JUnit 引擎测试层 + 常用无机材料矩阵（引擎数据层 only）
 
 composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor 静态）剥离 MC 跑纯 JUnit（`./gradlew test`），GameTest 86/86 + JUnit 52/52 全绿。含后续追加的**动力学层**与 **10⁴ 细网格**。
@@ -273,7 +285,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 - **动力学层（两速化学，结晶域默认动力学）**：快平衡瞬时解（PHREEQC 立场，缺省语义）；结晶生长亲和律限速（`0.1×水×(c/c_sat−1)×搅拌`，几何逼近永不过冲）+ **成核门槛 0.5**（无晶种且过饱和 <50% = 亚稳，骤冷不析出；一粒晶种塌缩——接种玩法）+ 首晶 0.05 慢成核 + 回溶瞬时 + **蒸干规则**（水尽全析，煮干出盐）；平衡条目可选 `"rate"`（亲和律 + 粗 Arrhenius 每 25°C 翻倍 ×搅拌，每求解步一推，缺省瞬时=零回归）。`Speciation.rateLimited` 报告"热力学该动但动力学卡住"。**修真 bug**：①动力学条目被外层 pass 偷跑两倍（pass 感知）；②**mB↔unit 往返的余数分配使 NH₄⁺/NO₃⁻差 1 单位 → 电中性校验拒收整个离子集 → `Mixture.create` 静默扔掉全部离子、质量塌成水**（GameTest 循环里暴露）——`setContents` 单位路径加**痕量电荷修复**（±几单位刮掉，大失衡照旧拒收报警）；③自接种让成核惩罚只慢一步——改为硬成核门槛才是真亚稳。搅拌系数从 BE 贯通到求解器。测试重定基线：结晶断言全部改定点语义（solveToFixpoint 预算 4000），GameTest 冷却测试改写成「骤冷亚稳 + 投种塌缩」演示、蒸发测试改「蒸干出盐」；新增 `KineticsTest` 8 例（几何逼近单调、亚稳门槛、晶种塌缩、蒸干、rate 条目每步一推、Arrhenius 4×、瞬时平衡不受影响）。
 - **测试套 9×（52 用例）**：`InvariantsTest`（fuzz 守恒 + 定点稳定性）、`PrecipitationTest`、`CrystallisationTest`（定点语义）、`ComplexationTest`、`WeakElectrolyteTest`、`FineGridTest`（细网格 vs 解析解对账）、`SpeciationReportTest`、`KineticsTest` + Smoke。
 - 氨水行为变化：进釜后「完全电离」的 NH₄⁺OH⁻ 松弛为绝大部分分子氨——素尔维中间体行为后续 U6 调参时复核。
-- **反应热量纲分析定案（03 §12）**：现状集总常数（ΔT∝反应量、无热容、无潜热）不能正确表达自持反应（两个方向都判错）；修法已设计（能量记账 J/unit + ΔT=Q/(Σunits×4.18) + 蒸发潜热 2260 J/unit），未排期。
+- **反应热量纲分析定案（03 §12）**：现状集总常数（ΔT∝反应量、无热容、无潜热）不能正确表达自持反应（两个方向都判错）；修法已设计（能量记账 J/unit + ΔT=Q/(Σunits×4.18) + 蒸发潜热 2260 J/unit）——**U16 已落地**（见上节）。
 
 ### U13 · 规则引擎 v2（统一 equilibria 条目 + 质量作用求解器，PHREEQC 语义）
 
@@ -333,8 +345,8 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 4. **M4 旗舰**：索尔维制碱闭环（吸收塔氨盐水 → 碳化 → 煅烧 → 氨回收）
 5. **基础设施**：流体桶（S08）、GUI 美化、datagen 接入（配方/模型 provider）、Jade 集成（流体显示/温度/进度 tooltip）、JEI 配方展示
 6. **混合物流体系统（Mixture）**：✅ 互溶性（D18）已落地——`miscibilityGroup` 声明式溶剂族、按组合并、按密度分相抽出。**剩余**：液-液分离手段见新增 **D18.5 分液软管** 条目；给 M9 加「不互溶共管=混液炸管」的输送约束
-7. **已知限制**：沉淀池/过滤机无 GUI；方块纹理为程序生成色块；砖无连接纹理（多变体方案待做）；压力/相态/催化未实现（计划 M3+）；**反应热仍为集总常数**（ΔT∝反应量、无热容/潜热，自持反应判不了——修法已设计，plans/11 U16）。（底面尺寸已参数化为任意 W×W×H 3..7；轻相抽出已由 D18.5 分液软管落地）
-8. **设计定案待实施（2026-08 讨论批，plans/11 §2.1）**：~~**U15 晶粒、投种与混合固体物品**~~（✅ 已完成，见「已完成明细」；~~MgCl₂/CaCl₂ 苦卤盐数据首位~~ 一并落地）；**U16 反应热能量记账**（J/unit + ΔT=Q/(Σunits×4.18) + 蒸发潜热；建议排在 S04/pH 或浓硫酸稀释事故之前）；**U17 分析化学层 + 终点控制**（测量诚实性原则 03 §6：玩家仪器只读物理间接量——波美计/沸点/pH/试纸/浊度，SI 对玩家侧不可见、护目镜 SI 行降级 dev 化验——`Chemistry.ASSAY` 旋钮已就绪、mixed_residue 百分比已接；M08→终点结晶器（物理量设定点+分馏模式）、S04→波美计；试纸族=消耗性阈值探测器）；远期弹性见 plans/11（Kw 条目 / rate 数据授权 / 底排口零头打包晶粒 / 萃取独立系统）。
+7. **已知限制**：沉淀池/过滤机无 GUI；方块纹理为程序生成色块；砖无连接纹理（多变体方案待做）；压力/相态/催化未实现（计划 M3+）。（~~反应热集总常数~~ ✅ U16 已改能量记账；底面尺寸已参数化为任意 W×W×H 3..7；轻相抽出已由 D18.5 分液软管落地）
+8. **设计定案待实施（2026-08 讨论批，plans/11 §2.1）**：~~**U15 晶粒、投种与混合固体物品**~~（✅ 已完成，见「已完成明细」；~~MgCl₂/CaCl₂ 苦卤盐数据首位~~ 一并落地）；~~**U16 反应热能量记账**~~（✅ 已完成，见「已完成明细」——J/unit 账本 + ΔT=Q/(feedUnits×4.18) + 蒸发潜热自限 + deltaHeat 质量耦合）；**U17 分析化学层 + 终点控制**（测量诚实性原则 03 §6：玩家仪器只读物理间接量——波美计/沸点/pH/试纸/浊度，SI 对玩家侧不可见、护目镜 SI 行降级 dev 化验——`Chemistry.ASSAY` 旋钮已就绪、mixed_residue 百分比已接；M08→终点结晶器（物理量设定点+分馏模式）、S04→波美计；试纸族=消耗性阈值探测器）；远期弹性见 plans/11（Kw 条目 / rate 数据授权 / 底排口零头打包晶粒 / 萃取独立系统）。
 9. **D18.5 分液（分液口 + 软管滑轮）**：✅ **已实现**——`decant_port`（壁块，只抽最重相，锁相）+ `decant_hose`（Create 软管滑轮装**开口釜上方** → Forge `EntityPlaceEvent` 转化为分液软管；`FLUID_HANDLER` 只抽最轻相/锁相，扳手切「只抽上层/全部抽」，敲掉/中键掉回原版 `create:hose_pulley`）。**视觉已实现**：`DecantHoseRenderer` 照抄 Create `AbstractPulleyRenderer`（coil 滚动 + 下垂 rope + magnet，复用 Create 的 hose_pulley 部分模型与 `HOSE_PULLEY_COIL` sprite shift），块体直接引用 `create:block/hose_pulley/block` 模型（占位贴图废弃）；软管 `offset`（BE 内 `LerpedFloat`，客户端 tick 用 `Chaser.EXP` 缓动追 `ReactorControllerBlockEntity.getLiquidSurfaceY`）从 0 **慢慢下放**到液面、液面升降自动跟随、无手动收放；转化瞬间播**铁砧放置音**（`SoundEvents.ANVIL_PLACE`）提示。**剩余**：Ponder 提示。详见 plans/05 §M7。
 
 ## 常用命令
@@ -342,7 +354,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 ```bash
 ./gradlew build              # 构建
 ./gradlew test               # 引擎 JUnit（composition 层，无需 MC 启动）
-./gradlew runGameTestServer  # 86/86 自动化测试
+./gradlew runGameTestServer  # 90/90 自动化测试
 ./run-server.sh              # 服务端冒烟（自动关闭）
 ./gradlew runClient          # 客户端（自动进 "New World"，-PquickPlayWorld= 覆盖）
 python3 tools/gen_species.py # 改物种后重新生成资源/注册代码

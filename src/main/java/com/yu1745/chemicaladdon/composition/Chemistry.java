@@ -39,6 +39,31 @@ public final class Chemistry {
 	/** Slf4j logger under the same name the mod uses; safe headless. */
 	public static final Logger LOGGER = LogUtils.getLogger();
 
+	// ------------------------------------------------------------- U16 energy
+	// ledger (plans/03 §12). Declared dimension convention: 1 unit ≡ 1 g (the
+	// same declared-convention philosophy as the solubility curves), so the
+	// whole vessel is one lumped body with water's specific heat.
+
+	/** Specific heat of the vessel contents: J per unit per °C (water, 4.18 J/g·°C). */
+	public static final double HEAT_CAPACITY_PER_UNIT = 4.18;
+
+	/**
+	 * Strong-acid/strong-base neutralisation enthalpy per H/OH pair:
+	 * 57.1 kJ/mol ÷ 18 g/mol (per unit ≡ g of water formed). A 1:1:1
+	 * water:H⁺:OH⁻ feed releases Q = N/3 × 3172 J over a body of N units —
+	 * ΔT = 3172/(3 × 4.18) ≈ 253 °C: concentrated neutralisation self-boils.
+	 */
+	public static final double NEUTRALISATION_J_PER_PAIR = 3172.0;
+
+	/**
+	 * Water's latent heat of vaporisation per unit (2260 J/g). Every unit of
+	 * steam an open boiling vessel vents takes this much energy with it —
+	 * evaporation cools the remaining body, the self-limiting negative
+	 * feedback that keeps a boiling pot at ~100 °C and quenches exotherm-driven
+	 * flashes once the reaction heat is spent.
+	 */
+	public static final double VAPORISATION_J_PER_UNIT = 2260.0;
+
 	/**
 	 * Dev assay mode (U17 measurement-honesty knob): when true, engine-internal
 	 * knowledge (speciation lines, mixed-residue percentages) is revealed —

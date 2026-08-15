@@ -163,7 +163,7 @@ public final class RulesEngine {
 		}
 
 		// 6. skip the rewrite if nothing happened (avoids sync churn on inert contents)
-		if (!itemDissolved && solution.heat() == 0
+		if (!itemDissolved && solution.energyJ() == 0
 			&& same(beforeMol, solution.molecular()) && same(beforeIons, solution.ions())
 			&& same(beforeSuspended, solution.suspended()) && same(beforeSediment, solution.sediment())) {
 			return solution;
@@ -188,7 +188,10 @@ public final class RulesEngine {
 		for (Map.Entry<ResourceLocation, Long> e : solution.sediment().entrySet()) {
 			sedAfter.put(e.getKey(), (int) Math.min(e.getValue(), Integer.MAX_VALUE));
 		}
-		tank.setContents(molAfter, ionAfter, suspAfter, sedAfter, clamp(temperature + solution.heat()),
+		// U16 energy ledger: the solve's ΔT is mass-coupled (ΔT = Q/(feedUnits·c)) —
+		// negative energyJ (evaporative latent cooling) cools the body here too
+		tank.setContents(molAfter, ionAfter, suspAfter, sedAfter,
+			clamp((int) Math.round(temperature + solution.heatRiseC())),
 			Chemistry.UNIT_PER_MB);
 		// 8. re-append the inert phases untouched (gases / nonpolar liquids)
 		for (FluidStack s : bystanders) {
