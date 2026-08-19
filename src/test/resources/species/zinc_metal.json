@@ -1,0 +1,28 @@
+{
+  "formula": "Zn",
+  "phase": "SOLID",
+  "molarMass": 65.38,
+  "equilibria": [
+    {
+      "reaction": "chemicaladdon:zinc_metal(s) + 2 H+1 = Zn+2 + chemicaladdon:hydrogen",
+      "log_k": 25.7,
+      "delta_h": -153.9,
+      "delta_h_source": "NIST/NBS (dHf Zn+2,aq)",
+      "delta_h_derivation": "Zn(s)+2H+(aq)=Zn+2(aq)+H2(g): dH = dHf(Zn+2) - dHf(Zn) - 2*dHf(H+) + dHf(H2) = -153.9 kJ/mol; logK = n*E0/0.05916 = 2*(0 - (-0.76))/0.05916 = 25.7"
+    },
+    {
+      "reaction": "chemicaladdon:zinc_metal(s) + Cu+2 = Zn+2 + chemicaladdon:copper_metal(s)",
+      "log_k": 37.2,
+      "delta_h": -218.7,
+      "delta_h_source": "NIST/NBS (dHf Zn+2/Cu+2,aq)",
+      "delta_h_derivation": "Zn(s)+Cu+2(aq)=Zn+2(aq)+Cu(s): dH = dHf(Zn+2) - dHf(Cu+2) = -153.9 - 64.77 = -218.7 kJ/mol; logK = 2*E0(Zn/Cu 1.10 V)/0.05916 = 37.2"
+    },
+    {
+      "reaction": "chemicaladdon:zinc_metal(s) + Fe+2 = Zn+2 + chemicaladdon:iron_metal(s)",
+      "log_k": 10.8,
+      "delta_h": -64.8,
+      "delta_h_source": "NIST/NBS (dHf Zn+2/Fe+2,aq)",
+      "delta_h_derivation": "Zn(s)+Fe+2(aq)=Zn+2(aq)+Fe(s): dH = dHf(Zn+2) - dHf(Fe+2) = -153.9 + 89.1 = -64.8 kJ/mol; logK = 2*E0(Zn/Fe 0.32 V)/0.05916 = 10.8"
+    }
+  ]
+}

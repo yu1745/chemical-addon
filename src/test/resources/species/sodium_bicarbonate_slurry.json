@@ -1,0 +1,14 @@
+{
+  "formula": "NaHCO3 slurry",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "color": "#E0E8E0",
+  "solventRatio": 10,
+  "suspended": [
+    {
+      "species": "chemicaladdon:sodium_bicarbonate",
+      "count": 1
+    }
+  ],
+  "molarMass": 84.0
+}

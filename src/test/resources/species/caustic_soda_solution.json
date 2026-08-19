@@ -1,0 +1,20 @@
+{
+  "formula": "NaOH(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "color": "#8FB4E8",
+  "solventRatio": 10,
+  "ions": [
+    {
+      "ion": "Na",
+      "charge": 1,
+      "count": 1
+    },
+    {
+      "ion": "OH",
+      "charge": -1,
+      "count": 1
+    }
+  ],
+  "molarMass": 40.0
+}

@@ -1,0 +1,21 @@
+{
+  "formula": "H3PO4",
+  "phase": "LIQUID",
+  "molarMass": 98.0,
+  "equilibria": [
+    {
+      "reaction": "H2PO4-1 = H+1 + HPO4-2",
+      "log_k": -7.207,
+      "delta_h": 4.14,
+      "delta_h_source": "phreeqc.dat (pKa2)",
+      "delta_h_derivation": "phreeqc PO4-3+2H+ = H2PO4- dH -4.520 kcal - (PO4-3+H+ = HPO4-2 dH -3.530 kcal) = +0.990 kcal = +4.14 kJ/mol"
+    },
+    {
+      "reaction": "HPO4-2 = H+1 + PO4-3",
+      "log_k": -12.346,
+      "delta_h": 14.77,
+      "delta_h_source": "phreeqc.dat (pKa3)",
+      "delta_h_derivation": "phreeqc PO4-3+H+ = HPO4-2 dH -3.530 kcal = -14.77 kJ/mol (reversed)"
+    }
+  ]
+}

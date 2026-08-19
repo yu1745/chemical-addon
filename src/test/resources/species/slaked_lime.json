@@ -1,0 +1,14 @@
+{
+  "formula": "Ca(OH)2",
+  "phase": "SOLID",
+  "equilibria": [
+    {
+      "reaction": "slaked_lime(s) = Ca+2 + 2 OH-1",
+      "log_k": -5.2,
+      "delta_h": -16.87,
+      "delta_h_source": "llnl.dat (Portlandite) + Hess",
+      "delta_h_derivation": "llnl.dat Portlandite ΔH = -128.7 kJ/mol; + 2 x autoion = 111.8 = -16.87 kJ/mol"
+    }
+  ],
+  "molarMass": 74.0
+}

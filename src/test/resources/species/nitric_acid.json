@@ -1,0 +1,20 @@
+{
+  "formula": "HNO3(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "color": "#8FB4E8",
+  "solventRatio": 20,
+  "ions": [
+    {
+      "ion": "H",
+      "charge": 1,
+      "count": 1
+    },
+    {
+      "ion": "NO3",
+      "charge": -1,
+      "count": 1
+    }
+  ],
+  "molarMass": 63.0
+}

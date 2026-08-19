@@ -1,0 +1,24 @@
+relation                    expected  computed  status
+pKa2 H3PO4                      7.20      7.22  OK
+pKa3 H3PO4                     12.35     12.33  OK
+pKa2 H2CO3                     10.33     10.34  OK
+pKa2 H2SO4                      1.99      2.00  OK
+pKa2 H2SO3                      7.20      7.22  OK
+pKw (H2O=H+OH)                 14.00     14.00  OK
+E° MnO4-/Mn2+                   1.51      1.51  OK
+E° CrO4-2/Cr3+                  1.36      1.36  OK
+E° Cr2O7-2/Cr3+                 1.33      1.36  OK
+E° Fe3+/Fe2+                    0.77      0.77  OK
+E° Cu2+/Cu+                     0.15      0.15  OK
+E° AsO4-3/AsO2-1                0.56      0.56  OK
+logβ4 Al(OH)4-                 33.30     33.30  OK
+logβ4 Cu(NH3)4                 12.59     12.60  OK
+logβ2 Ag(NH3)2                  7.23      7.24  OK
+logβ4 Zn(OH)4-                 15.50     15.51  OK
+logβ6 Fe(CN)6-4                35.00     34.99  OK
+logβ6 Fe(CN)6-3                43.00     42.99  OK
+logβ2 Au(CN)2-                 39.00     39.00  OK
+logβ4 Zn(CN)4-                 18.00     18.01  OK
+logβ4 Hg(CN)4-                 41.00     41.00  OK
+
+21/21 relations close within ±1.0  (self-consistent)

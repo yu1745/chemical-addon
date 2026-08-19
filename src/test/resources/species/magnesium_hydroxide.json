@@ -1,0 +1,14 @@
+{
+  "formula": "Mg(OH)2",
+  "phase": "SOLID",
+  "equilibria": [
+    {
+      "reaction": "magnesium_hydroxide(s) = Mg+2 + 2 OH-1",
+      "log_k": -11.2,
+      "delta_h": 0.47,
+      "delta_h_source": "llnl.dat (Brucite) + Hess",
+      "delta_h_derivation": "llnl.dat Brucite ΔH = -111.3 kJ/mol; + 2 x autoion = 111.8 = 0.4732 kJ/mol"
+    }
+  ],
+  "molarMass": 58.0
+}

@@ -1,0 +1,46 @@
+{
+  "formula": "KNO3(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "solventRatio": 10,
+  "ions": [
+    {
+      "ion": "K",
+      "charge": 1,
+      "count": 1
+    },
+    {
+      "ion": "NO3",
+      "charge": -1,
+      "count": 1
+    }
+  ],
+  "solute": "chemicaladdon:potassium_nitrate",
+  "solubility": [
+    {
+      "tempC": 0,
+      "gPer100g": 13.3
+    },
+    {
+      "tempC": 20,
+      "gPer100g": 31.6
+    },
+    {
+      "tempC": 40,
+      "gPer100g": 63.9
+    },
+    {
+      "tempC": 60,
+      "gPer100g": 110
+    },
+    {
+      "tempC": 80,
+      "gPer100g": 169
+    },
+    {
+      "tempC": 100,
+      "gPer100g": 245
+    }
+  ],
+  "molarMass": 101.0
+}

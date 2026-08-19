@@ -1,0 +1,47 @@
+{
+  "formula": "NH4NO3(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "color": "#8FB4E8",
+  "solventRatio": 10,
+  "ions": [
+    {
+      "ion": "NH4",
+      "charge": 1,
+      "count": 1
+    },
+    {
+      "ion": "NO3",
+      "charge": -1,
+      "count": 1
+    }
+  ],
+  "solute": "chemicaladdon:ammonium_nitrate",
+  "solubility": [
+    {
+      "tempC": 0,
+      "gPer100g": 118
+    },
+    {
+      "tempC": 20,
+      "gPer100g": 192
+    },
+    {
+      "tempC": 40,
+      "gPer100g": 297
+    },
+    {
+      "tempC": 60,
+      "gPer100g": 421
+    },
+    {
+      "tempC": 80,
+      "gPer100g": 580
+    },
+    {
+      "tempC": 100,
+      "gPer100g": 871
+    }
+  ],
+  "molarMass": 80.0
+}

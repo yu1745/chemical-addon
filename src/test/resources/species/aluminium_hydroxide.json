@@ -1,0 +1,21 @@
+{
+  "formula": "Al(OH)3",
+  "phase": "SOLID",
+  "equilibria": [
+    {
+      "reaction": "aluminium_hydroxide(s) = Al+3 + 3 OH-1",
+      "log_k": -33.0,
+      "delta_h": 64.93,
+      "delta_h_source": "llnl.dat (Gibbsite) + Hess",
+      "delta_h_derivation": "llnl.dat Gibbsite ΔH = -102.8 kJ/mol; + 3 x autoion = 167.7 = 64.93 kJ/mol"
+    },
+    {
+      "reaction": "aluminium_hydroxide(s) + OH-1 = [Al(OH)4]-1",
+      "log_k": 1.3,
+      "delta_h": 20.6,
+      "delta_h_source": "NIST/NBS (dHf Hess)",
+      "delta_h_derivation": "Al(OH)3(s,gibbsite)+OH-(aq)=Al(OH)4-(aq): dHf Al(OH)4-(aq) -1502.5, gibbsite -1293.13, OH-(aq) -229.99 kJ/mol (NBS tables)"
+    }
+  ],
+  "molarMass": 78.0
+}

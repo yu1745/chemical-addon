@@ -1,0 +1,22 @@
+{
+  "formula": "SO2",
+  "phase": "GAS",
+  "gasSolubility": 0.3,
+  "molarMass": 64.0,
+  "equilibria": [
+    {
+      "reaction": "chemicaladdon:sulfur_dioxide + water = H+1 + HSO3-1",
+      "log_k": -1.81,
+      "delta_h": -34.7,
+      "delta_h_source": "NIST/NBS (SO2 hydration)",
+      "delta_h_derivation": "SO2(g)+H2O(l)=H+(aq)+HSO3-(aq): literature pKa1 1.81, ΔH ≈ -34.7 kJ/mol (NBS) — estimated"
+    },
+    {
+      "reaction": "HSO3-1 = H+1 + SO3-2",
+      "log_k": -7.18,
+      "delta_h": -9.3,
+      "delta_h_source": "NIST/NBS (HSO3- dissociation)",
+      "delta_h_derivation": "HSO3-(aq)=H+(aq)+SO3-2(aq): pKa2 7.18; ΔH = ΔHf(SO3-2) - ΔHf(HSO3-) ≈ -9.3 kJ/mol (NBS) — estimated"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "formula": "NaHCO3",
+  "phase": "SOLID",
+  "equilibria": [
+    {
+      "reaction": "sodium_bicarbonate(s) = Na+1 + HCO3-1",
+      "log_k": 1.0,
+      "delta_h": 17.0247,
+      "delta_h_source": "llnl.dat (Nahcolite)",
+      "delta_h_derivation": "llnl.dat Nahcolite ΔH = 17.02 kJ/mol (as written)"
+    }
+  ],
+  "molarMass": 84.0
+}

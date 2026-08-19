@@ -1,0 +1,14 @@
+{
+  "formula": "BaSO4",
+  "phase": "SOLID",
+  "equilibria": [
+    {
+      "reaction": "barium_sulfate(s) = Ba+2 + SO4-2",
+      "log_k": -9.97,
+      "delta_h": 26.5684,
+      "delta_h_source": "phreeqc.dat (BaSO4 = Ba+2 + SO4-2)",
+      "delta_h_derivation": "phreeqc.dat BaSO4 = Ba+2 + SO4-2 ΔH = 26.57 kJ/mol (as written)"
+    }
+  ],
+  "molarMass": 233.0
+}

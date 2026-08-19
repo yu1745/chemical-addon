@@ -1,0 +1,11 @@
+{
+  "formula": "HCl(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "color": "#8FB4E8",
+  "solventRatio": 20,
+  "ions": [
+    { "ion": "H", "charge": 1, "count": 1 },
+    { "ion": "Cl", "charge": -1, "count": 1 }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "formula": "SO3",
+  "phase": "GAS",
+  "gasSolubility": 1.0,
+  "equilibria": [
+    {
+      "reaction": "chemicaladdon:sulfur_trioxide + water = 2 H+1 + SO4-2",
+      "log_k": 6.0,
+      "delta_h": -227.72,
+      "delta_h_source": "NIST/NBS (dHf Hess)",
+      "delta_h_derivation": "SO3(g)+H2O(l)=H2SO4(aq): dHf SO3(g) -395.72, H2O(l) -285.83, SO4-2(aq) -909.27 kJ/mol (NBS tables)"
+    }
+  ],
+  "molarMass": 80.0
+}

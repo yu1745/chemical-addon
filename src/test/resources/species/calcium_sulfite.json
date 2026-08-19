@@ -1,0 +1,14 @@
+{
+  "formula": "CaSO3",
+  "phase": "SOLID",
+  "molarMass": 120.0,
+  "equilibria": [
+    {
+      "reaction": "calcium_sulfite(s) = Ca+2 + SO3-2",
+      "log_k": -7.2,
+      "delta_h": 4.0,
+      "delta_h_source": "literature (CaSO3 Ksp) — estimated",
+      "delta_h_derivation": "CaSO3·½H2O Ksp ≈ 6.8e-8 (literature); ΔH ≈ +4 kJ/mol — estimated"
+    }
+  ]
+}

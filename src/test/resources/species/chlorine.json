@@ -1,0 +1,15 @@
+{
+  "formula": "Cl2",
+  "phase": "GAS",
+  "gasSolubility": 0.01,
+  "molarMass": 71.0,
+  "equilibria": [
+    {
+      "reaction": "chemicaladdon:chlorine + 2 OH-1 = Cl-1 + ClO-1 + water",
+      "log_k": 15.3,
+      "delta_h": -90.0,
+      "delta_h_source": "literature (Cl2 alkaline disproportionation) — estimated",
+      "delta_h_derivation": "Cl2+2OH-=Cl-+ClO-+H2O logK ≈ 15.3 (from E0 Cl2/Cl- 1.36 V, ClO-/Cl2 0.89 V, alkaline); ΔH ≈ -90 kJ/mol — estimated"
+    }
+  ]
+}

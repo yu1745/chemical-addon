@@ -1,0 +1,14 @@
+{
+  "formula": "CaSO4",
+  "phase": "SOLID",
+  "equilibria": [
+    {
+      "reaction": "gypsum(s) = Ca+2 + SO4-2",
+      "log_k": -4.58,
+      "delta_h": -0.456,
+      "delta_h_source": "phreeqc.dat (Gypsum)",
+      "delta_h_derivation": "phreeqc.dat Gypsum ΔH = -0.109 kcal = -0.456 kJ/mol (as written)"
+    }
+  ],
+  "molarMass": 172.0
+}

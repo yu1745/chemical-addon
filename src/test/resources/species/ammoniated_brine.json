@@ -1,0 +1,8 @@
+{
+  "formula": "NH3·NaCl(aq)",
+  "phase": "LIQUID",
+  "components": [
+    { "species": "chemicaladdon:brine", "maxConcentration": 0.9 },
+    { "species": "chemicaladdon:ammonia", "maxConcentration": 0.1 }
+  ]
+}

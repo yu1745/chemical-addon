@@ -1,0 +1,21 @@
+# Sample PHREEQC-like database excerpt for converter testing
+
+SOLUTION_SPECIES
+H+ = H+
+    log_k 0.0
+
+Fe+3 + e- = Fe+2
+    log_k 13.0
+    delta_h 40.0 kJ/mol
+
+Cu+2 + e- = Cu+1
+    log_k 6.0
+    delta_h -20.0 kJ/mol
+
+CaCO3 = Ca+2 + CO3-2
+    log_k -8.3
+    delta_h -10.6 kJ/mol
+
+NH3 + H2O = NH4+ + OH-
+    log_k -4.75
+    delta_h -30.0 kJ/mol

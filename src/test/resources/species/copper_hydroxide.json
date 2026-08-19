@@ -1,0 +1,14 @@
+{
+  "formula": "Cu(OH)2",
+  "phase": "SOLID",
+  "equilibria": [
+    {
+      "reaction": "copper_hydroxide(s) = Cu+2 + 2 OH-1",
+      "log_k": -19.2,
+      "delta_h": 55.39,
+      "delta_h_source": "minteq.v4.dat (Cu(OH)2) + Hess",
+      "delta_h_derivation": "minteq.v4.dat Cu(OH)2 ΔH = -56.42 kJ/mol; + 2 x autoion = 111.8 = 55.39 kJ/mol"
+    }
+  ],
+  "molarMass": 97.5
+}

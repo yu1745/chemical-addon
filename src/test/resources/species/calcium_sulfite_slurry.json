@@ -1,0 +1,14 @@
+{
+  "formula": "CaSO3 slurry",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "color": "#8FB4E8",
+  "solventRatio": 10,
+  "suspended": [
+    {
+      "species": "chemicaladdon:calcium_sulfite",
+      "count": 1
+    }
+  ],
+  "molarMass": 120.0
+}

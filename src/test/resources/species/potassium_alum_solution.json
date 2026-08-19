@@ -1,0 +1,51 @@
+{
+  "formula": "KAl(SO4)2(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "solventRatio": 20,
+  "ions": [
+    {
+      "ion": "K",
+      "charge": 1,
+      "count": 1
+    },
+    {
+      "ion": "Al",
+      "charge": 3,
+      "count": 1
+    },
+    {
+      "ion": "SO4",
+      "charge": -2,
+      "count": 2
+    }
+  ],
+  "solute": "chemicaladdon:potassium_alum",
+  "solubility": [
+    {
+      "tempC": 0,
+      "gPer100g": 3.0
+    },
+    {
+      "tempC": 20,
+      "gPer100g": 6.0
+    },
+    {
+      "tempC": 40,
+      "gPer100g": 11.7
+    },
+    {
+      "tempC": 60,
+      "gPer100g": 24.8
+    },
+    {
+      "tempC": 80,
+      "gPer100g": 71.0
+    },
+    {
+      "tempC": 100,
+      "gPer100g": 109.0
+    }
+  ],
+  "molarMass": 258.0
+}

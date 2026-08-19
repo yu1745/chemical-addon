@@ -1,0 +1,8 @@
+{
+  "formula": "NH3",
+  "phase": "GAS",
+  "gasSolubility": 0.5,
+  "boilingPointC": -33,
+  "meltingPointC": -78,
+  "molarMass": 17.0
+}

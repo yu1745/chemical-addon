@@ -1,0 +1,14 @@
+{
+  "formula": "BaCO3",
+  "phase": "SOLID",
+  "equilibria": [
+    {
+      "reaction": "barium_carbonate(s) = Ba+2 + CO3-2",
+      "log_k": -8.56,
+      "delta_h": 2.9413519999999997,
+      "delta_h_source": "phreeqc.dat (BaCO3 = Ba+2 + CO3-2)",
+      "delta_h_derivation": "phreeqc.dat BaCO3 = Ba+2 + CO3-2 ΔH = 2.941 kJ/mol (as written)"
+    }
+  ],
+  "molarMass": 197.0
+}

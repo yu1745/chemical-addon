@@ -1,0 +1,14 @@
+{
+  "formula": "AgCl",
+  "phase": "SOLID",
+  "equilibria": [
+    {
+      "reaction": "silver_chloride(s) = Ag+1 + Cl-1",
+      "log_k": -9.75,
+      "delta_h": 65.739,
+      "delta_h_source": "llnl.dat (Chlorargyrite)",
+      "delta_h_derivation": "llnl.dat Chlorargyrite ΔH = 65.74 kJ/mol (as written)"
+    }
+  ],
+  "molarMass": 143.0
+}

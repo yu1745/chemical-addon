@@ -1,0 +1,56 @@
+{
+  "formula": "NH4Cl(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "color": "#8FB4E8",
+  "solventRatio": 10,
+  "ions": [
+    {
+      "ion": "NH4",
+      "charge": 1,
+      "count": 1
+    },
+    {
+      "ion": "Cl",
+      "charge": -1,
+      "count": 1
+    }
+  ],
+  "equilibria": [
+    {
+      "reaction": "NH4+1 + water = chemicaladdon:ammonia + H+1",
+      "log_k": -9.25,
+      "delta_h": 52.21632,
+      "delta_h_source": "phreeqc.dat (NH4+ = NH3 + H+)",
+      "delta_h_derivation": "phreeqc.dat NH4+ = NH3 + H+ ΔH = 52.22 kJ/mol (as written)"
+    }
+  ],
+  "solute": "chemicaladdon:ammonium_chloride",
+  "solubility": [
+    {
+      "tempC": 0,
+      "gPer100g": 29.4
+    },
+    {
+      "tempC": 20,
+      "gPer100g": 37.2
+    },
+    {
+      "tempC": 40,
+      "gPer100g": 45.8
+    },
+    {
+      "tempC": 60,
+      "gPer100g": 55.2
+    },
+    {
+      "tempC": 80,
+      "gPer100g": 65.6
+    },
+    {
+      "tempC": 100,
+      "gPer100g": 77.3
+    }
+  ],
+  "molarMass": 53.5
+}

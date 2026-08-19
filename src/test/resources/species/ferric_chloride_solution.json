@@ -1,0 +1,29 @@
+{
+  "formula": "FeCl3(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "color": "#B87830",
+  "solventRatio": 10,
+  "ions": [
+    {
+      "ion": "Fe",
+      "charge": 3,
+      "count": 1
+    },
+    {
+      "ion": "Cl",
+      "charge": -1,
+      "count": 3
+    }
+  ],
+  "equilibria": [
+    {
+      "reaction": "Fe+3 + SCN-1 = [FeSCN]+2",
+      "log_k": 2.1,
+      "delta_h": -5.0,
+      "delta_h_source": "estimated",
+      "delta_h_derivation": "no PHREEQC-family database or NIST entry for FeSCN2+; value is an estimate"
+    }
+  ],
+  "molarMass": 162.2
+}

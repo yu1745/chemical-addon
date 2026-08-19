@@ -1,0 +1,47 @@
+{
+  "formula": "FeSO4(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "color": "#8FB08F",
+  "solventRatio": 10,
+  "ions": [
+    {
+      "ion": "Fe",
+      "charge": 2,
+      "count": 1
+    },
+    {
+      "ion": "SO4",
+      "charge": -2,
+      "count": 1
+    }
+  ],
+  "solute": "chemicaladdon:ferrous_sulfate",
+  "solubility": [
+    {
+      "tempC": 0,
+      "gPer100g": 15.6
+    },
+    {
+      "tempC": 20,
+      "gPer100g": 26.5
+    },
+    {
+      "tempC": 40,
+      "gPer100g": 40.2
+    },
+    {
+      "tempC": 60,
+      "gPer100g": 48.6
+    },
+    {
+      "tempC": 80,
+      "gPer100g": 43.6
+    },
+    {
+      "tempC": 100,
+      "gPer100g": 37.3
+    }
+  ],
+  "molarMass": 151.9
+}

@@ -1,0 +1,14 @@
+{
+  "formula": "Fe(OH)3",
+  "phase": "SOLID",
+  "equilibria": [
+    {
+      "reaction": "iron_hydroxide(s) = Fe+3 + 3 OH-1",
+      "log_k": -38.6,
+      "delta_h": 83.64,
+      "delta_h_source": "llnl.dat (Fe(OH)3) + Hess",
+      "delta_h_derivation": "llnl.dat Fe(OH)3 ΔH = -84.08 kJ/mol; + 3 x autoion = 167.7 = 83.64 kJ/mol"
+    }
+  ],
+  "molarMass": 107.0
+}

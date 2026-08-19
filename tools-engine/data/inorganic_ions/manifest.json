@@ -1,0 +1,386 @@
+[
+  {
+    "ion": "Ag+1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Al+3",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Ca+2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Cu+2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Fe+2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Fe+3",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "H+1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "K+1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Mg+2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Na+1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Zn+2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "NH4+1",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Cl-1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "CO3-2",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "NO3-1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "OH-1",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "SO4-2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "SCN-1",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Li+1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Rb+1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Cs+1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Be+2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Sr+2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Ba+2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Mn+2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Co+2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Ni+2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Cu+1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Cd+2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Hg+2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Pb+2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Sn+2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Cr+3",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Co+3",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Au+3",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Bi+3",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Tl+3",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "As+3",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Sb+3",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Ti+4",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Zr+4",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Sn+4",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Pb+4",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Pt+4",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Au+1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Pt+2",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Hg2+2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "F-1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Br-1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "I-1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "S-2",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "CN-1",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "N3-1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "HCO3-1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "NO2-1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "HSO4-1",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "SO3-2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "HSO3-1",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "S2O3-2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "PO4-3",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "HPO4-2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "H2PO4-1",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "H2PO2-1",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "ClO-1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "ClO2-1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "ClO3-1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "ClO4-1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "BrO3-1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "IO3-1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "CrO4-2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "Cr2O7-2",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "MnO4-1",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "MnO4-2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "AsO4-3",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "AsO2-1",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "SeO4-2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "SiO3-2",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "BO3-3",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "B4O7-2",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "MoO4-2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "WO4-2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "VO3-1",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Al(OH)4-1",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Zn(OH)4-2",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Pb(OH)4-2",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Sn(OH)6-2",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Sb(OH)6-1",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Cu(NH3)4+2",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Ag(NH3)2+1",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Fe(CN)6-4",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Fe(CN)6-3",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Au(CN)2-1",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Zn(CN)4-2",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "Hg(CN)4-2",
+    "status": "NBS-anchored"
+  },
+  {
+    "ion": "UO2+2",
+    "status": "llnl-master(backbone)"
+  },
+  {
+    "ion": "VO+2",
+    "status": "llnl-master(backbone)"
+  }
+]

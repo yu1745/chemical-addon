@@ -1,0 +1,8 @@
+{
+  "formula": "H2",
+  "phase": "GAS",
+  "gasSolubility": 0.001,
+  "boilingPointC": -252.9,
+  "meltingPointC": -259.1,
+  "molarMass": 2.016
+}

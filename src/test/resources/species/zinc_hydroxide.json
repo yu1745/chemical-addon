@@ -1,0 +1,21 @@
+{
+  "formula": "Zn(OH)2",
+  "phase": "SOLID",
+  "equilibria": [
+    {
+      "reaction": "zinc_hydroxide(s) = Zn+2 + 2 OH-1",
+      "log_k": -16.4,
+      "delta_h": 30.03,
+      "delta_h_source": "llnl.dat (Zn(OH)2(epsilon)) + Hess",
+      "delta_h_derivation": "llnl.dat Zn(OH)2(epsilon) ΔH = -81.78 kJ/mol; + 2 x autoion = 111.8 = 30.03 kJ/mol"
+    },
+    {
+      "reaction": "zinc_hydroxide(s) + 2 OH-1 = [Zn(OH)4]-2",
+      "log_k": -1.6,
+      "delta_h": -18.0,
+      "delta_h_source": "phreeqc.dat (Zn(OH)4-2) + Hess — estimated",
+      "delta_h_derivation": "Zn+2+4H2O=Zn(OH)4-2+4H+ logK -41.2 (phreeqc) -> Zn(OH)2(s)+2OH-=[Zn(OH)4]-2 logK = 14.8-16.4 = -1.6; ΔH estimated (Al(OH)4- analogue)"
+    }
+  ],
+  "molarMass": 99.0
+}

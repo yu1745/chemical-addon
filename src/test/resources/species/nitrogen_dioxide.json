@@ -1,0 +1,15 @@
+{
+  "formula": "NO2",
+  "phase": "GAS",
+  "gasSolubility": 1.0,
+  "equilibria": [
+    {
+      "reaction": "3 chemicaladdon:nitrogen_dioxide + water = 2 H+1 + 2 NO3-1 + chemicaladdon:nitric_oxide",
+      "log_k": 3.0,
+      "delta_h": -138.18,
+      "delta_h_source": "NIST/NBS (dHf Hess)",
+      "delta_h_derivation": "3NO2(g)+H2O(l)=2HNO3(aq)+NO(g): dHf NO2(g) +33.18, NO(g) +90.25, NO3-(aq) -207.36, H2O(l) -285.83 kJ/mol (NBS tables)"
+    }
+  ],
+  "molarMass": 46.0
+}

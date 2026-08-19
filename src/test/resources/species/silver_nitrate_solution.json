@@ -1,0 +1,28 @@
+{
+  "formula": "AgNO3(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "solventRatio": 10,
+  "ions": [
+    {
+      "ion": "Ag",
+      "charge": 1,
+      "count": 1
+    },
+    {
+      "ion": "NO3",
+      "charge": -1,
+      "count": 1
+    }
+  ],
+  "equilibria": [
+    {
+      "reaction": "Ag+1 + 2 chemicaladdon:ammonia = [Ag(NH3)2]+1",
+      "log_k": 7.2,
+      "delta_h": -56.3,
+      "delta_h_source": "NIST/NBS (dHf Hess)",
+      "delta_h_derivation": "Ag+(aq)+2NH3(aq)=Ag(NH3)2+(aq): dHf Ag(NH3)2+(aq) -111.29, Ag+(aq) +105.58, NH3(aq) -80.29 kJ/mol (NBS tables)"
+    }
+  ],
+  "molarMass": 170.0
+}

@@ -1,0 +1,15 @@
+{
+  "formula": "CaCO3",
+  "phase": "SOLID",
+  "equilibria": [
+    {
+      "reaction": "limestone(s) = Ca+2 + CO3-2",
+      "log_k": -8.3,
+      "delta_h": -9.610648000000001,
+      "rate": 0.0001,
+      "delta_h_source": "phreeqc.dat (CaCO3 = CO3-2 + Ca+2)",
+      "delta_h_derivation": "phreeqc.dat CaCO3 = CO3-2 + Ca+2 ΔH = -9.611 kJ/mol (as written)"
+    }
+  ],
+  "molarMass": 100.0
+}

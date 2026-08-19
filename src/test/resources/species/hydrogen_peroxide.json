@@ -1,0 +1,14 @@
+{
+  "formula": "H2O2",
+  "phase": "LIQUID",
+  "molarMass": 34.0,
+  "equilibria": [
+    {
+      "reaction": "2 chemicaladdon:hydrogen_peroxide = 2 water + chemicaladdon:oxygen",
+      "log_k": 20.9,
+      "delta_h": -196.0,
+      "delta_h_source": "NIST/NBS (dHf Hess)",
+      "delta_h_derivation": "2H2O2(l)=2H2O(l)+O2(g): dHf H2O2(l) -187.8, H2O(l) -285.8 kJ/mol (NBS): dH = -196.0 kJ/mol; logK from dG = -119 kJ/mol"
+    }
+  ]
+}

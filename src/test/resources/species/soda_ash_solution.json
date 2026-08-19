@@ -1,0 +1,36 @@
+{
+  "formula": "Na2CO3(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "color": "#8FB4E8",
+  "solventRatio": 10,
+  "ions": [
+    {
+      "ion": "Na",
+      "charge": 1,
+      "count": 2
+    },
+    {
+      "ion": "CO3",
+      "charge": -2,
+      "count": 1
+    }
+  ],
+  "equilibria": [
+    {
+      "reaction": "CO3-2 + water = HCO3-1 + OH-1",
+      "log_k": -3.67,
+      "delta_h": 41.01,
+      "delta_h_source": "phreeqc.dat (CO3-2 + H+ = HCO3-) + Hess",
+      "delta_h_derivation": "phreeqc.dat CO3-2 + H+ = HCO3- ΔH = -14.9 + autoion = 41.01 kJ/mol"
+    },
+    {
+      "reaction": "HCO3-1 = chemicaladdon:carbon_dioxide + OH-1",
+      "log_k": -7.65,
+      "delta_h": 46.8,
+      "delta_h_source": "phreeqc.dat (CO3-2 + 2 H+ = CO2 + H2O) + Hess",
+      "delta_h_derivation": "phreeqc.dat CO3-2 + 2 H+ = CO2 + H2O ΔH = -24.01 + autoion = 55.91 + HCO3- diss = 14.9 = 46.8 kJ/mol"
+    }
+  ],
+  "molarMass": 106.0
+}

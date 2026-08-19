@@ -1,0 +1,14 @@
+{
+  "formula": "Cu2(OH)2CO3",
+  "phase": "SOLID",
+  "equilibria": [
+    {
+      "reaction": "copper_carbonate(s) = 2 Cu+2 + CO3-2 + 2 OH-1",
+      "log_k": -33.5,
+      "delta_h": 50.43,
+      "delta_h_source": "llnl.dat (Malachite) + Hess",
+      "delta_h_derivation": "llnl.dat Malachite ΔH = -76.28 kJ/mol; + HCO3- diss = 14.9 kJ/mol; + 2 x autoion = 111.8 = 50.43 kJ/mol"
+    }
+  ],
+  "molarMass": 221.0
+}

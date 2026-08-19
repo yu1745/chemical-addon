@@ -1,0 +1,15 @@
+{
+  "formula": "HCl",
+  "phase": "GAS",
+  "gasSolubility": 1e-06,
+  "equilibria": [
+    {
+      "reaction": "chemicaladdon:hydrogen_chloride + water = H+1 + Cl-1",
+      "log_k": 1.0,
+      "delta_h": -75.0,
+      "delta_h_source": "estimated",
+      "delta_h_derivation": "legacy heat_kj value; authoritative HCl(aq) speciation ΔH ≈ 0 (llnl.dat 'H+ + Cl- = HCl' has ΔH = 0, strong electrolyte) but the engine forbids delta_h = 0, so the legacy value is kept"
+    }
+  ],
+  "molarMass": 36.5
+}

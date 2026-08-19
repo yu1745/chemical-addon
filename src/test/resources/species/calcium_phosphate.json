@@ -1,0 +1,14 @@
+{
+  "formula": "Ca3(PO4)2",
+  "phase": "SOLID",
+  "molarMass": 310.2,
+  "equilibria": [
+    {
+      "reaction": "calcium_phosphate(s) = 3 Ca+2 + 2 PO4-3",
+      "log_k": -28.92,
+      "delta_h": -62.2,
+      "delta_h_source": "NIST/NBS (dHf Hess); llnl.dat (Whitlockite)",
+      "delta_h_derivation": "Ca3(PO4)2(s)=3Ca+2+2PO4-3: dHf Ca+2 -542.8 x3, PO4-3 -1277.4 x2, Ca3(PO4)2 -4121 -> -62.2 kJ/mol; logK from llnl Whitlockite Ca3(PO4)2+2H+ = 2HPO4-2+3Ca+2 logK -4.2249 + 2*pKa3 12.346 = -28.92"
+    }
+  ]
+}

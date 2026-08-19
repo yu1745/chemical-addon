@@ -1,0 +1,14 @@
+{
+  "formula": "Ag2CO3",
+  "phase": "SOLID",
+  "equilibria": [
+    {
+      "reaction": "silver_carbonate(s) = 2 Ag+1 + CO3-2",
+      "log_k": -11.1,
+      "delta_h": 42.15,
+      "delta_h_source": "minteq.v4.dat (Ag2CO3)",
+      "delta_h_derivation": "minteq.v4.dat Ag2CO3 ΔH = 42.15 kJ/mol (as written)"
+    }
+  ],
+  "molarMass": 276.0
+}

@@ -1,0 +1,21 @@
+{
+  "formula": "Fe",
+  "phase": "SOLID",
+  "molarMass": 55.8,
+  "equilibria": [
+    {
+      "reaction": "chemicaladdon:iron_metal(s) + Cu+2 = Fe+2 + chemicaladdon:copper_metal(s)",
+      "log_k": 26.5,
+      "delta_h": -153.9,
+      "delta_h_source": "NIST/NBS (dHf Fe+2/Cu+2,aq)",
+      "delta_h_derivation": "Fe(s)+Cu+2(aq)=Fe+2(aq)+Cu(s): dH = dHf(Fe+2) - dHf(Cu+2) = -89.1 - 64.77 = -153.9 kJ/mol; logK = 2*E0(Fe/Cu 0.784 V)/0.05916 = 26.5"
+    },
+    {
+      "reaction": "chemicaladdon:iron_metal(s) + 2 H+1 = Fe+2 + chemicaladdon:hydrogen",
+      "log_k": 14.9,
+      "delta_h": -89.1,
+      "delta_h_source": "NIST/NBS (dHf Fe+2,aq)",
+      "delta_h_derivation": "Fe(s)+2H+(aq)=Fe+2(aq)+H2(g): dH = dHf(Fe+2) = -89.1 kJ/mol; logK = 2*E0(Fe/H2 0.44 V)/0.05916 = 14.9"
+    }
+  ]
+}
