@@ -45,6 +45,10 @@ import net.minecraftforge.items.ItemHandlerHelper;
  */
 public class ReactorControllerBlockEntity extends VesselBlockEntity implements IHaveGoggleInformation {
 
+	/** P2 双跑观察开关（默认关）：-Dchemengine.parity=1 开启，日志级对照新内核。 */
+	private static final boolean PARITY_OBSERVE =
+			Boolean.getBoolean("chemengine.parity");
+
 	public static final int TANK_CAPACITY = 1000; // mB per interior block (1 bucket — small enough that a few buckets visibly raise the surface)
 	public static final int AMBIENT_TEMP = 20;
 	public static final int ITEM_SLOTS = 4;
@@ -328,6 +332,13 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 		Solution solved = RulesEngine.apply(tank, isOpen(), items, stirringCoefficient);
 		if (solved != null) {
 			recordSpeciation(solved.report());
+		}
+		// P2 双跑观察点（默认关，-Dchemengine.parity=1 开启）：新内核同求解，日志级对照。
+		// 只读不写回；读数源切换/DUMP 存档在 P3/P4（见 composition/parity/EngineBridge）。
+		if (PARITY_OBSERVE) {
+			com.yu1745.chemicaladdon.composition.parity.EngineBridge.Feed feed =
+					com.yu1745.chemicaladdon.composition.parity.EngineBridge.toFeed(tank.getFluids());
+			com.yu1745.chemicaladdon.composition.parity.EngineBridge.observe(feed, "reactor");
 		}
 		ChemicalReactionRecipe recipe = ReactionLogic.findRecipe(this);
 		if (recipe == null) {
