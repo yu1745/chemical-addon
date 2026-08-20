@@ -82,6 +82,7 @@ public class ChemicalAddonGameTests {
 	@SubscribeEvent
 	public static void registerTests(RegisterGameTestsEvent event) {
 		event.register(ChemicalAddonGameTests.class);
+		event.register(ParityGameTests.class);
 	}
 
 	// ------------------------------------------------------------------ reactor
