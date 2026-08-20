@@ -143,6 +143,30 @@ public final class ParityGameTests {
 		helper.succeed();
 	}
 
+	@GameTest(template = "empty_15", timeoutTicks = 20 * 20)
+	public static void bridgeTickDriverAdvancesKinetics(GameTestHelper helper) {
+		// P4：漂白液（H+ / Cl / Hyp 池）tick 步进——池随时间变化（Quench 等通道）。
+		// 注意：进料归集只能从离子域拿到 H/Cl；Hyp 是伪池，Mixture 里没有对应物——
+		// 本步验证 tick 桥的 KINETICS 管道本身（纯 H/Cl/Na 体系步进仍应求解成功）。
+		ReactorTank tank = new ReactorTank(10_000, () -> {});
+		ResourceLocation water = Solution.WATER;
+		tank.fill(Mixture.create(Map.of(water, 998), Map.of("H+1", 1, "Cl-1", 1), 1000),
+				FluidAction.EXECUTE);
+
+		com.yu1745.chemicaladdon.composition.parity.TickDriver.Step s1 =
+				com.yu1745.chemicaladdon.composition.parity.TickDriver.step(tank.getFluids(), 0.5);
+		helper.assertTrue(s1.valid, "tick step should solve, got invalid");
+		helper.assertTrue(s1.totals.containsKey("Cl"), "Cl total should be in snapshot");
+		helper.assertTrue(s1.ph < 5.0, "acidic feed should stay acidic, pH=" + s1.ph);
+
+		// 长时间步进也应稳定（不崩不 NaN）
+		com.yu1745.chemicaladdon.composition.parity.TickDriver.Step s2 =
+				com.yu1745.chemicaladdon.composition.parity.TickDriver.step(tank.getFluids(), 3600.0);
+		helper.assertTrue(s2.valid, "long step should solve");
+		helper.assertTrue(Double.isFinite(s2.ph), "pH should be finite");
+		helper.succeed();
+	}
+
 	private static double solvePh(EngineBridge.Feed feed, String tag) {
 		ChemState.Builder b = ChemState.builder(tag)
 				.waterKg(feed.waterKg)

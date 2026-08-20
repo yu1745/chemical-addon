@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.yu1745.chemengine.kernel.ChemState;
+import com.yu1745.chemengine.kernel.Curation;
 import com.yu1745.chemengine.kernel.IPhreeqc;
 import com.yu1745.chemengine.kernel.Quanta;
 import com.yu1745.chemicaladdon.composition.Chemistry;
@@ -79,6 +80,30 @@ public final class EngineBridge {
 
 		public boolean isEmpty() {
 			return waterKg <= 0 && totals.isEmpty();
+		}
+
+		/** P4：进料 + 策展 KINETICS 块的完整脚本（TickDriver 用）。 */
+		public String toScriptWithKinetics(Curation curation, double seconds) {
+			StringBuilder sol = new StringBuilder("SOLUTION 1 tick\n");
+			sol.append("    temp      ").append(tempC).append('\n');
+			sol.append("    pH        7 charge\n");
+			sol.append("    water     ").append(waterKg).append(" kg\n");
+			for (Map.Entry<String, Double> e : totals.entrySet()) {
+				if (e.getValue() > 0) {
+					sol.append("    ").append(e.getKey()).append(" ")
+							.append(e.getValue() / waterKg).append(" mol/kgw\n");
+				}
+			}
+			return sol + "END\n"
+					+ curation.ratesBlock()
+					+ "USE solution 1\n"
+					+ curation.kineticsBlock((java.util.Set<String>) null, null, seconds) + "\n"
+					+ "SELECTED_OUTPUT 1\n"
+					+ "    -state          true\n"
+					+ "    -high_precision true\n"
+					+ "    -totals   " + String.join("  ", totals.keySet()) + "\n"
+					+ "    -pH       true\n"
+					+ "END\n";
 		}
 	}
 
