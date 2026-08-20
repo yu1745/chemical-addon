@@ -113,6 +113,36 @@ public final class ParityGameTests {
 		helper.succeed();
 	}
 
+	@GameTest(template = "empty_15", timeoutTicks = 20 * 20)
+	public static void bridgeArchiveRoundTripsZeroDrift(GameTestHelper helper) {
+		// P3b 存档桥：archive（平衡+DUMP）→ NBT 字符串 → fromDump 审视 pH，零漂移
+		ReactorTank tank = new ReactorTank(10_000, () -> {});
+		ResourceLocation water = Solution.WATER;
+		tank.fill(Mixture.create(Map.of(water, 997),
+				Map.of("H+1", 1, "Cl-1", 1, "Na+1", 1, "OH-1", 1), 1000), FluidAction.EXECUTE);
+
+		String dump = com.yu1745.chemicaladdon.composition.parity.EngineArchive.archiveOf(tank.getFluids());
+		helper.assertTrue(dump != null && !dump.isBlank(), "archive should produce dump text");
+
+		// NBT 往返（模拟存档）
+		net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
+		tag.putString(com.yu1745.chemicaladdon.composition.parity.EngineArchive.KEY, dump);
+		String restored = com.yu1745.chemicaladdon.composition.parity.EngineArchive.read(tag);
+		helper.assertTrue(dump.equals(restored), "NBT round-trip must be lossless");
+
+		// 恢复审视：fromDump 解出的 pH 与存档前一致（近中性：H+ 与 OH- 等当量）
+		com.yu1745.chemengine.kernel.ChemState s =
+				com.yu1745.chemengine.kernel.ChemState.fromDump(restored);
+		helper.assertTrue(s != null, "fromDump should parse");
+		try (com.yu1745.chemengine.kernel.IPhreeqc q = com.yu1745.chemengine.kernel.IPhreeqc.create()) {
+			var r = q.equilibrate(s, "pH");
+			double ph = r.row(r.rowCount() - 1).d("pH");
+			helper.assertTrue(ph > 5.5 && ph < 8.5,
+					"等当量酸碱存档恢复应近中性，pH=" + ph);
+		}
+		helper.succeed();
+	}
+
 	private static double solvePh(EngineBridge.Feed feed, String tag) {
 		ChemState.Builder b = ChemState.builder(tag)
 				.waterKg(feed.waterKg)

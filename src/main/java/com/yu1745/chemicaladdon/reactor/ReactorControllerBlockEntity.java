@@ -45,6 +45,16 @@ import net.minecraftforge.items.ItemHandlerHelper;
  */
 public class ReactorControllerBlockEntity extends VesselBlockEntity implements IHaveGoggleInformation {
 
+	/** P3b：最近一次读档的内核态 dump（DUMP SOLUTION_RAW 文本；null = 此档无内核态）。 */
+	@Nullable
+	private String chemengineDump;
+
+	/** P3b：内核态 dump（存档后可用；供审计/KINETICS 步进接入）。 */
+	@Nullable
+	public String chemengineDump() {
+		return chemengineDump;
+	}
+
 	public static final int TANK_CAPACITY = 1000; // mB per interior block (1 bucket — small enough that a few buckets visibly raise the surface)
 	public static final int AMBIENT_TEMP = 20;
 	public static final int ITEM_SLOTS = 4;
@@ -464,6 +474,10 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 		// it must be in the sync tag or the client BE keeps its default NOT_ASSEMBLED forever
 		tag.putString("status", status.name());
 		tag.putInt("pinnedTemperature", pinnedTemperature);
+		// P3b：内核态存档（ENGINE_READINGS 开启时，写入 DUMP 全精度文本）
+		if (!clientPacket) {
+			com.yu1745.chemicaladdon.composition.parity.EngineArchive.write(tag, getTank().getFluids());
+		}
 	}
 
 	@Override
@@ -482,6 +496,10 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 			status = ReactorStatus.NOT_ASSEMBLED;
 		}
 		pinnedTemperature = tag.contains("pinnedTemperature") ? tag.getInt("pinnedTemperature") : -1;
+		// P3b：读回内核态 dump（供后续 KINETICS 步进/审计；不回写 Mixture）
+		if (!clientPacket) {
+			chemengineDump = com.yu1745.chemicaladdon.composition.parity.EngineArchive.read(tag);
+		}
 	}
 
 	// ------------------------------------------------------------- goggles HUD
