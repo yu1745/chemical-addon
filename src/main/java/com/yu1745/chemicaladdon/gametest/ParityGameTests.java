@@ -242,6 +242,36 @@ public final class ParityGameTests {
 		helper.succeed();
 	}
 
+	@GameTest(template = "empty_15", timeoutTicks = 20 * 20)
+	public static void bridgePressureFeedDrivesSulAbsorb(GameTestHelper helper) {
+		// P4c：SO2 气相供压 → SulAbsorb（interface）驱动吸收。
+		// 半釜 SO2 气（500/1000 mB → ~1 atm 分压）+ 纯碱液：吸收应推进 Sul 池增长。
+		ReactorTank tank = new ReactorTank(1_000, () -> {});
+		ResourceLocation water = Solution.WATER;
+		tank.fill(Mixture.create(Map.of(water, 500), Map.of(), 500), FluidAction.EXECUTE);
+		tank.fill(new net.minecraftforge.fluids.FluidStack(
+				com.yu1745.chemicaladdon.registry.AllFluids.SULFUR_DIOXIDE.get().getSource(), 500),
+				FluidAction.EXECUTE);
+
+		EngineBridge.Feed feed = EngineBridge.toFeed(tank.getFluids());
+		java.util.Map<String, double[]> parms =
+				com.yu1745.chemicaladdon.composition.parity.PressureFeed.of(tank.getFluids(), 1_000, 25);
+		helper.assertTrue(parms.containsKey("SulAbsorb"),
+				"SO2 在场应产生 SulAbsorb 供压，实测 " + parms.keySet());
+		helper.assertTrue(parms.get("SulAbsorb")[1] > 0.5,
+				"半釜 SO2 分压应 ~1 atm，实测 " + parms.get("SulAbsorb")[1]);
+
+		// 带 interface 的 KINETICS：Sul 应增长（亨利自限：渐近 H*P）
+		try (com.yu1745.chemengine.kernel.IPhreeqc q = com.yu1745.chemengine.kernel.IPhreeqc.create()) {
+			var r = q.run(feed.toScriptWithKinetics(com.yu1745.chemengine.kernel.Curation.load(),
+					parms.keySet(), parms, 10_000.0));
+			int last = r.rowCount() - 1;
+			double sul = r.row(last).d("Sul") * feed.waterKg;
+			helper.assertTrue(sul > 1e-3, "SO2 应被吸收进 Sul 池（10^4s），实测 " + sul + " mol");
+		}
+		helper.succeed();
+	}
+
 	private static double solvePh(EngineBridge.Feed feed, String tag) {
 		ChemState.Builder b = ChemState.builder(tag)
 				.waterKg(feed.waterKg)

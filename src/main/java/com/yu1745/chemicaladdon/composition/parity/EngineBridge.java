@@ -91,6 +91,12 @@ public final class EngineBridge {
 
 		/** P4：进料 + 策展 KINETICS 块的完整脚本（TickDriver 用）。 */
 		public String toScriptWithKinetics(Curation curation, double seconds) {
+			return toScriptWithKinetics(curation, null, null, seconds);
+		}
+
+		/** P4c：带 interface 反应 opt-in + 供压参数的完整脚本。 */
+		public String toScriptWithKinetics(Curation curation, java.util.Set<String> include,
+				Map<String, double[]> parmOverrides, double seconds) {
 			StringBuilder sol = new StringBuilder("SOLUTION 1 tick\n");
 			sol.append("    temp      ").append(tempC).append('\n');
 			sol.append("    pH        7 charge\n");
