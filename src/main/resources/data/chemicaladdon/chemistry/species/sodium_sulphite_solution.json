@@ -1,0 +1,11 @@
+{
+  "formula": "Na2SO3(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "color": "#E8F4F8",
+  "solventRatio": 10,
+  "ions": [
+    { "ion": "Na", "charge": 1, "count": 2 },
+    { "ion": "SO3", "charge": -2, "count": 1 }
+  ]
+}

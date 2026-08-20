@@ -1,0 +1,11 @@
+{
+  "formula": "NaOCl(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "color": "#D4F1F9",
+  "solventRatio": 10,
+  "ions": [
+    { "ion": "Na", "charge": 1, "count": 1 },
+    { "ion": "OCl", "charge": -1, "count": 1 }
+  ]
+}

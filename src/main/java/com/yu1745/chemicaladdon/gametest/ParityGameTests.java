@@ -167,6 +167,51 @@ public final class ParityGameTests {
 		helper.succeed();
 	}
 
+	@GameTest(template = "empty_15", timeoutTicks = 20 * 20)
+	public static void bridgeBleachSpeciesMapsToHypPool(GameTestHelper helper) {
+		// P4b：次氯酸钠物种（伪池宿主）→ Hyp 伪元素账；与 Na 真实账共存
+		ReactorTank tank = new ReactorTank(10_000, () -> {});
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation naocl = new ResourceLocation("chemicaladdon", "sodium_hypochlorite");
+		tank.fill(Mixture.create(Map.of(water, 990, naocl, 10), Map.of(), 1000), FluidAction.EXECUTE);
+
+		EngineBridge.Feed feed = EngineBridge.toFeed(tank.getFluids());
+		double hyp = feed.totals.getOrDefault("Hyp", 0.0);
+		double na = feed.totals.getOrDefault("Na", 0.0);
+		helper.assertTrue(hyp > 0, "NaOCl 应映射 Hyp 伪池，实测 totals=" + feed.totals);
+		helper.assertTrue(na > 0, "Na 应进真实元素账");
+		// 同当量：10 parts NaOCl → Na 10/22.99 vs Hyp 10/51.452 mol
+		helper.assertTrue(Math.abs(na / hyp - 51.452 / 22.99) < 0.02,
+				"Na:Hyp 摩尔比应 = 51.45:22.99（同 parts），实测 " + (na / hyp));
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = 20 * 20)
+	public static void bridgeBleachQuenchAdvancesInGameSemantics(GameTestHelper helper) {
+		// P4b 实战：漂白液（Hyp 池）+ 亚硫酸钠（Sul 池）同釜 → Quench 动力学推进
+		ReactorTank tank = new ReactorTank(10_000, () -> {});
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation naocl = new ResourceLocation("chemicaladdon", "sodium_hypochlorite");
+		ResourceLocation na2so3 = new ResourceLocation("chemicaladdon", "sodium_sulphite_solution");
+		tank.fill(Mixture.create(Map.of(water, 980, naocl, 15, na2so3, 5), Map.of(), 1000),
+				FluidAction.EXECUTE);
+
+		// 长时间步进：Quench k=0.1，Sul 15/80 mol/kgw 量级在 1e4s 尺度应显著消耗
+		com.yu1745.chemicaladdon.composition.parity.TickDriver.Step s =
+				com.yu1745.chemicaladdon.composition.parity.TickDriver.step(tank.getFluids(), 10_000.0);
+		helper.assertTrue(s.valid, "step should solve");
+		double dSul = s.delta.getOrDefault("Sul", 0.0);
+		double dHyp = s.delta.getOrDefault("Hyp", 0.0);
+		double dCl = s.delta.getOrDefault("Cl", 0.0);
+		helper.assertTrue(dSul < -1e-9, "Sul 应被 Quench 消耗，dSul=" + dSul);
+		helper.assertTrue(dHyp < 0, "Hyp 应同步消耗，dHyp=" + dHyp);
+		helper.assertTrue(dCl > 0, "Cl 应增长，dCl=" + dCl);
+		// Quench 1:1:1 计量（Hyp:Sul:Cl）
+		helper.assertTrue(Math.abs(dHyp - dSul) < 1e-9 && Math.abs(dCl + dSul) < 1e-8,
+				"Quench 1:1:1 计量：dHyp=" + dHyp + " dSul=" + dSul + " dCl=" + dCl);
+		helper.succeed();
+	}
+
 	private static double solvePh(EngineBridge.Feed feed, String tag) {
 		ChemState.Builder b = ChemState.builder(tag)
 				.waterKg(feed.waterKg)

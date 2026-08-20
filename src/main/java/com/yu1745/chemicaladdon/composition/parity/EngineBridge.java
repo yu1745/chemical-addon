@@ -55,6 +55,11 @@ public final class EngineBridge {
 			Map.entry("P", 30.97), Map.entry("F", 19.00), Map.entry("Br", 79.90),
 			Map.entry("I", 126.90));
 
+	/** 伪池宿主离子 → 引擎伪元素（P4b）：这些基团在内核里是介稳池，不进真实元素账。 */
+	private static final Map<String, String> PSEUDO_POOLS = Map.of(
+			"OCl", "Hyp",   // 次氯酸根 → Hyp 池（漂白液介稳）
+			"SO3", "Sul");  // 亚硫酸根 → Sul 池（介稳，防平衡氧化）
+
 	/** 常见基团 → 元素组成（离子域的 SO4/OH/NH4/CO3 拆解）。 */
 	private static final Map<String, Map<String, Integer>> GROUPS = Map.of(
 			"OH", Map.of("O", 1, "H", 1),
@@ -132,6 +137,14 @@ public final class EngineBridge {
 				for (Species.IonComponent ic : sp.ions()) {
 					String sym = ic.ion().symbol();
 					int count = ic.count();
+					if (PSEUDO_POOLS.containsKey(sym)) {
+						// 伪池宿主（OCl/SO3）：直接进引擎伪元素账，不拆元素
+						double mm = molarMassOf(sym);
+						feed.totals.merge(PSEUDO_POOLS.get(sym),
+								units * GRAMS_PER_UNIT * count / (mm > 0 ? mm : pseudoPoolMass(sym)),
+								Double::sum);
+						continue;
+					}
 					Map<String, Integer> els = GROUPS.containsKey(sym)
 							? GROUPS.get(sym) : Map.of(sym, 1);
 					for (Map.Entry<String, Integer> el : els.entrySet()) {
@@ -156,6 +169,15 @@ public final class EngineBridge {
 		}
 		feed.waterKg = waterUnits * GRAMS_PER_UNIT / 1000.0;
 		return feed;
+	}
+
+	/** 伪池摩尔质量（与 curation/chemistry.json 的 molarMass 一致）。 */
+	private static double pseudoPoolMass(String group) {
+		return switch (group) {
+			case "OCl" -> 51.452;  // Hyp
+			case "SO3" -> 80.064;  // Sul
+			default -> -1;
+		};
 	}
 
 	private static double molarMassOf(String element) {

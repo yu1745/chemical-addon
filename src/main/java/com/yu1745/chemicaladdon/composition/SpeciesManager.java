@@ -118,7 +118,10 @@ public class SpeciesManager {
 		"potassium_nitrate_solution", "potassium_chloride_solution", "potassium_alum_solution",
 		"ferrous_sulfate_solution", "potassium_thiocyanate_solution",
 		// U15 bittern salts (bittern-salt curves: the dry-out residue of brine)
-		"magnesium_chloride_solution"
+		"magnesium_chloride_solution",
+		// P4b 伪池宿主（species JSON only）：次氯酸钠/亚硫酸钠溶液——
+		// EngineBridge 映射 OCl→Hyp、SO3→Sul 介稳池（见 parity 包）
+		"sodium_hypochlorite", "sodium_sulphite_solution"
 	};
 
 	/** Register a species programmatically — JUnit kinetics tests injecting rate-bearing entries. */
