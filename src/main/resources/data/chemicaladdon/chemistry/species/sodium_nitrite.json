@@ -1,0 +1,11 @@
+{
+  "formula": "NaNO2(aq)",
+  "phase": "LIQUID",
+  "miscibilityGroup": "aqueous",
+  "color": "#F0E8E0",
+  "solventRatio": 10,
+  "ions": [
+    { "ion": "Na", "charge": 1, "count": 1 },
+    { "ion": "NO2", "charge": -1, "count": 1 }
+  ]
+}

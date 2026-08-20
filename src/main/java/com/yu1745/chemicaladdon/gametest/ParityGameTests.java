@@ -212,6 +212,36 @@ public final class ParityGameTests {
 		helper.succeed();
 	}
 
+	@GameTest(template = "empty_15", timeoutTicks = 20 * 20)
+	public static void bridgeNitritePoolsMapAndReact(GameTestHelper helper) {
+		// P4b：硝池映射 + Nitri 解封实战（漂白液氧化亚硝酸盐：HypOxidisesNitrite）
+		ReactorTank tank = new ReactorTank(10_000, () -> {});
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation naocl = new ResourceLocation("chemicaladdon", "sodium_hypochlorite");
+		ResourceLocation nano2 = new ResourceLocation("chemicaladdon", "sodium_nitrite");
+		tank.fill(Mixture.create(Map.of(water, 980, naocl, 10, nano2, 10), Map.of(), 1000),
+				FluidAction.EXECUTE);
+
+		EngineBridge.Feed feed = EngineBridge.toFeed(tank.getFluids());
+		helper.assertTrue(feed.totals.getOrDefault("Hyp", 0.0) > 0, "NaOCl → Hyp");
+		helper.assertTrue(feed.totals.getOrDefault("Nitri", 0.0) > 0, "NaNO2 → Nitri");
+
+		// KINETICS：HypOxidisesNitrite k=10，Nitri 有限量应显著推进
+		com.yu1745.chemicaladdon.composition.parity.TickDriver.Step s =
+				com.yu1745.chemicaladdon.composition.parity.TickDriver.step(tank.getFluids(), 10_000.0);
+		helper.assertTrue(s.valid, "step should solve");
+		double dNitri = s.delta.getOrDefault("Nitri", 0.0);
+		double dNitra = s.delta.getOrDefault("Nitra", 0.0);
+		double dHyp = s.delta.getOrDefault("Hyp", 0.0);
+		helper.assertTrue(dNitri < -1e-9, "Nitri 应被氧化，dNitri=" + dNitri);
+		helper.assertTrue(dNitra > 0, "Nitra 应增长，dNitra=" + dNitra);
+		helper.assertTrue(dHyp < 0, "Hyp 应同步消耗");
+		helper.assertTrue(Math.abs(dNitri + dNitra) < 1e-8 && Math.abs(dNitri - dHyp) < 1e-8,
+				"HypOxidisesNitrite 1:1:1（Hyp↓Nitri↓Nitra↑）：dHyp=" + dHyp
+						+ " dNitri=" + dNitri + " dNitra=" + dNitra);
+		helper.succeed();
+	}
+
 	private static double solvePh(EngineBridge.Feed feed, String tag) {
 		ChemState.Builder b = ChemState.builder(tag)
 				.waterKg(feed.waterKg)

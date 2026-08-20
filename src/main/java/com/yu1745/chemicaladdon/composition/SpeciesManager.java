@@ -121,7 +121,8 @@ public class SpeciesManager {
 		"magnesium_chloride_solution",
 		// P4b 伪池宿主（species JSON only）：次氯酸钠/亚硫酸钠溶液——
 		// EngineBridge 映射 OCl→Hyp、SO3→Sul 介稳池（见 parity 包）
-		"sodium_hypochlorite", "sodium_sulphite_solution"
+		"sodium_hypochlorite", "sodium_sulphite_solution",
+		"sodium_nitrate_solution", "sodium_nitrite"
 	};
 
 	/** Register a species programmatically — JUnit kinetics tests injecting rate-bearing entries. */

@@ -58,7 +58,9 @@ public final class EngineBridge {
 	/** 伪池宿主离子 → 引擎伪元素（P4b）：这些基团在内核里是介稳池，不进真实元素账。 */
 	private static final Map<String, String> PSEUDO_POOLS = Map.of(
 			"OCl", "Hyp",   // 次氯酸根 → Hyp 池（漂白液介稳）
-			"SO3", "Sul");  // 亚硫酸根 → Sul 池（介稳，防平衡氧化）
+			"SO3", "Sul",   // 亚硫酸根 → Sul 池（介稳，防平衡氧化）
+			"NO3", "Nitra", // 硝酸根 → Nitra 池（防平衡下被还原成 NH4+）
+			"NO2", "Nitri");// 亚硝酸根 → Nitri 池（介稳，歧化/氧化通道在策展）
 
 	/** 常见基团 → 元素组成（离子域的 SO4/OH/NH4/CO3 拆解）。 */
 	private static final Map<String, Map<String, Integer>> GROUPS = Map.of(
@@ -176,6 +178,8 @@ public final class EngineBridge {
 		return switch (group) {
 			case "OCl" -> 51.452;  // Hyp
 			case "SO3" -> 80.064;  // Sul
+			case "NO3" -> 62.004;  // Nitra
+			case "NO2" -> 46.006;  // Nitri
 			default -> -1;
 		};
 	}
