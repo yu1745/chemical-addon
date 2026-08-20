@@ -157,8 +157,18 @@ public abstract class AbstractPhGaugeBlockEntity extends AbstractVesselGaugeBloc
 	/**
 	 * The aqueous phase's pH from the tank's unit domains: H⁺ / OH⁻ / water
 	 * summed across mixture stacks plus any plain water ({@link Analyte#ph}).
+	 *
+	 * <p>P3 读数源开关（-Dchemengine.readings=engine）：内核侧 IPhreeqc 求解的
+	 * pH（经 EngineReadings 缓存快照）；无快照/求解失败回退 legacy 路径。
 	 */
 	public static int phOf(ReactorTank tank) {
+		if (com.yu1745.chemicaladdon.composition.parity.ChemEngineConfig.ENGINE_READINGS) {
+			com.yu1745.chemicaladdon.composition.parity.EngineReadings.Snapshot s =
+					com.yu1745.chemicaladdon.composition.parity.EngineReadings.peek();
+			if (s.valid) {
+				return com.yu1745.chemicaladdon.composition.parity.EngineReadings.phSteps(s);
+			}
+		}
 		long h = 0;
 		long oh = 0;
 		long water = 0;

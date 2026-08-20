@@ -84,6 +84,35 @@ public final class ParityGameTests {
 		helper.succeed();
 	}
 
+	@GameTest(template = "empty_15", timeoutTicks = 20 * 20)
+	public static void bridgeEngineReadingsSourceSwitchesPh(GameTestHelper helper) {
+		// P3 读数源：EngineReadings 缓存 → phOf 表计读数（engine 模式）。
+		// 本测试直接驱动 refresh + phSteps，验证快照语义（开关本身是系统属性，
+		// GameTest 进程级不便于翻转，故直接断言组件行为）。
+		ReactorTank tank = new ReactorTank(10_000, () -> {});
+		ResourceLocation water = Solution.WATER;
+		tank.fill(Mixture.create(Map.of(water, 999), Map.of("H+1", 2, "Cl-1", 2), 1001),
+				FluidAction.EXECUTE);
+
+		com.yu1745.chemicaladdon.composition.parity.EngineReadings.Snapshot s =
+				com.yu1745.chemicaladdon.composition.parity.EngineReadings.refresh(tank.getFluids());
+		helper.assertTrue(s.valid, "snapshot should be valid for an acidic feed");
+		int steps = com.yu1745.chemicaladdon.composition.parity.EngineReadings.phSteps(s);
+		helper.assertTrue(steps >= 2 && steps <= 4,
+				"0.002 当量酸应读 pH 2-4（引擎连续值 " + s.ph + " → 步进 " + steps + "）");
+
+		// 碱侧对照
+		ReactorTank base = new ReactorTank(10_000, () -> {});
+		base.fill(Mixture.create(Map.of(water, 999), Map.of("Na+1", 2, "OH-1", 2), 1001),
+				FluidAction.EXECUTE);
+		com.yu1745.chemicaladdon.composition.parity.EngineReadings.Snapshot sb =
+				com.yu1745.chemicaladdon.composition.parity.EngineReadings.refresh(base.getFluids());
+		helper.assertTrue(sb.valid, "basic snapshot should be valid");
+		helper.assertTrue(sb.ph > 10 && sb.ph < 13,
+				"0.002 当量碱应读 pH 10-13，实测 " + sb.ph);
+		helper.succeed();
+	}
+
 	private static double solvePh(EngineBridge.Feed feed, String tag) {
 		ChemState.Builder b = ChemState.builder(tag)
 				.waterKg(feed.waterKg)
