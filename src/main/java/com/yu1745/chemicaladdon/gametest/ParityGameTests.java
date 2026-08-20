@@ -272,6 +272,38 @@ public final class ParityGameTests {
 		helper.succeed();
 	}
 
+	@GameTest(template = "empty_15", timeoutTicks = 20 * 20)
+	public static void bridgeWriteBackRoundTripsIons(GameTestHelper helper) {
+		// P5 写回：漂白+亚硫酸步进（Quench）→ 写回 Mixture 离子域 → derive 验证。
+		// 预期：OCl↓ SO3↓ Cl↑ SO4↑（Quench 计量），电荷中性保持（setIons 硬防线）。
+		ReactorTank tank = new ReactorTank(10_000, () -> {});
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation naocl = new ResourceLocation("chemicaladdon", "sodium_hypochlorite");
+		ResourceLocation na2so3 = new ResourceLocation("chemicaladdon", "sodium_sulphite_solution");
+		tank.fill(Mixture.create(Map.of(water, 980, naocl, 15, na2so3, 5), Map.of(), 1000),
+				FluidAction.EXECUTE);
+
+		Map<String, Integer> before = Mixture.deriveUnitIonAmounts(tank.getFluids().get(0));
+
+		com.yu1745.chemicaladdon.composition.parity.TickDriver.Step s =
+				com.yu1745.chemicaladdon.composition.parity.TickDriver.step(tank.getFluids(), 10_000.0);
+		helper.assertTrue(s.valid, "step should solve");
+
+		boolean wrote = com.yu1745.chemicaladdon.composition.parity.WriteBack.firstOf(tank.getFluids(), s);
+		helper.assertTrue(wrote, "write-back should succeed (charge-neutral)");
+
+		Map<String, Integer> after = Mixture.deriveUnitIonAmounts(tank.getFluids().get(0));
+		helper.assertTrue(after.getOrDefault("OCl-1", 0) < before.getOrDefault("OCl-1", 0),
+				"OCl 应减少：" + before.getOrDefault("OCl-1", 0) + " → " + after.getOrDefault("OCl-1", 0));
+		helper.assertTrue(after.getOrDefault("SO3-2", 0) < before.getOrDefault("SO3-2", 0),
+				"SO3 应减少");
+		helper.assertTrue(after.getOrDefault("Cl-1", 0) > before.getOrDefault("Cl-1", 0),
+				"Cl 应增长：" + before.getOrDefault("Cl-1", 0) + " → " + after.getOrDefault("Cl-1", 0));
+		helper.assertTrue(after.getOrDefault("SO4-2", 0) > 0, "SO4 应出现（Quench 产物）：" + after);
+		helper.assertTrue(after.getOrDefault("Na+1", 0) > 0, "Na 旁观保留");
+		helper.succeed();
+	}
+
 	private static double solvePh(EngineBridge.Feed feed, String tag) {
 		ChemState.Builder b = ChemState.builder(tag)
 				.waterKg(feed.waterKg)
