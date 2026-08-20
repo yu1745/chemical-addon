@@ -348,6 +348,18 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 		if (com.yu1745.chemicaladdon.composition.parity.ChemEngineConfig.ENGINE_READINGS) {
 			com.yu1745.chemicaladdon.composition.parity.EngineReadings.refresh(tank.getFluids());
 		}
+		// P4c+P5 主循环接线（ENGINE_KINETICS 开启时）：供压→KINETICS 步进→写回。
+		// 与 RulesEngine 同批执行（双引擎期：RulesEngine 仍全量在跑，差异见 [parity] 日志）。
+		if (com.yu1745.chemicaladdon.composition.parity.ChemEngineConfig.ENGINE_KINETICS) {
+			var parms = com.yu1745.chemicaladdon.composition.parity.PressureFeed.of(
+					tank.getFluids(), tank.getTankCapacity(0), getTemperature());
+			var step = com.yu1745.chemicaladdon.composition.parity.TickDriver.stepWithPressure(
+					tank.getFluids(), parms,
+					com.yu1745.chemicaladdon.composition.parity.TickDriver.SECONDS_PER_STEP);
+			if (step.valid) {
+				com.yu1745.chemicaladdon.composition.parity.WriteBack.firstOf(tank.getFluids(), step);
+			}
+		}
 		ChemicalReactionRecipe recipe = ReactionLogic.findRecipe(this);
 		if (recipe == null) {
 			// no fully-matching recipe: diagnose whether it is a heat problem

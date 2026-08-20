@@ -56,7 +56,16 @@ public final class TickDriver {
 	 * 速率只依赖当前池浓度的反应（策展表全部如此，TOT/MOL 门控）语义等价；
 	 * KINETICS 的 -m 剩量状态跨 tick 续接是 P4b 存档联动的一部分。
 	 */
+	/** 带 interface 供压的步进（P4c 主循环路径）。 */
+	public static Step stepWithPressure(List<FluidStack> fluids, Map<String, double[]> parms, double seconds) {
+		return stepInternal(fluids, parms, seconds);
+	}
+
 	public static Step step(List<FluidStack> fluids, double seconds) {
+		return stepInternal(fluids, null, seconds);
+	}
+
+	private static Step stepInternal(List<FluidStack> fluids, Map<String, double[]> parms, double seconds) {
 		EngineBridge.Feed feed = EngineBridge.toFeed(fluids);
 		if (feed.waterKg <= 0 || feed.totals.isEmpty()) {
 			return new Step(false, Map.of(), Map.of(), 7.0, seconds);
@@ -77,7 +86,9 @@ public final class TickDriver {
 		}
 		try (IPhreeqc q = IPhreeqc.create()) {
 			// 两段模拟：初始（i_soln punch 基线）+ KINETICS 步进（末行）
-			IPhreeqc.RunResult r = q.run(feed.toScriptWithKinetics(CURATION, seconds));
+			IPhreeqc.RunResult r = q.run(parms == null || parms.isEmpty()
+					? feed.toScriptWithKinetics(CURATION, seconds)
+					: feed.toScriptWithKinetics(CURATION, parms.keySet(), parms, seconds));
 			int last = r.rowCount() - 1;
 			Map<String, Double> totals = new LinkedHashMap<>();
 			Map<String, Double> delta = new LinkedHashMap<>();

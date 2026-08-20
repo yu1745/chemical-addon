@@ -22,4 +22,8 @@ public final class ChemEngineConfig {
 	/** pH 读数走内核（P3）：legacy | engine。 */
 	public static final boolean ENGINE_READINGS =
 			"engine".equalsIgnoreCase(System.getProperty("chemengine.readings", "legacy"));
+
+	/** KINETICS 主循环接线（P5）：开=每 REACTION_TICK 内核步进+写回（与 RulesEngine 双跑）。 */
+	public static final boolean ENGINE_KINETICS =
+			"on".equalsIgnoreCase(System.getProperty("chemengine.kinetics", "off"));
 }

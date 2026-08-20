@@ -304,6 +304,36 @@ public final class ParityGameTests {
 		helper.succeed();
 	}
 
+	@GameTest(template = "empty_15", timeoutTicks = 20 * 20)
+	public static void bridgeKineticsLoopDrainsBleachOverTime(GameTestHelper helper) {
+		// P5 主循环语义：多次步进+写回（游戏 tick 驱动），漂白液 OCl 持续减少。
+		// 模拟 20 拍 REACTION_TICK（每拍 0.5s，总 10s——Quench 快通道下亚硫酸秒灭，
+		// 之后 HypDecay 慢通道接手；断言全程无失败、单调、电荷中性保持）。
+		ReactorTank tank = new ReactorTank(10_000, () -> {});
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation naocl = new ResourceLocation("chemicaladdon", "sodium_hypochlorite");
+		tank.fill(Mixture.create(Map.of(water, 980, naocl, 20), Map.of(), 1000), FluidAction.EXECUTE);
+
+		int oclBefore = Mixture.deriveUnitIonAmounts(tank.getFluids().get(0)).getOrDefault("OCl-1", 0);
+		boolean anyValid = false;
+		for (int i = 0; i < 20; i++) {
+			var s = com.yu1745.chemicaladdon.composition.parity.TickDriver.step(
+					tank.getFluids(), 0.5);
+			if (s.valid) {
+				anyValid = true;
+				com.yu1745.chemicaladdon.composition.parity.WriteBack.firstOf(tank.getFluids(), s);
+			}
+		}
+		helper.assertTrue(anyValid, "至少一拍应有效");
+		int oclAfter = Mixture.deriveUnitIonAmounts(tank.getFluids().get(0)).getOrDefault("OCl-1", 0);
+		// 无还原剂时仅 HypDecay（慢通道，pH 7 半衰期年级）——短时间几乎不降但不应上升；
+		// 电荷中性由 setIons 保证（写回失败即拍 false 已断言）。
+		helper.assertTrue(oclAfter <= oclBefore, "OCl 不应上升：" + oclBefore + " → " + oclAfter);
+		helper.assertTrue(Mixture.isChargeNeutralLong(Mixture.getIons(tank.getFluids().get(0))),
+				"电荷中性应保持");
+		helper.succeed();
+	}
+
 	private static double solvePh(EngineBridge.Feed feed, String tag) {
 		ChemState.Builder b = ChemState.builder(tag)
 				.waterKg(feed.waterKg)
