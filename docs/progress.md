@@ -1,6 +1,6 @@
 # 开发进度
 
-> 最后更新：2026-08（M0–M2.5 完成，规则引擎 v1 + v2 离子基底 S1–S3g + D18 互溶性分相 + D18.5 分液口/软管 + S02 温度计（双形态）+ **U1 容器状态层**（多相加热/放热全体/压力模型/S03 压力表/datagen 修复）+ S02/S03 动态量程与 itemstack 指针 + **U3 模板抽取**（vessel/ 结构层基类/沉淀池去拷贝/控制器拆类 573 行），77/77 GameTest 通过）
+> 最后更新：2026-08（M0–M2.5 + U1/U3 + U13–U17 插队 + U18 定点分数 + **U19 引擎切换：IPhreeqc 内核接管运行时化学**，RulesEngine 退役；115/115 必测 + JUnit 全绿）
 > 里程碑定义见 `plans/11-content-scope.md`；设计计划书主索引 `plans/README.md`。
 
 ## 状态总览
@@ -19,6 +19,8 @@
 | U16 反应热能量记账 | J/unit 账本 + ΔT=Q/(feedUnits×c) + 蒸发潜热 + deltaHeat 质量耦合 | ✅ 完成（插队） |
 | U16.5 湿饼夹带与洗涤 | 残液率夹带 + residue 母液相 + 再浆/置换洗涤 + S18 电导率计 | ✅ 完成（插队） |
 | U17 分析化学层 | Kw 读数层 + S16 pH/S04 波美/S17 浊度 + 试纸族 + SI 降级 + M08 终点结晶器 | ✅ 完成（插队） |
+| U18 定点分数 | 量子网格 10⁷/mB + Mixture long 通道 + 引擎量子往返 | ✅ 完成（插队） |
+| **U19 引擎切换（parity）** | IPhreeqc 内核接管运行时化学（EngineBridge/TickDriver/WriteBack 主循环）+ RulesEngine 退役 | ✅ 完成（插队；内核 vendor commit c988ea9） |
 | M3+ 其余 | FE 接线 / 竖窑 / 索尔维 / 连续流 / 高压 / 零排放 | ⏳ 未开始（顺序见 plans/11 §2.1） |
 
 **自动化测试**：`./gradlew runGameTestServer` → **115/115 必测通过**（+1 optional 悬置）；`./gradlew test` → JUnit 全绿（含内核策展/性能哨兵）。
@@ -34,6 +36,17 @@
 - **主循环**（`ReactorControllerBlockEntity.stepKernelChemistry`，反应釜与 M08 共用）：PressureFeed（气相分压→interface 反应）→ TickDriver（游戏 0.5s/拍→KINETICS，温度贯通）→ WriteBack（增量迁移）→ EngineReadings.publish（pH 表计共享快照，零额外求解）。EngineArchive 无条件写档（DUMP↔NBT）。
 - **已知缺口（内核路径未覆盖，待后续恢复）**：① 开口蒸发浓缩/冷凝回收（M08 终点闭环，crystallizermultiblock 测试 required=false 悬置）；② 投料溶解/投种；③ 沉淀悬浮域（固相写回待相映射）；④ 护目镜 speciation 化验行；⑤ 反应热记账。旧行为参考 RulesEngine（退役锁测试仍在验证其自身语义）。
 - 顺手修正：pH 滴定/吸收/产酸/耗酸四测试改引擎真值断言（旧断言是 legacy 虚构数值）；`ChemEngineConfig` 开关类删除（迁移期结束）。
+
+## P7.1 · 固相通路（EQUILIBRIUM_PHASES → Suspended 域，2026-08-21）
+
+**沉淀/回溶复活**：物种 JSON equilibria（Ksp，旧引擎同源数据）→ PHREEQC inline PHASES（`mod_<id>` 前缀）+ EQUILIBRIUM_PHASES（目标 SI 0、初量 = 当前悬浮 part）→ 过饱和自发析出 / 欠饱和回溶到饱和 → 相终量写回 Suspended 域。过滤机/沉淀池链路重新有活干。GameTest 117/117。
+
+- **PhaseBridge**（新）：扫描 SOLID 物种首条矿物 equilibria 建相表（14 相 + slaked_lime）；方程 RHS token 翻译 sit.dat 命名（单价 ±1 去尾数 OH-1→OH-）；曲线物种（rock_salt/copper_sulfate）与伪池固相不参与（结晶曲线/介稳语义不变）。
+- **PHREEQC 语法铁律（PhaseProbe 实验定案）**：① 相摩尔 punch 用 USER_PUNCH `EQUI("phase")`——`-equilibrium_phases` 标识符不产列；② 多值 PUNCH 必须分行（逗号连写使模拟中止）；③ EQUILIBRIUM_PHASES 必须挂在首个模拟里（过饱和析出从初解就开始）；④ punch -totals 需补相元素列（矿物 RHS 元素，固相溶解产物才能进写回——矿物 JSON 无 ions 数组，元素从 equilibria RHS 推）。
+- **体积闭合**（WriteBack.closeVolumeGap）：四域 Σ part 恒等于 FluidStack amount——析出（2 离子 part → 1 固相 part）的缺口/回溶盈余记在 water part（旧引擎同语义，derive 视图恒等）。
+- **slaked_lime.json**（新物种）：Ca(OH)2 portlandite log_k -5.19——milk_of_lime 的悬浮熟石灰现在参与中和（酸 + 石灰乳 → 石膏自发涌现，PhaseProbe 验证）。
+- 集成测试：`kernelPathPrecipitatesLimestone`（Ca/C/Na/Cl 各 300 part → 石灰石 299 mB 悬浮、Ca 耗尽至饱和、旁观离子保留——与旧引擎退役锁同数字）；`kernelPathGypsumSlurryDissolvesToSaturation`（悬浮石膏 200 → 回溶到饱和 184、Ca 落离子域 ~16 mB）。
+- 仍缺（后续）：Sediment 域（结晶曲线物种的沉底语义不变，固相写回只动 Suspended）；投料溶解（物品→进料）；开口蒸发/冷凝；speciation 化验行；反应热。
 
 ## 已完成明细
 
@@ -361,6 +374,19 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 - **run-server.sh**：冒烟脚本（透传输出、纯 PID 三级关闭、启动前截断日志防假阳性）
 - **mc_source_forge_1.20.1**：Forge 47.4.0 反编译源码（5453 文件，含 net/minecraftforge），MC/Forge API 查询首选
 - 开发环境完整入 server monorepo submodule（工程 + create/创想/匠魂/TFMG/柴油机 + mc_source×2）
+
+### U19 · 引擎切换（IPhreeqc 内核接管运行时化学，2026-08-20）
+
+**运行时化学权威从自研 RulesEngine/Solution 全量切换到 IPhreeqc 原生内核**（vendor 并入本仓库 commit `c988ea9`，原 chem-engine 仓库封存；引擎文档=docs/engine/ 五件套，正本 PLAN.md）。mod 侧适配层 = `composition/parity` 包，mod 计划书同步重写为 plans/03 §8 新章。GameTest 115/115 必测（含 **ParityGameTests 16 个实弹**：FluidStack→内核→断言）。
+
+- **主循环（mod 侧唯一化学驱动器）**：`EngineBridge`（Mixture 四域→元素/伪池总量进料）→ `PressureFeed`（P4c：釜气相按**分压**供 interface 反应 PARM——分压 0 不发射，防虚拟大气；语义对齐釜理想气体压力模型）→ `TickDriver`（REACTION_TICK 10 tick=0.5 s 一步 KINETICS；bulk 全量发射；每步从进料重起，TOT/MOL 门控下语义等价，-m 剩量续接待存档联动）→ `WriteBack`（P6：**增量迁移**而非全量替换——元素/伪池总量→dominant-ion 存储（S→SO₄²⁻/N→NH₄⁺/C→HCO₃⁻），已迁移电解质分子清除防双计，无法存储的物种整体保留）。
+- **单位桥（明文化）**：水 part=1 mB=1 g；物种/离子 part=formula-unit 计数（1 part=10⁻⁴ mol）；**H/O 永不作为元素总量输入**（PHREEQC 属水/电荷平衡域，喂入不收敛，酸碱身份由 pH charge 涌现）；**伪池（Hyp/Sul/Nitra/Nitri）优先于元素归并**（介稳身份不可塌）；WriteBack 离子 part 按摩尔计价——电中性硬不变量在摩尔计价下即化学中性（克计价下 Na⁺/OCl⁻ 类不对称对永不中性）。
+- **固相桥 `PhaseBridge`（P7）**：物种 JSON 的 equilibria（Ksp，旧引擎同源数据）→ inline PHASES（相名 `mod_<id>` 不与 sit.dat 1848 相撞）+ EQUILIBRIUM_PHASES（SI 0、初始量=当前悬浮 part）：过饱和自动析出、欠饱和回溶——**旧数据零重写**。
+- **存档桥 `EngineArchive`（P3b）**：釜内核态 DUMP SOLUTION_RAW 全精度文本挂 NBT `chemengineDump`，恢复不重算零漂移；Mixture 四域仍是显示/交互权威（翻转点待定）。
+- **读数 `EngineReadings`**：主循环每拍步进结果共享缓存供全部表计（pH/温度/浊度…），零额外 JNA 求解；无快照回退 legacy 读数。**`Kernel` 共享会话**：sit.dat 装载每 JVM 一次——不复用则 GameTest 1 分钟劣化到 5–10 分钟（切换初版实测）。
+- **红氧解禁**（推翻旧 pe 否决，plans/03 §8.1 v2）：介稳价态=伪元素池（独立守恒），跨池红氧=KINETICS 速率方程（k=游戏节奏旋钮），价态分配=元素总量+pe 涌现。FeCl₂+Cl₂、MnO₂+浓盐酸等旧引擎判「数学不可行」场景内核直接做对。
+- **RulesEngine 退役处置**：不再被 tick 调用；保留①物流常量（MB_PER_ITEM/晶粒面额/湿饼残液率/洗涤效率——ReactorTank/ReactionLogic 生产依赖）②GameTest 回归锁（U15–U17 玩法级语义：投种塌缩亚稳/分步结晶选择性/湿饼洗涤——内核迁移验收=同语义保持，待逐批迁移）。
+- **待办**：sit.dat（ThermoChimie）许可证核实补 THIRD_PARTY；溶解度曲线/结晶动力学语义在内核侧逐场景对照；热量记账按新架构重设计（U20，见 plans/11 附录）；KINETICS -m 剩量跨 tick 续接。
 
 ## 修复记录（近期）
 

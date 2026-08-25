@@ -1,0 +1,7 @@
+{
+  "formula": "Ca(OH)2",
+  "phase": "SOLID",
+  "equilibria": [
+    { "reaction": "slaked_lime(s) = Ca+2 + 2 OH-1", "log_k": -5.19 }
+  ]
+}

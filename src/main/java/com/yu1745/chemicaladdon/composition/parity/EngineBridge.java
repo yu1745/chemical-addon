@@ -94,6 +94,8 @@ public final class EngineBridge {
 		public double waterKg;
 		public double tempC = 25.0;
 		public final Map<String, Double> totals = new LinkedHashMap<>();
+		/** 固相初量（PhaseBridge 相名 → mol；悬浮域中可相映射的物种）。 */
+		public final Map<String, Double> phaseInitial = new LinkedHashMap<>();
 		/** 未映射的输入（诊断用：分子域非电解质、未知离子）。 */
 		public final Map<String, Long> unmapped = new LinkedHashMap<>();
 
@@ -120,6 +122,12 @@ public final class EngineBridge {
 					}
 				}
 			}
+			// 相元素（固相溶解/析出的账目，纯水+悬浮固也要 punch）
+			for (PhaseBridge.PhaseDef d : PhaseBridge.all()) {
+				for (String el : d.elements()) {
+					cols.add(el);
+				}
+			}
 			return cols;
 		}
 
@@ -142,7 +150,8 @@ public final class EngineBridge {
 			for (String k : punchColumns(curation)) {
 				punchList.append(' ').append(k);
 			}
-			StringBuilder sol = new StringBuilder("SOLUTION 1 tick\n");
+			StringBuilder sol = new StringBuilder(PhaseBridge.phasesBlock());
+			sol.append("SOLUTION 1 tick\n");
 			sol.append("    temp      ").append(tempC).append('\n');
 			sol.append("    pH        7 charge\n");
 			sol.append("    water     ").append(waterKg).append(" kg\n");
@@ -152,6 +161,7 @@ public final class EngineBridge {
 							.append(e.getValue() / waterKg).append(" mol/kgw\n");
 				}
 			}
+			sol.append(PhaseBridge.equilibriumPhasesBlock(phaseInitial));
 			sol.append("SELECTED_OUTPUT 1\n");
 			sol.append("    -state          true\n");
 			sol.append("    -time           true\n");
@@ -159,9 +169,11 @@ public final class EngineBridge {
 			sol.append("    -totals  ").append(punchList.toString().trim()).append('\n');
 			sol.append("    -pH       true\n");
 			sol.append("    -pe       true\n");
+			sol.append(PhaseBridge.userPunchBlock());
 			sol.append("END\n");
 			return sol + curation.ratesBlock()
 					+ "USE solution 1\n"
+					+ "USE equilibrium_phases 1\n"
 					+ curation.kineticsBlock(include, parmOverrides, seconds) + "\n"
 					+ "END\n";
 		}
@@ -203,6 +215,14 @@ public final class EngineBridge {
 				String sym = e.getKey().replaceAll("[+-]\\d+$", "");
 				mergeTokenMol(feed.totals, sym, e.getValue() / UNITS_PER_MOL);
 			}
+			// 悬浮域：可相映射的物种 → 相初量（mol = part×1e-3，FU 计价同离子）；
+			// 不可映射（曲线物种/伪池固相/未知）留在原地，原样写回
+			for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveSuspendedAmounts(stack).entrySet()) {
+				PhaseBridge.PhaseDef def = PhaseBridge.def(e.getKey());
+				if (def != null && e.getValue() > 0) {
+					feed.phaseInitial.merge(def.phaseName(), e.getValue() * PhaseBridge.MOL_PER_PART, Double::sum);
+				}
+			}
 		}
 		feed.waterKg = waterUnits * GRAMS_PER_UNIT / 1000.0;
 		return feed;
@@ -225,6 +245,11 @@ public final class EngineBridge {
 				totals.merge(el.getKey(), tokenMol * el.getValue(), Double::sum);
 			}
 		}
+	}
+
+	/** 物种 id → 相定义（无相 = null）。 */
+	static PhaseBridge.PhaseDef phaseDefOf(ResourceLocation species) {
+		return PhaseBridge.def(species);
 	}
 
 	/** 伪池摩尔质量（与 curation/chemistry.json 的 molarMass 一致）。 */

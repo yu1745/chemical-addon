@@ -181,13 +181,74 @@ public final class WriteBack {
 		return EngineBridge.ATOMIC.containsKey(sym) ? sym : null;
 	}
 
-	/** 便捷：釜内第一个 mixture 栈写回。 */
+	/** 便捷：釜内第一个 mixture 栈写回（离子域 + 固相域 + 体积闭合）。 */
 	public static boolean firstOf(List<FluidStack> fluids, Step step) {
 		for (FluidStack stack : fluids) {
 			if (Mixture.isMixture(stack)) {
-				return ionsOf(stack, step);
+				boolean ions = ionsOf(stack, step);
+				suspendedOf(stack, step);
+				closeVolumeGap(stack);
+				return ions;
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * 体积闭合：四域 Σ part 应恒等于 FluidStack amount（mB 视图恒等，旧引擎同语义）。
+	 * 析出消耗 2 离子 part 产 1 固相 part 的缺口/回溶的盈余，一律记在 water part 上
+	 * （溶剂份额吸收相变体积；gap<0 时扣减，下限 0）。
+	 */
+	static void closeVolumeGap(FluidStack stack) {
+		long amount = stack.getAmount();
+		if (amount <= 0) {
+			return;
+		}
+		long sum = sumOf(Mixture.getMolecules(stack)) + sumOf(Mixture.getIons(stack))
+				+ sumOf(Mixture.getSuspended(stack)) + sumOf(Mixture.getSediment(stack));
+		long gap = amount - sum;
+		if (gap == 0) {
+			return;
+		}
+		Map<ResourceLocation, Long> molecules = new LinkedHashMap<>(Mixture.getMolecules(stack));
+		long water = molecules.getOrDefault(Solution.WATER, 0L) + gap;
+		molecules.put(Solution.WATER, Math.max(0, water));
+		Mixture.setMolecules(stack, molecules);
+	}
+
+	private static long sumOf(Map<?, Long> parts) {
+		long s = 0;
+		for (long v : parts.values()) {
+			s += v;
+		}
+		return s;
+	}
+
+	/**
+	 * 固相写回：可相映射物种的悬浮量 ← 内核相终量（mol×1e3 = part）；
+	 * 不可映射（曲线物种/伪池固相/未知）原样保留；<1 part 的残余丢弃。
+	 */
+	public static void suspendedOf(FluidStack stack, Step step) {
+		if (!step.valid || !Mixture.isMixture(stack)) {
+			return;
+		}
+		Map<ResourceLocation, Long> susp = new LinkedHashMap<>();
+		for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveSuspendedAmounts(stack).entrySet()) {
+			if (PhaseBridge.def(e.getKey()) != null) {
+				continue; // 本拍由相终量替换
+			}
+			susp.put(e.getKey(), (long) e.getValue());
+		}
+		for (Map.Entry<String, Double> e : step.phases.entrySet()) {
+			ResourceLocation id = PhaseBridge.speciesOf(e.getKey());
+			if (id == null) {
+				continue;
+			}
+			long parts = Math.round(e.getValue() / PhaseBridge.MOL_PER_PART);
+			if (parts >= 1) {
+				susp.put(id, parts);
+			}
+		}
+		Mixture.setSuspended(stack, susp);
 	}
 }

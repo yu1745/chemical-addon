@@ -33,13 +33,21 @@ public final class TickDriver {
 		public final Map<String, Double> totals;
 		/** 相对步进前的变化（mol）。 */
 		public final Map<String, Double> delta;
+		/** 步进后固相量（PhaseBridge 相名 → mol，绝对量；EQUI punch）。 */
+		public final Map<String, Double> phases;
 		public final double ph;
 		public final double seconds;
 
 		Step(boolean valid, Map<String, Double> totals, Map<String, Double> delta, double ph, double seconds) {
+			this(valid, totals, delta, Map.of(), ph, seconds);
+		}
+
+		Step(boolean valid, Map<String, Double> totals, Map<String, Double> delta,
+				Map<String, Double> phases, double ph, double seconds) {
 			this.valid = valid;
 			this.totals = totals;
 			this.delta = delta;
+			this.phases = phases;
 			this.ph = ph;
 			this.seconds = seconds;
 		}
@@ -71,8 +79,8 @@ public final class TickDriver {
 			double seconds, int tempC) {
 		EngineBridge.Feed feed = EngineBridge.toFeed(fluids);
 		feed.tempC = tempC;
-		if (feed.waterKg <= 0 || feed.totals.isEmpty()) {
-			return new Step(false, Map.of(), Map.of(), 7.0, seconds);
+		if (feed.waterKg <= 0 || (feed.totals.isEmpty() && feed.phaseInitial.isEmpty())) {
+			return new Step(false, Map.of(), Map.of(), Map.of(), 7.0, seconds);
 		}
 		ChemState.Builder b = ChemState.builder("tick")
 				.waterKg(feed.waterKg)
@@ -85,7 +93,7 @@ public final class TickDriver {
 				any = true;
 			}
 		}
-		if (!any) {
+		if (!any && feed.phaseInitial.isEmpty()) {
 			return new Step(false, Map.of(), Map.of(), 7.0, seconds);
 		}
 		// 共享会话（Kernel）：数据库每 JVM 装载一次——每拍 create+装库是切换初版的性能回归
@@ -95,8 +103,7 @@ public final class TickDriver {
 			// Step 的 totals 收集全部 punch 列（含动力学新键），不只进料键。
 			IPhreeqc.RunResult r = q.run(parms == null || parms.isEmpty()
 					? feed.toScriptWithKinetics(CURATION, seconds)
-					: feed.toScriptWithKinetics(CURATION, parms.keySet(), parms, seconds));
-			int last = r.rowCount() - 1;
+					: feed.toScriptWithKinetics(CURATION, parms.keySet(), parms, seconds));			int last = r.rowCount() - 1;
 			Map<String, Double> totals = new LinkedHashMap<>();
 			Map<String, Double> delta = new LinkedHashMap<>();
 			for (String k : feed.punchColumns(CURATION)) {
@@ -105,8 +112,19 @@ public final class TickDriver {
 				totals.put(k, after);
 				delta.put(k, after - before);
 			}
-			return new Step(true, totals, delta, r.row(last).d("pH"), seconds);
+			// 固相终量（绝对 mol，EQUI punch，不乘 waterKg）
+			Map<String, Double> phases = new LinkedHashMap<>();
+			for (PhaseBridge.PhaseDef d : PhaseBridge.all()) {
+				double mol = r.row(last).dOr(d.phaseName(), 0.0);
+				if (mol > 0) {
+					phases.put(d.phaseName(), mol);
+				}
+			}
+			return new Step(true, totals, delta, phases, r.row(last).d("pH"), seconds);
 		} catch (Exception e) {
+			com.yu1745.chemicaladdon.ChemicalAddon.LOGGER.warn(
+				"[engine] tick step failed: {} — script:\n{}", e.toString(),
+				feed.toScriptWithKinetics(CURATION, seconds));
 			return new Step(false, Map.of(), Map.of(), 7.0, seconds);
 		}
 	}

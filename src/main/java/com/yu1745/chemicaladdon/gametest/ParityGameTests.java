@@ -1,6 +1,7 @@
 package com.yu1745.chemicaladdon.gametest;
 
 import com.yu1745.chemicaladdon.composition.parity.EngineBridge;
+import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.composition.Solution;
 import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.reactor.ReactorTank;
@@ -57,6 +58,56 @@ public final class ParityGameTests {
 		double ph = solvePh(feed, "naoh");
 		helper.assertTrue(ph > 9.0 && ph < 13.5,
 				"NaOH feed should solve basic, got pH=" + ph);
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = 20 * 20)
+	public static void kernelPathPrecipitatesLimestone(GameTestHelper helper) {
+		// 固相桥（P7）：过饱和 Ca+CO₃ → 石灰石自发析出到 Suspended（相终量写回），
+		// 旁观 Na/Cl 保留。与 rulesEnginePrecipitatesLimestone 同场景（退役锁），
+		// 但走内核路径：TickDriver → WriteBack。
+		ReactorTank tank = new ReactorTank(10_000, () -> {});
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation limestone = new ResourceLocation(ChemicalAddon.MODID, "limestone");
+		tank.fill(Mixture.create(Map.of(water, 1000),
+			Map.of("Ca+2", 300, "Cl-1", 300, "Na+1", 300, "CO3-2", 300), 2200), FluidAction.EXECUTE);
+
+		var step = com.yu1745.chemicaladdon.composition.parity.TickDriver.step(tank.getFluids(), 0.5);
+		helper.assertTrue(step.valid, "kernel step should be valid");
+		com.yu1745.chemicaladdon.composition.parity.WriteBack.firstOf(tank.getFluids(), step);
+
+		FluidStack result = tank.getFluids().get(0);
+		int suspended = Mixture.deriveSuspendedAmounts(result).getOrDefault(limestone, 0);
+		helper.assertTrue(suspended >= 290 && suspended <= 300,
+			"Ca+CO₃ 应析出 ~300 mB 石灰石，实测 " + suspended
+				+ "（step totals=" + step.totals + " phases=" + step.phases + "）");
+		Map<String, Integer> ions = Mixture.deriveIonAmounts(result);
+		helper.assertTrue(ions.getOrDefault("Ca+2", 0) <= 1, "Ca+2 应被耗尽，实测 " + ions);
+		helper.assertTrue(ions.getOrDefault("Na+1", 0) == 300, "Na+ 旁观保留，实测 " + ions);
+		helper.assertTrue(ions.getOrDefault("Cl-1", 0) == 300, "Cl- 旁观保留，实测 " + ions);
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = 20 * 20)
+	public static void kernelPathGypsumSlurryDissolvesToSaturation(GameTestHelper helper) {
+		// 固相桥（P7）：欠饱和悬浮石膏回溶到饱和（EQUILIBRIUM_PHASES 初量 = 悬浮 part），
+		// 剩余固相写回、溶解的 Ca/S 落离子域——质量往返闭环。
+		ReactorTank tank = new ReactorTank(10_000, () -> {});
+		ResourceLocation water = Solution.WATER;
+		ResourceLocation gypsum = new ResourceLocation(ChemicalAddon.MODID, "gypsum");
+		tank.fill(Mixture.create(Map.of(water, 1000), Map.of(),
+			Map.of(gypsum, 200), Map.of(), 1200), FluidAction.EXECUTE);
+
+		var step = com.yu1745.chemicaladdon.composition.parity.TickDriver.step(tank.getFluids(), 0.5);
+		helper.assertTrue(step.valid, "纯水+悬浮固也应有效");
+		com.yu1745.chemicaladdon.composition.parity.WriteBack.firstOf(tank.getFluids(), step);
+
+		FluidStack result = tank.getFluids().get(0);
+		int suspended = Mixture.deriveSuspendedAmounts(result).getOrDefault(gypsum, 0);
+		helper.assertTrue(suspended >= 180 && suspended <= 200,
+			"石膏应回溶到饱和（~16 mB 溶解，络合+活度），剩 " + suspended);
+		int ca = Mixture.deriveIonAmounts(result).getOrDefault("Ca+2", 0);
+		helper.assertTrue(ca >= 10 && ca <= 25, "溶解的 Ca 应落离子域（~16 mB），实测 " + ca);
 		helper.succeed();
 	}
 
