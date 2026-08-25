@@ -2747,7 +2747,7 @@ public class ChemicalAddonGameTests {
 		helper.succeed();
 	}
 
-	@GameTest(template = "empty_15", timeoutTicks = TICKS * 95, required = false)
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 95)
 	public static void crystallizerMultiblockEndpointsAndCondenses(GameTestHelper helper) {
 		// M08 block-level: the reactor multiblock with the crystalliser
 		// controller — setpoint scroll, the endpoint redstone event, the heat
@@ -2755,9 +2755,8 @@ public class ChemicalAddonGameTests {
 		// plays the burner BELOW the endpoint; the moment the endpoint fires
 		// the pin is dropped so the real heatTarget() gating (ambient) runs.
 		//
-		// 【引擎切换悬置（2026-08）】required=false：开口蒸发/冷凝回收尚未在
-		// IPhreeqc 主循环落地（原 U13 步骤），浓缩不再发生、终点不触发——待内核侧
-		// 蒸发机制（策展 interface 池）恢复后重新置 required 并校准断言。
+		// 【P7.2/7.3 恢复】蒸发浓缩/冷凝回收/投种析晶走 PhysicalSteps（内核主循环
+		// 之后的 mod 侧物理拍）——2026-08 切换期间曾 required=false 悬置。
 		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
 		BlockState controller = AllBlocks.CRYSTALLIZER_CONTROLLER.get().defaultBlockState();
 		for (int x = 1; x <= 3; x++) {
@@ -2830,6 +2829,34 @@ public class ChemicalAddonGameTests {
 					"seeded at the endpoint only KNO₃ crystallises (got " + crystal + " mB)");
 				helper.assertTrue(ionAmount(be.getTank().getFluids().get(0), "Na+1") == 12,
 					"NaCl stays in the mother liquor (got " + ionAmount(be.getTank().getFluids().get(0), "Na+1") + ")");
+			})
+			.thenSucceed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void reactorPublishesKernelSpeciation(GameTestHelper helper) {
+		// P7.4：内核 SI/相增量 → 化验行（护目镜 dev-assay 数据源）。石灰石过饱和场景：
+		// 沉淀后 SI ≈ 0（与固相平衡），moved > 0（析出）。
+		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
+		ResourceLocation water = Solution.WATER;
+		FluidStack mix = Mixture.create(Map.of(water, 1000),
+			Map.of("Ca+2", 300, "Cl-1", 300, "Na+1", 300, "CO3-2", 300), 2200);
+		be.getTank().fill(mix, FluidAction.EXECUTE);
+		helper.startSequence()
+			.thenIdle(TICKS * 2)
+			.thenExecute(() -> {
+				List<Solution.Speciation> report = be.getSpeciation();
+				Solution.Speciation limestone = report.stream()
+					.filter(s -> s.target().getPath().equals("limestone"))
+					.findFirst().orElse(null);
+				helper.assertTrue(limestone != null,
+					"the kernel report should carry the limestone line (got " + report + ")");
+				if (limestone != null) {
+					helper.assertTrue(Math.abs(limestone.si()) < 0.5,
+					"at equilibrium with the solid present SI ≈ 0 (got " + limestone.si() + ")");
+					helper.assertTrue(limestone.moved() > 0,
+					"limestone should have precipitated (moved " + limestone.moved() + ")");
+			}
 			})
 			.thenSucceed();
 	}

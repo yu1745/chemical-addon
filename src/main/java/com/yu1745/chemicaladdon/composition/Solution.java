@@ -301,6 +301,11 @@ public final class Solution {
 			this.rateLimited = rateLimited;
 		}
 
+		/** 内核路径工厂（P7.4：IPhreeqc SI/相增量 → 化验行）。 */
+	public static Speciation of(ResourceLocation target, double si, long moved, boolean rateLimited) {
+			return new Speciation(target, si, moved, rateLimited);
+		}
+
 		public ResourceLocation target() {
 			return target;
 		}

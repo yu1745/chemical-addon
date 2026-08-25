@@ -48,6 +48,17 @@
 - 集成测试：`kernelPathPrecipitatesLimestone`（Ca/C/Na/Cl 各 300 part → 石灰石 299 mB 悬浮、Ca 耗尽至饱和、旁观离子保留——与旧引擎退役锁同数字）；`kernelPathGypsumSlurryDissolvesToSaturation`（悬浮石膏 200 → 回溶到饱和 184、Ca 落离子域 ~16 mB）。
 - 仍缺（后续）：Sediment 域（结晶曲线物种的沉底语义不变，固相写回只动 Suspended）；投料溶解（物品→进料）；开口蒸发/冷凝；speciation 化验行；反应热。
 
+## P7.2–P7.4 · 物理步骤层：蒸发/冷凝、投料/投种、化验行（2026-08-21）
+
+**内核主循环补齐 mod 侧物理拍**（`reactor/PhysicalSteps`，内核步进+写回之后）：PHREEQC 不承载的三类自发物理回到运行时——**M08 终点闭环全通，crystallizer 测试翻回 required**。GameTest 118/118。
+
+- **P7.2 开口蒸发 + 冷凝回收**：沸腾开釜每拍 50 mB 常数速率蒸水（浓度由下一拍内核/曲线感知）；**U16 潜热自限同步落地**（ΔT = Q/(feedUnits×4.18)，蒸发后写回温度降 ~11°C → 没热源续热就自灭，热源一停立即停沸不过冲）——这是 M08 投种断言窗口（70–95 mB）的物理基础，也是首次实现时 182 mB 过冲的修复。蒸汽量经 stepKernelChemistry 返回值上报，M08 冷凝罐回收为馏出水（pushCondensate 被动外推不变）。
+- **P7.3 投料溶解/投种/曲线结晶**：RulesEngine.dissolveItems（曲线饱和封顶 + 过饱和投种入 Sediment + 混合盐渣整块展开）与 Solution#curveBalance（过饱和→沉底生长/欠饱和回溶/干涸全析；介稳门 + 无种惩罚）提取为 PhysicalSteps 的静态步骤——它们是溶解度表驱动（游戏数据，非 Ksp），内核结构性不含，属 mod 侧物理。RulesEngine 仅放开四个 helper 的包可见性，求解器本体仍退役。
+- **P7.4 化验行**：USER_PUNCH 每相加 punch SI()；Step 增 phaseSi/phaseDelta；stepKernelChemistry 组装 Solution.Speciation（of 工厂）→ 护目镜 dev-assay 行复活（ASSAY_ON 门槛不变）。
+- 曲线物种 vs Ksp 矿物的分界定案：**有 equilibria 的走内核相（P7.1），有溶解度表的走物理拍曲线（P7.3），两者数据源不交叠**（rock_salt 无曲线、KNO₃ 无 equilibria，各自单轨）。
+- 测试：crystallizerMultiblockEndpointsAndCondenses 翻回 required 通过（终点/冷凝≥1000/红石 15/切热降温/投种只析 KNO₃ 70–95/NaCl 全留母液）；新增 reactorPublishesKernelSpeciation（SI≈0 + moved>0）。
+- 仍缺：脱气（Henry 表）；反应热记账（配方层 deltaHeat 仍在，自发反应热无账本）；Sediment 域的内核相写回（沉淀全部入 Suspended，沉底语义归曲线结晶）。
+
 ## 已完成明细
 
 ### M0 · 地基

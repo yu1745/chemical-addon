@@ -9,6 +9,7 @@ import javax.annotation.Nullable;
 import com.simibubi.create.api.equipment.goggles.IHaveGoggleInformation;
 import com.simibubi.create.content.processing.burner.BlazeBurnerBlock;
 import com.yu1745.chemicaladdon.ChemicalAddon;
+import com.yu1745.chemicaladdon.composition.Chemistry;
 import com.yu1745.chemicaladdon.composition.Solution;
 import com.yu1745.chemicaladdon.fluid.Miscibility;
 import com.yu1745.chemicaladdon.fluid.Mixture;
@@ -330,12 +331,10 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 			setProgress(0, null);
 			return;
 		}
-		// 化学权威 = IPhreeqc 内核（2026-08 全量切换，U13 规则引擎退役出运行时）：
-		// 供压（釜气相分压 → interface 反应）→ KINETICS 步进 → 增量写回 Mixture 离子域。
-		// 旧 RulesEngine 的沉淀悬浮/蒸发浓缩/投料溶解/脱气/反应热等待内核侧对应能力
-		// （相写回、策展 interface 池）落地后另行恢复；缺口清单见 docs/progress.md。
+		// 化学权威 = IPhreeqc 内核（2026-08 全量切换）+ mod 侧物理拍：
+		// 供压（釜气相分压 → interface 反应）→ KINETICS 步进 → 增量写回 →
+		// 投料溶解/曲线结晶/开口蒸发（PhysicalSteps）。仍缺：脱气/反应热记账。
 		stepKernelChemistry();
-		recordSpeciation(List.of()); // 内核侧 speciation 报告待接（护目镜化验行暂歇）
 		ChemicalReactionRecipe recipe = ReactionLogic.findRecipe(this);
 		if (recipe == null) {
 			// no fully-matching recipe: diagnose whether it is a heat problem
@@ -365,11 +364,19 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 		speciation = report;
 	}
 
+	/** Last kernel step's assay lines (per-solid SI / moved; goggles dev-assay + tests). */
+	public List<Solution.Speciation> getSpeciation() {
+		return speciation;
+	}
+
 	/**
 	 * 内核步进（反应釜与 M08 共用主循环）：供压 → KINETICS 步进 → 增量写回 +
-	 * 读数发布（pH 表计共享本拍快照，零额外求解）。
+	 * 读数发布（pH 表计共享本拍快照，零额外求解）→ mod 侧物理拍（投料溶解/
+	 * 曲线结晶/开口蒸发，PhysicalSteps）。
+	 *
+	 * @return 本拍开口蒸发的蒸汽量（mB；密封/未沸腾 = 0——M08 冷凝罐回收为馏出水）
 	 */
-	protected void stepKernelChemistry() {
+	protected long stepKernelChemistry() {
 		var parms = com.yu1745.chemicaladdon.composition.parity.PressureFeed.of(
 				tank.getFluids(), tank.getTankCapacity(0), getTemperature());
 		var step = com.yu1745.chemicaladdon.composition.parity.TickDriver.stepWithPressure(
@@ -379,9 +386,35 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 		if (step.valid) {
 			com.yu1745.chemicaladdon.composition.parity.WriteBack.firstOf(tank.getFluids(), step);
 			com.yu1745.chemicaladdon.composition.parity.EngineReadings.publish(step);
+			recordSpeciation(speciationOf(step)); // P7.4：内核 SI/相增量 → 护目镜化验行
 		} else {
 			com.yu1745.chemicaladdon.composition.parity.EngineReadings.invalidate();
 		}
+		// mod 侧物理拍（P7.2/P7.3）：内核不管的三类自发物理（曲线物种的饱和/结晶
+		// 表、投料、蒸水）；蒸汽量上报给 M08 冷凝罐
+		long[] vented = new long[1];
+		PhysicalSteps.apply(tank, isOpen(), items, stirringCoefficient(), vented, getTemperature());
+		return vented[0] / Chemistry.QUANTA_PER_MB;
+	}
+
+	/** 内核步进 → 化验行（有事件的相才进报告；SI 单位无、moved 单位 = 旧解算单位制）。 */
+	private static List<Solution.Speciation> speciationOf(
+			com.yu1745.chemicaladdon.composition.parity.TickDriver.Step step) {
+		List<Solution.Speciation> out = new ArrayList<>();
+		for (com.yu1745.chemicaladdon.composition.parity.PhaseBridge.PhaseDef d
+				: com.yu1745.chemicaladdon.composition.parity.PhaseBridge.all()) {
+			Double si = step.phaseSi.get(d.phaseName());
+			Double movedMol = step.phaseDelta.get(d.phaseName());
+			if (si == null && movedMol == null) {
+				continue;
+			}
+			double s = si != null ? si : 0;
+			long moved = movedMol != null ? Math.round(movedMol * 1.0e7) : 0; // mol → 旧解算单位制（1e7/mol）
+			if (si != null && (moved != 0 || s >= -3)) {
+				out.add(Solution.Speciation.of(d.species(), s, moved, false));
+			}
+		}
+		return out;
 	}
 
 	private void setStatus(ReactorStatus value) {

@@ -35,19 +35,26 @@ public final class TickDriver {
 		public final Map<String, Double> delta;
 		/** 步进后固相量（PhaseBridge 相名 → mol，绝对量；EQUI punch）。 */
 		public final Map<String, Double> phases;
+		/** 相对步进前的固相变化（mol；正=析出，负=溶解）。 */
+		public final Map<String, Double> phaseDelta;
+		/** 相饱和指数（PhaseBridge 相名 → SI，末行；护目镜化验行）。 */
+		public final Map<String, Double> phaseSi;
 		public final double ph;
 		public final double seconds;
 
 		Step(boolean valid, Map<String, Double> totals, Map<String, Double> delta, double ph, double seconds) {
-			this(valid, totals, delta, Map.of(), ph, seconds);
+			this(valid, totals, delta, Map.of(), Map.of(), Map.of(), ph, seconds);
 		}
 
 		Step(boolean valid, Map<String, Double> totals, Map<String, Double> delta,
-				Map<String, Double> phases, double ph, double seconds) {
+				Map<String, Double> phases, Map<String, Double> phaseDelta, Map<String, Double> phaseSi,
+				double ph, double seconds) {
 			this.valid = valid;
 			this.totals = totals;
 			this.delta = delta;
 			this.phases = phases;
+			this.phaseDelta = phaseDelta;
+			this.phaseSi = phaseSi;
 			this.ph = ph;
 			this.seconds = seconds;
 		}
@@ -80,7 +87,7 @@ public final class TickDriver {
 		EngineBridge.Feed feed = EngineBridge.toFeed(fluids);
 		feed.tempC = tempC;
 		if (feed.waterKg <= 0 || (feed.totals.isEmpty() && feed.phaseInitial.isEmpty())) {
-			return new Step(false, Map.of(), Map.of(), Map.of(), 7.0, seconds);
+			return new Step(false, Map.of(), Map.of(), 7.0, seconds);
 		}
 		ChemState.Builder b = ChemState.builder("tick")
 				.waterKg(feed.waterKg)
@@ -112,15 +119,25 @@ public final class TickDriver {
 				totals.put(k, after);
 				delta.put(k, after - before);
 			}
-			// 固相终量（绝对 mol，EQUI punch，不乘 waterKg）
+			// 固相终量与 SI（绝对 mol 与无量纲，EQUI/SI punch，不乘 waterKg）
 			Map<String, Double> phases = new LinkedHashMap<>();
+			Map<String, Double> phaseDelta = new LinkedHashMap<>();
+			Map<String, Double> phaseSi = new LinkedHashMap<>();
 			for (PhaseBridge.PhaseDef d : PhaseBridge.all()) {
 				double mol = r.row(last).dOr(d.phaseName(), 0.0);
+				double before = r.row(0).dOr(d.phaseName(), 0.0);
 				if (mol > 0) {
 					phases.put(d.phaseName(), mol);
 				}
+				if (Math.abs(mol - before) > 1e-12) {
+					phaseDelta.put(d.phaseName(), mol - before);
+				}
+				double si = r.row(last).dOr("si_" + d.phaseName(), Double.NaN);
+				if (!Double.isNaN(si)) {
+					phaseSi.put(d.phaseName(), si);
+				}
 			}
-			return new Step(true, totals, delta, phases, r.row(last).d("pH"), seconds);
+			return new Step(true, totals, delta, phases, phaseDelta, phaseSi, r.row(last).d("pH"), seconds);
 		} catch (Exception e) {
 			com.yu1745.chemicaladdon.ChemicalAddon.LOGGER.warn(
 				"[engine] tick step failed: {} — script:\n{}", e.toString(),

@@ -101,10 +101,10 @@ public final class RulesEngine {
 	public static final double MAX_WASH_PORE_VOLUMES = 13;
 
 	/** Water's boiling point (°C) — the open-vessel evaporation threshold. */
-	private static final int WATER_BOILING_C = 100;
+	static final int WATER_BOILING_C = 100;
 
 	/** mB of water vented per reaction tick in a boiling open vessel. */
-	private static final int EVAPORATION_RATE_MB = 50;
+	static final int EVAPORATION_RATE_MB = 50;
 
 	private RulesEngine() {}
 
@@ -292,7 +292,7 @@ public final class RulesEngine {
 	 * @return true when at least one item was consumed (the caller must then
 	 *         rewrite the tank even though the before/after maps look equal)
 	 */
-	private static boolean dissolveItems(Map<ResourceLocation, Long> mol, Map<String, Long> ions,
+	static boolean dissolveItems(Map<ResourceLocation, Long> mol, Map<String, Long> ions,
 		Map<ResourceLocation, Long> suspended, Map<ResourceLocation, Long> sediment, IItemHandler items, int temperature) {
 		long water = mol.getOrDefault(Solution.WATER, 0L);
 		if (water <= 0) {
@@ -480,14 +480,14 @@ public final class RulesEngine {
 	}
 
 	@Nullable
-	private static Item itemFor(ResourceLocation solute) {
+	static Item itemFor(ResourceLocation solute) {
 		Item item = ForgeRegistries.ITEMS.getValue(solute);
 		return item == Items.AIR ? null : item;
 	}
 
 	/** The grain variant item of a solute ({@code <id>_grain}), if registered. */
 	@Nullable
-	private static Item grainFor(ResourceLocation solute) {
+	static Item grainFor(ResourceLocation solute) {
 		Item grain = ForgeRegistries.ITEMS.getValue(
 			new ResourceLocation(solute.getNamespace(), solute.getPath() + "_grain"));
 		return grain == Items.AIR ? null : grain;
@@ -495,7 +495,7 @@ public final class RulesEngine {
 
 	/** Extract one item from the first slot holding it; null (nothing consumed) when absent. */
 	@Nullable
-	private static Item takeOne(IItemHandler items, Item item) {
+	static Item takeOne(IItemHandler items, Item item) {
 		for (int slot = 0; slot < items.getSlots(); slot++) {
 			if (items.getStackInSlot(slot).getItem() == item && items.getStackInSlot(slot).getCount() > 0) {
 				items.extractItem(slot, 1, false);

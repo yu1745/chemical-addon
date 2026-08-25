@@ -78,8 +78,8 @@ public final class PhaseBridge {
 		return out;
 	}
 
-	/** 全部相（稳定顺序）。 */
-	static Collection<PhaseDef> all() {
+	/** 全部相（稳定顺序；公开给化验行）。 */
+	public static Collection<PhaseDef> all() {
 		return BY_SPECIES.values();
 	}
 
@@ -120,19 +120,21 @@ public final class PhaseBridge {
 		return sb.toString();
 	}
 
-	/** USER_PUNCH 块（每个相一行 PUNCH EQUI；多值 PUNCH 分行是实验铁律）。 */
+	/** USER_PUNCH 块（每个相两行：EQUI 终量 + SI 饱和指数；多值 PUNCH 分行是实验铁律）。 */
 	static String userPunchBlock() {
 		if (BY_SPECIES.isEmpty()) {
 			return "";
 		}
 		StringBuilder sb = new StringBuilder("USER_PUNCH 1\n    -headings");
 		for (PhaseDef d : BY_SPECIES.values()) {
-			sb.append(' ').append(d.phaseName());
+			sb.append(' ').append(d.phaseName()).append(" si_").append(d.phaseName());
 		}
 		sb.append("\n    -start\n");
 		int line = 10;
 		for (PhaseDef d : BY_SPECIES.values()) {
 			sb.append("    ").append(line++).append(" PUNCH EQUI(\"")
+					.append(d.phaseName()).append("\")\n");
+			sb.append("    ").append(line++).append(" PUNCH SI(\"")
 					.append(d.phaseName()).append("\")\n");
 		}
 		return sb + "    -end\n";
