@@ -153,7 +153,7 @@ public final class RulesEngine {
 		//    the finer grid on which sub-mB equilibrium residuals live; the mB
 		//    view stays the transport/display granularity). Gases and nonpolar
 		//    liquids are inert bystanders — ions don't cross phase boundaries
-		//    (plans/06 §9.6) — so they are neither fed to the solver nor merged
+		//    (plans/03 §8) — so they are neither fed to the solver nor merged
 		//    back into the mixture.
 		List<FluidStack> bystanders = new ArrayList<>();
 		Map<ResourceLocation, Long> beforeMol = new LinkedHashMap<>();

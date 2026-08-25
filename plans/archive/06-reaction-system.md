@@ -1,8 +1,10 @@
 # 06 · 反应引擎设计（Create 架构版）
 
+> 🔒 **冻结档案（2026-08 归档）**：活段已并入 [../03-substance-model.md](../03-substance-model.md) §13（配方数据结构/平衡三档/催化/禁忌/Create 边界/批式连续流）；釜内执行模拟与规则引擎演进史（§3/§9）已由代码实现取代（见 docs/progress.md U13/U14）。**不再维护**。
+
 > 文档状态：**current**（引擎设计，含 §10 运行模式）
 
-> 关联：[03-substance-model.md](03-substance-model.md)（釜内流股）、[05-mechanics.md](05-mechanics.md)（M5 核心机制）、[07-reaction-catalog.md](07-reaction-catalog.md)（52 条配方）、[11-content-scope.md](11-content-scope.md) §2（落地单元）。
+> 关联：[03-substance-model.md](03-substance-model.md)（釜内流股）、[05-mechanics.md](05-mechanics.md)（M5 核心机制）、[14-process-facility-map.md](14-process-facility-map.md) §1（52 条反应目录）、[11-content-scope.md](11-content-scope.md) §2（落地单元）。
 > **变化**：配方层复用 Create ProcessingRecipe 管线（白拿 JEI/datagen/KubeJS）；釜内执行端为自研流股模拟（进度/中间态/温度/压力/催化）。
 
 ## 1. 两级结构
@@ -99,7 +101,7 @@ chemical_reaction {
 
 ## 8. 配方集规模
 
-52 条反应（见 07-reaction-catalog），按模块分组（原料/酸/氯碱/索尔维/合成氨/铝/废料/物理分离），其中：
+52 条反应（见 [14-process-facility-map.md](14-process-facility-map.md) §1），按模块分组（原料/酸/氯碱/索尔维/合成氨/铝/废料/物理分离），其中：
 - ~18 条为 Create 原生配方（溶解/粉碎/结晶等物理过程）；
 - ~34 条为 chemical_reaction（釜内反应）。
 

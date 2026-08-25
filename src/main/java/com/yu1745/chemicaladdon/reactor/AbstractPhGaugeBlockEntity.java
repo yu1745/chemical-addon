@@ -20,7 +20,7 @@ import net.minecraftforge.fluids.FluidStack;
 import net.minecraft.ChatFormatting;
 
 /**
- * The S16 pH gauge (pH 计, plans/12 §2): reads H⁺ activity —
+ * The S16 pH gauge (pH 计, plans/04 §9.2): reads H⁺ activity —
  * {@code pH = −log₁₀[H⁺]}, alkaline side via {@code [H⁺] = Kw/[OH⁻]}
  * ({@link Chemistry#KW}, the "Kw entry" unlocked for pH in the reading layer).
  * The glass electrode of the titration-endpoint instrument family: 三酸两碱 and
@@ -114,7 +114,7 @@ public abstract class AbstractPhGaugeBlockEntity extends AbstractVesselGaugeBloc
 
 	@Override
 	public int analogSignal() {
-		// 1 level = 1 pH, 0–14 (the 15th slot stays empty — plans/12 §2)
+		// 1 level = 1 pH, 0–14 (the 15th slot stays empty — plans/04 §9.2)
 		return isAttached() ? Math.max(0, Math.min(14, getValue())) : 0;
 	}
 

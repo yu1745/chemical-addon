@@ -70,7 +70,7 @@
 - 测试 7/7 → **11/11**（新增：容量序列化往返、诊断状态 NO_RECIPE/TEMPERATURE、开口成型、半封顶拒绝）
 - 环境：`~/.gradle/gradle.properties`（用户级，不进 git）覆盖 Linux JDK 路径 + 代理 192.168.5.138:7777；build.gradle 补 maven.minecraftforge.net 仓库（ForgeAutoRenamingTool）
 
-### 规则引擎 / 涌现化学 v1（plans/06 §9）
+### 规则引擎 / 涌现化学 v1（plans/03 §8）
 
 - **物种 schema 扩展**（`composition/Species.java`）：新增 `ions`（电解质解离离子组成）、`ksp`（溶度积，沉淀候选）、`solubility`（溶解度曲线 g/100g×°C，线性插值）、`solute`/`concentration`（冷却析出目标 + 固定浓度）、`miscibilityGroup`、`phaseTransition`。离子是**内部求解量**（`composition/Ion.java`），不注册成物种/流体/物品。
 - **求解器**（`composition/Solution.java`）：瞬态快照，每 tick 重建，流水线 `crystallise`（过饱和析出）→ `dissociate`（解离）→ `neutralise`（H⁺+OH⁻→H₂O，放热 +50°C/1000mB）→ `precipitate`（难溶物按 Ksp 升序析出）→ `recombine`（剩余离子贪心重组为溶液物种，**优先还原原物种**以保稀/浓酸身份）。
@@ -188,7 +188,7 @@
 - **互溶模型**：声明式溶剂族标签（`Species.miscibilityGroup`），非结构推导——`Miscibility.groupOf()`：mixture 恒 aqueous、原版水 aqueous、纯液体查物种 JSON、无声明回退 `unknown`（fail-closed，与万物不互溶）。当前 2 组：`aqueous`（水+全部溶液/浆料）+ `nonpolar`（导热油，补 `thermal_oil.json`）。
 - **`collapseIfNeeded` 按组合并**：气体（lighter-than-air）独立相、跨组液体独立相，只合并同互溶组；输出按密度排序（重相在前、气体最后）。
 - **`drain` 按密度抽相**：通用 `drain(int)` 取最重相先抽（底口），气体（负密度）最后——`Miscibility.densityOf` 排序。
-- **规则引擎相位化**：`RulesEngine.apply` 只求解 aqueous 相，气体/非极液体作为旁观相不读入也不写回（离子不跨相界，plans/06 §9.6）；`setContents` 写回后重新 append 旁观相。
+- **规则引擎相位化**：`RulesEngine.apply` 只求解 aqueous 相，气体/非极液体作为旁观相不读入也不写回（离子不跨相界，plans/03 §8）；`setContents` 写回后重新 append 旁观相。
 - **渲染**：气体相独立后，renderer 的「气体挂顶」分支（`isLighterThanAir`）成为活代码。
 - **GameTest +3（45/45）**：新增 `immiscibleLiquidsStaySeparate`/`drainPullsDenserPhaseFirst`/`gasStaysSeparateFromLiquid`/`miscibleAqueousMerge`；3 个旧 water+oil「混合物」测试改写为离子混合物。
 
@@ -223,7 +223,7 @@
 
 - **自动扩展**：`ChemicalBrickBlock.onPlace` 对已装配控制器调用新增 `tryExtend(placedPos)`——放一块结构方块到釜旁即重校验，仅在**严格更大**（或 open 状态变化，如封顶）时采纳；不缩、不换朝向、不洒内容（Create FluidTank「放相邻块即长大」心智：先小后大、逐步加高）。
 - **拆砖分级处置（放/拆都不抽搐）**：`ChemicalBrickBlock.onRemove` 改走新增 `handleStructuralBlockRemoved`——拆**已绑定**砖按破坏性从小到大：①完整重校验出合法壳（更小/同形状）→ 采纳；②拆**顶盖层**砖 → **高度不变、只变敞口**（盖子层废弃、砖解绑成游离，釜高度=环数≠盖子）；③拆**最高环层**砖 → `tryShrink` 降一层（废弃顶盖+最高环）；④都不行才 `invalidateStructure` 分级洒漏。`tryAssemble` 加 `allowShrink` 参数：**放砖路径禁止收缩**（封顶半程不许把釜拽矮，消除"先长高又缩回"的抽搐），拆砖路径允许。平局守卫 `<=`→`==`（体积平局且 open 不变才保持）。收缩/扩展采纳时先 `clearShellMasters` 再重绑（掉出壳的砖停止代理）。
-- **破口分级洒漏**：`invalidateStructure` 按破口环层算保留量 `capacity × ring/height`——破口以上洒出、以下留釜内（兑现 plans/10 §2.2「内部流体保留在 NBT，重建可恢复」）；**控制器被拆时回退全量洒漏**（保留份存控制器 NBT、随方块消亡会凭空消失）；底破=全洒；顶盖层拆砖走收缩（不再走失效）。
+- **破口分级洒漏**：`invalidateStructure` 按破口环层算保留量 `capacity × ring/height`——破口以上洒出、以下留釜内（兑现 plans/04 §8.1「内部流体保留在 NBT，重建可恢复」）；**控制器被拆时回退全量洒漏**（保留份存控制器 NBT、随方块消亡会凭空消失）；底破=全洒；顶盖层拆砖走收缩（不再走失效）。
 - **破后残液可见**：失效保留 `size/height/inward` 作 lastGeometry（逻辑路径仍以 `isAssembled()` 为门），渲染器/渲染包围盒放松守卫——剩余壳内的残液面照常渲染，液面自然「降到破口以下」（capacity 未重置，`getFillState` 直接给出降低后的表面）。
 - **重建缩小溢流**：`tryAssemble` 成功后 `total > capacity` 时按比例抽出超量走 `SpillLogic` 渐进溢出（漏点取新内腔顶中心），釜不再因 `canFitOutputs` 恒 false 永久 `OUTPUT_FULL` 卡死。
 - **支撑改动**：`SpillLogic.queueFluids(List<FluidStack>)` 重载（分解逻辑复用）、`ReactorTank.pruneEmpty()` 公开；装配成功（从破坏恢复时）清旧泄漏队列（扩展/平局采纳不清，避免误删本次溢流）。
@@ -295,7 +295,7 @@ M3 首单元（plans/11 §2.1）：修掉 G1/G2/G3 三条公共地基缺口，�
 - **residue NBT 母液相**：`MixedResidueItem` 新增 `Liquor` map（`water`/离子 id/`s:`前缀分子溶质），与 `Solids` **联合 GCD**（未洗饼与洗后饼永不堆叠）；`colorOf` 并入 IonColors 染色；「溶解即化验」扩为两相精确展开（母液水回溶剂、离子入离子域、饱和可行性把母液离子也计入）。**纯度判定语义不变**：单物种固体 + 夹带仅剩水 → 纯物品。
 - **再浆洗涤（釜内）**：新原语 `ReactorTank.decantClear`——**只抽清液域（水+溶质+离子），固相永不动，抽到床孔隙线为止**；`clearLiquidAvailable` = 液量 −（沉底+悬浮）×30%。分液口/软管对 mixture 的抽取全部切到 decantClear（旧的比例取样会把沉底床也抽走——那其实是「浆料泵送」语义，普通泵 drain 保留）。加清水→再悬浮→再滗 = 几何衰减（测试两轮 500→150→35，床 2000 mB 不动）；清水回溶的产率损失由回溶引擎免费涌现（NaCl 床洗后 2000→1322，石灰石 ≥1995）。
 - **置换洗涤（机上）**：过滤机新增洗水罐（清水管道注入自动路由到洗水，其余进料）+ `FilteringLogic` generic 路径带洗水调用 extractSolids——13 孔体积洗水把母液打到单位网格以下，单物种饼出**纯物品**，洗水 3900 mB 入滤液。
-- **S18 电导率计**（仪表族第三台，plans/12 §2）：读数=10×(Σ离子 units/水 units) 声明 mS 标尺——**分子溶质不导电**（氨水 0 mS vs 铵盐高，波美计做不了的区分）；方块/面板双形式（S03 模式复制），绿针表盘（gen_species）；**报警方向反转**（基类新钩子 `alarmWhenBelow`）：信号=电导率**降至**设定点以下——洗涤完成/水净的终点事件，默认 5 mS。
+- **S18 电导率计**（仪表族第三台，plans/04 §9.2）：读数=10×(Σ离子 units/水 units) 声明 mS 标尺——**分子溶质不导电**（氨水 0 mS vs 铵盐高，波美计做不了的区分）；方块/面板双形式（S03 模式复制），绿针表盘（gen_species）；**报警方向反转**（基类新钩子 `alarmWhenBelow`）：信号=电导率**降至**设定点以下——洗涤完成/水净的终点事件，默认 5 mS。
 - 踩坑：mixture mB 视图经比例 tag 往返有 ±1 重分配（units 精确）——床完好断言放宽 ±2；裸 tank 补清水后要 `collapseIfNeeded()` 并相（真釜里规则引擎每 tick 做）。
 
 ### U17 · 分析化学层 + 终点控制
@@ -303,7 +303,7 @@ M3 首单元（plans/11 §2.1）：修掉 G1/G2/G3 三条公共地基缺口，�
 「测量诚实性」（plans/03 §6）落地：玩家常态无 SI——护目镜 SI 行降级为 `ChemicalAddon.ASSAY_ON` dev 旋钮，化学身份靠仪表/试纸挣。GameTest 102/102 + JUnit 66/66 全绿。
 
 - **试纸/试剂族 7 件**（`TestPaperItem`，对釜控制器/壁砖右键蘸取消耗）：pH 系列（石蕊二点/酚酞 ≈8.2/广泛 ±1 档）+ 离子检验（AgNO₃ 检 Cl⁻/BaCl₂ 检 SO₄²⁻/KSCN 检 Fe³⁺）+ 蓝钴玻璃焰色镜（K 紫透过镜/Na 黄/Ca 砖红，K 优先）。
-- **物理量仪表三台**（仪表族唯一定义 plans/12）：**S16 pH 计**（`Analyte.ph`：酸侧直读/碱侧 Kw=1e-14 换算/中和定点 pH 7；固定中心零点表盘 pH7=12 点钟、1 级=1 pH、空手右键切跌破/升破触发）；**S04 波美计**（溶解 units/水 units 声明式线性换算，锚=曲线饱和盐水 0.72→30°Bé、1 级=2°Bé）；**S17 浊度计**（4 档 1%/5%/20%，沉底床不计、初浑报警、比较器 0/5/10/15）——全部方块/面板双形式进 vessel_walls。**Kw 决策**：落读数层常数而非求解器条目（真实自电离对会改 GCD ratio-tag 身份，见 12 §5）。
+- **物理量仪表三台**（仪表族唯一定义 plans/04 §9）：**S16 pH 计**（`Analyte.ph`：酸侧直读/碱侧 Kw=1e-14 换算/中和定点 pH 7；固定中心零点表盘 pH7=12 点钟、1 级=1 pH、空手右键切跌破/升破触发）；**S04 波美计**（溶解 units/水 units 声明式线性换算，锚=曲线饱和盐水 0.72→30°Bé、1 级=2°Bé）；**S17 浊度计**（4 档 1%/5%/20%，沉底床不计、初浑报警、比较器 0/5/10/15）——全部方块/面板双形式进 vessel_walls。**Kw 决策**：落读数层常数而非求解器条目（真实自电离对会改 GCD ratio-tag 身份，见 12 §5）。
 - **M08 终点结晶器**（`CrystallizerControllerBlockEntity` 反应釜子类）：°Bé 设定点世界内滚动 + 到点切热（`heatTarget` 覆写）+ 终点强充能/比较器 °Bé 进度 + 排汽冷凝回收为馏出水产物（`RulesEngine` 通气量累加→内置罐被动外推）——「只析 A 不析 B」由设定点低于 B 饱和线挣得（KNO₃/NaCl 分步结晶端到端）。
 - **溶液物种直读**：H⁺ 换算（HCl/烧碱 packed 桶 → pH 1/13）。验收要点：pH 滴定终点（碱 13→中和 7→报警→方向切换→比较器 1:1）；波美锚点；浊度 4 档；试纸 7 种 verdictKey 阳性/阴性矩阵；M08 引擎级选择性结晶（24°Bé、冷后亚稳、投种只析 KNO₃≈94 mB、NaCl 全留母液）+ 方块级（组装/设定点 24/终点红石 15/馏出水 ≥400 mB）；`AnalyteTest` 6 例（pH 三例穷尽/两侧对数/等当点 ±1 mB 跳 11↔7↔3/氨水弱碱/波美锚/浊度档）。
 
@@ -385,7 +385,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 | 溶液/浆料桶全渲染成蓝水、无法区分 | 无色离子+水的混合色恒为淡蓝 | 物种加 `color` 字段（沿用注销前各自流体色），桶打包时写进 mixture 的 `Color` 键；悬停加 tooltip（`1000 mB`/`空`）诊断 |
 | 抽分层流体釜停停走走、很慢 | `collapseIfNeeded` 每 tick 重建单成员相（derive 绝对量 → `Mixture.create` GCD 还原），总量不被比例和整除时 ratio tag 抖动，Create `isFluidEqual` 流身份被打破、流每 tick 被切断重启 | 单成员组分相**原样保留**（不重建）；`sameContents` 对比，无变化则跳过重写 + sync |
 | 分液软管不渲染（釜里有液也不下垂） | `DecantHoseRenderer` 沿 DOWN 扫砖找釜，但砖 BE 的 `masterPos` 只在服务端成型时设置、从不同步到客户端——现场成型（不重新加载区块）时客户端砖 `masterPos=null`，渲染器找不到釜 → `offset=0` 软管收回 | 砖 BE 补 `getUpdateTag`/`getUpdatePacket`，`setMaster` 时广播 `ClientboundBlockEntityDataPacket`，客户端即时拿到 master 指针 |
-| 破釜全量洒漏，重建后釜是空的 | `invalidateStructure` → `SpillLogic.queueFluids(tank)` 用 `it.remove()` 把釜清空 100% 转实体，违背 plans/10 §2.2「内部流体保留在 NBT，重建可恢复」 | 破口分级：保留破口以下体积（`capacity × ring/height`），只洒破口以上；控制器被拆时回退全量洒漏（保留份随控制器 NBT 消亡） |
+| 破釜全量洒漏，重建后釜是空的 | `invalidateStructure` → `SpillLogic.queueFluids(tank)` 用 `it.remove()` 把釜清空 100% 转实体，违背 plans/04 §8.1「内部流体保留在 NBT，重建可恢复」 | 破口分级：保留破口以下体积（`capacity × ring/height`），只洒破口以上；控制器被拆时回退全量洒漏（保留份随控制器 NBT 消亡） |
 | 重建变小后釜永久 OUTPUT_FULL 卡死 | `setCapacity` 只改数值不裁剪内容，`total > capacity` 时 `canFitOutputs` 恒 false | 重建装配时按比例抽出超量走 `SpillLogic` 渐进溢出（漏点=新内腔顶中心），釜恢复可反应 |
 | 破坏/放回液面以上的墙砖时液面抽搐（总量明明不变） | `renderedLevel` 追的是**填充比例**，渲染高度=比例×内腔高：拆上方环砖釜缩层（高度/容量**瞬间**变）而总量不变 → 比例目标跳变，LerpedFloat 过渡帧渲染「旧比例×新高度」≠真实表面，液面先跌/先冲再回弹（Create FluidTank 追比例无此问题，因其几何永不变） | 改追**绝对液面高度**（fill×内腔高）：环数变化时目标恒为 `总量/(1000·(w−2)²)` 与高度无关，目标不动即零动画，只有真实进出料才缓动；渲染器/`getLiquidSurfaceY` 直接用绝对值；并按 FluidTank 模式首帧 `startWithValue` 定位真表面，消除区块加载从 0 升起的假动画 |
 | 控制器装在非底层环时：液面/漂浮物偏高 `ringLayer` 格、软管悬在真实液面之上、控制器以下内腔层倒入的水不被吸收 | 渲染/液面数学/吸收轮询三处都以控制器自身层为 y=0 基准，而内腔底在控制器下方 `ringLayer` 格（Tinkers 式任意环层装配） | 新增统一基准 `getInteriorBottomRelY()=-ringLayer`：渲染两 pass `translate` 下移到内腔底（光照采样同步）、`getLiquidSurfaceY` 内腔底起算世界 Y、`absorbFromWorld` 轮询范围改 `[内腔底, 顶沿+1]` |

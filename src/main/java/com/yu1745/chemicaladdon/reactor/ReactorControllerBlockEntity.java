@@ -538,7 +538,7 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 		// saturation lines (speciation diagnostics): U17 measurement honesty —
 		// engine-internal knowledge is dev-assay only. A player reads endpoints
 		// with instruments (S02–S18) and test papers, never with saturation
-		// indices (plans/03 §6, plans/12 §5).
+		// indices (plans/03 §6, plans/04 §9.5).
 		if (ChemicalAddon.ASSAY_ON && !speciation.isEmpty()) {
 			List<Component> satLines = new ArrayList<>();
 			for (Solution.Speciation s : speciation) {

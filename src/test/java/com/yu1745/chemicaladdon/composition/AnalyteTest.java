@@ -8,7 +8,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 /**
- * U17 instrument readings as pure functions (plans/12 §1): pH / Baumé /
+ * U17 instrument readings as pure functions (plans/04 §9.1): pH / Baumé /
  * turbidity over solver-unit states, plus the solver interplay the pH gauge
  * depends on — the neutralisation fixed point leaves at most one bulk ion,
  * so the three pH cases (acid / Kw-alkaline / neither) are exhaustive.
@@ -24,7 +24,7 @@ class AnalyteTest {
 	void pureWaterAndNeutralSaltsReadPh7() {
 		assertEquals(7, Analyte.ph(0, 0, 10_000_000), "pure water is pH 7 by definition");
 		// a fully neutralised salt solution: the solver's fixed point has neither
-		// bulk ion — the free pH-7 the Kw reading layer promised (plans/12 §5)
+		// bulk ion — the free pH-7 the Kw reading layer promised (plans/04 §9.5)
 		Solution s = solve(mol(Solution.WATER, 10_000_000L),
 			ions("H+1", 1000L, "Cl-1", 1000L, "Na+1", 1000L, "OH-1", 1000L), 20);
 		assertEquals(0L, s.ions().getOrDefault("H+1", 0L));

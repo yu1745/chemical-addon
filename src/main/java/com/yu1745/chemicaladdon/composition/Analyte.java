@@ -2,7 +2,7 @@ package com.yu1745.chemicaladdon.composition;
 
 /**
  * Player-facing instrument readings as pure functions over a vessel's ion /
- * molecular / suspended domains (U17, plans/12 §1 measurement honesty): the
+ * molecular / suspended domains (U17, plans/04 §9.1 measurement honesty): the
  * gauges and test papers answer "how much / how far", never "what". Everything
  * here is a <b>declared</b> physical scale — the same philosophy as the
  * solubility curves and the U16 heat ledger — and is deliberately
@@ -22,7 +22,7 @@ public final class Analyte {
 	 * {@link Chemistry#KW}). After the solver's neutralisation runs, at most one
 	 * of the two ions survives in bulk, so the three cases are exhaustive:
 	 * acid present (direct), hydroxide present (Kw), neither (a neutral salt
-	 * solution or pure water — pH 7, the free lunch plans/12 promised).
+	 * solution or pure water — pH 7, the free lunch plans/04 §9.5 promised).
 	 */
 	public static int ph(long hUnits, long ohUnits, long waterUnits) {
 		if (waterUnits <= 0) {

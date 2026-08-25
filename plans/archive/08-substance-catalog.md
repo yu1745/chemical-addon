@@ -1,5 +1,7 @@
 # 08 · 物质全目录（61 种，v2 离子基底口径）
 
+> 🔒 **冻结档案（2026-08 归档）**：概览已并入 [../14-process-facility-map.md](../14-process-facility-map.md) §0.6；**真源 = species JSON 48 份 + tools/gen_species.py**。**不再维护**。
+
 > 文档状态：**current**（2026-08 重写，取代 D12「全量注册」口径）
 > **v2 口径**（见 [03-substance-model.md](03-substance-model.md)）：**纯物质**（13 气体 + 导热油）注册为 Forge Fluid，水用原版 `minecraft:water`；**溶液/浆料 = 模式别名**——不单独注册流体，釜/罐/管道里是离子基底单一 `mixture`（离子多重集 + 水 + 分子溶质 + `Suspended` 混悬 + `Sediment` 沉底）；**浓/稀是连续浓度，不是物种**。
 > 气体用**负密度 + 半透明/粒子化渲染**（Create 6.0.8 无气体系统，自研规避）；固体矿物/产品为 item 走传送带（浆料=mixture 的 `Suspended` 混悬域，过滤机抽走吐 item；结晶= `Sediment` 沉底域）。

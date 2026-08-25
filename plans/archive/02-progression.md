@@ -1,5 +1,7 @@
 # 02 · 进度线设计（T0–T4，Create 架构版）
 
+> 🔒 **冻结档案（2026-08 归档）**：阶段线 T0–T4 设计定稿；对外里程碑与开发顺序的现行口径以 `plans/11-content-scope.md` §2.2 为准，**不再维护**。
+
 > 文档状态：**current**（阶段线 T0–T4，含批式/连续流落点，见 06-reaction-system §10）
 
 > 关联：04-machines（机器）、05-mechanics（机制）、06-reaction-system（反应引擎）。

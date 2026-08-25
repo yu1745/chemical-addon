@@ -1,10 +1,10 @@
-# 综合开发计划：热力学数据 + 氧化还原
+# 综合开发计划：热力学数据 + 氧化还原（chem-engine）
 
-> 本文档是当前开发的**唯一**指导计划（原 HANDOVER.md 的交接要点已并入本文，不再单独维护）。
-> 以后所有开发都按本文件推进。
+> 📍 **本文档是 chem-engine（化学内核）的计划书**，与 mod 侧计划（`plans/`，主索引 plans/README.md）分离维护；引擎完成态明细见同目录 development_status.md / known_limitations.md。
+> 🏠 **正本**：chem-engine 已 vendor 并入本仓库（commit c988ea9，原 chem-engine 仓库封存），本文即唯一正本。
+> 📌 **结构注记（2026-08）**：Tracks A–F/E 已完成或封存（历史记录保留于下文）；**当前主线是 Track G（IPhreeqc 内核嵌入）**；mod 侧接线待办见文末「下一步：mod 侧」。工业原料蓝图（原 Track C 总表）的 mod 侧唯一定义已迁 `plans/14-process-facility-map.md`（§0 归并方法/§2 工艺线）。
 
-> 本文档是当前开发的**唯一**指导计划。Tracks A–F（自研引擎时代）已封存于 tag `self-engine-final`，
-> 其文档与教训保留在下文作为历史记录；**当前主线是 Track G（IPhreeqc 内核嵌入）**，见下方 Track G 节。
+> 原 HANDOVER.md 的交接要点已并入本文，不再单独维护。
 
 ## 项目定位（一句话）
 

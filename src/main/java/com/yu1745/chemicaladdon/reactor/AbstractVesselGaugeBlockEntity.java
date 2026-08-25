@@ -194,7 +194,7 @@ public abstract class AbstractVesselGaugeBlockEntity extends SmartBlockEntity im
 	/** Which crossing raises the alarm. Gauges default to "reading at/above the
 	 *  threshold" (over-limit alarms: overtemperature, overpressure); a gauge may
 	 *  invert it — e.g. the conductivity gauge signals "reading has fallen to/below
-	 *  the setpoint", the washing-complete / water-clean endpoint (plans/12 §3). */
+	 *  the setpoint", the washing-complete / water-clean endpoint (plans/04 §9.3). */
 	protected boolean alarmWhenBelow() {
 		return false;
 	}

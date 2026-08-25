@@ -23,7 +23,7 @@ import net.minecraft.resources.ResourceLocation;
  * base species + components with concentration caps (composition system).
  *
  * <p>This class also carries the thermodynamic/ionic data the emergent
- * rules engine (plans/06 §9) consumes: electrolyte dissociation ({@link #ions}),
+ * rules engine (plans/03 §8) consumes: electrolyte dissociation ({@link #ions}),
  * constant-K equilibrium entries ({@link #equilibria} — precipitation,
  * complexation; plans/03 §8.2), crystallisation curve
  * ({@link #solubility}/{@link #solute}), phase

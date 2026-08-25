@@ -27,7 +27,7 @@ import com.yu1745.chemicaladdon.vessel.VesselBlockEntity;
 
 /**
  * The M08 endpoint crystalliser (终点结晶器, U17 redefinition — plans/04 M08,
- * plans/12 §6): the vessel template as an <b>executor reading the same
+ * plans/04 §9.6): the vessel template as an <b>executor reading the same
  * physical quantity as the S04 Baumé gauge</b>. No species knowledge, no
  * magic purity judgement — one physical setpoint in °Bé:
  *

@@ -26,7 +26,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraftforge.fluids.FluidStack;
 
 /**
- * The consumable test-paper / reagent family (U17, plans/12 §2.2): one-time
+ * The consumable test-paper / reagent family (U17, plans/04 §9.2.2): one-time
  * <b>qualitative</b> probes — "what is in there", the question the continuous
  * gauges deliberately never answer. Dip (right-click a reactor controller or
  * any of its wall blocks), read the colour, lose the paper. The upgrade curve

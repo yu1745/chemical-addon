@@ -1,13 +1,13 @@
 # AGENTS.md - chemical-addon（Create 化学附属）
 
-本仓库是 **Create Forge 6.0.8 的无机化工附属**（Forge 1.20.1，Java 17），设计计划书在 `plans/`（主索引 `plans/README.md`，生态盘点与平台决策 `plans/00-ecosystem-recon.md`），**开发进度在 `docs/progress.md`**（M0–M2.5 + **U1 容器状态层** + **U13 规则引擎 v2**（统一 equilibria 平衡条目 + 质量作用求解器，PHREEQC 语义；引擎边界：自发的归规则引擎、红氧归配方层）+ **U14 JUnit 引擎测试层**（`./gradlew test`，composition 层剥离 MC）+ **U15 晶粒、投种与混合固体物品**（晶粒 1/16 面额 + 投种 + mixed_residue 整坨取出：「取出禁止选物种，严格单物种即纯，混合=盐渣」）+ **U16 反应热能量记账**（J/unit 账本，ΔT=Q/(feedUnits×4.18)，蒸发潜热自限）+ **U16.5 湿饼夹带与洗涤**（取出夹带母液、再浆/置换洗涤、S18 电导率计）+ **U17 分析化学层 + 终点控制**（S16 pH 计/S04 波美计/S17 浊度计/试纸族 7 件、护目镜 SI 降级 dev 化验、M08 终点结晶器）+ **U18 定点分数**（求解刻度量子化 10⁷/mB：Mixture long 通道 + 引擎量子往返 + 分块协同移动；下一步焓记账见 plans/13）完成，GameTest 102/102 + JUnit 66/66；**M3+ 开工顺序以 `plans/11-content-scope.md` §2 为唯一定义**；改代码前先看它了解现状）。
+本仓库是 **Create Forge 6.0.8 的无机化工附属**（Forge 1.20.1，Java 17），设计计划书在 `plans/`（主索引 `plans/README.md`，生态盘点已归档 `plans/archive/00-ecosystem-recon.md`），**开发进度在 `docs/progress.md`**（M0–M2.5 + **U1 容器状态层** + **U13 规则引擎 v2**（统一 equilibria 平衡条目 + 质量作用求解器，PHREEQC 语义；引擎边界：自发的归规则引擎、红氧归配方层）+ **U14 JUnit 引擎测试层**（`./gradlew test`，composition 层剥离 MC）+ **U15 晶粒、投种与混合固体物品**（晶粒 1/16 面额 + 投种 + mixed_residue 整坨取出：「取出禁止选物种，严格单物种即纯，混合=盐渣」）+ **U16 反应热能量记账**（J/unit 账本，ΔT=Q/(feedUnits×4.18)，蒸发潜热自限）+ **U16.5 湿饼夹带与洗涤**（取出夹带母液、再浆/置换洗涤、S18 电导率计）+ **U17 分析化学层 + 终点控制**（S16 pH 计/S04 波美计/S17 浊度计/试纸族 7 件、护目镜 SI 降级 dev 化验、M08 终点结晶器）+ **U18 定点分数**（求解刻度量子化 10⁷/mB：Mixture long 通道 + 引擎量子往返 + 分块协同移动；下一步焓记账见 plans/13）完成，GameTest 102/102 + JUnit 66/66；**M3+ 开工顺序以 `plans/11-content-scope.md` §2 为唯一定义**；改代码前先看它了解现状）。
 
 ## 核心架构（改动前必读 plans/03-substance-model.md）
 
 - **离子基底单一混合物**：溶液/浆料只注册一个 `chemicaladdon:mixture` 元流体，FluidStack NBT 承载四个域——`Molecules`（分子物种）+ `Ions`（电中性离子多重集，硬不变量）+ `Suspended`（悬浮固相=浆料）+ `Sediment`（沉底固相=降温结晶沉底）。纯物质（水、13 气体、导热油）照旧注册 Forge Fluid（气体=负密度）。
 - **物种 = 模式**：species JSON 是「命名组成模式」，只用于配方匹配/名字/颜色/创造栏桶默认配比，**不参与釜内存储与显示**。浓/稀是**连续浓度**（离子单位/水单位，运行时算），不是身份、不做二值判断。
 - **沉淀先入釜内悬浮**：规则引擎 v2（equilibrate→neutralise→curveBalance，质量作用 + SI 语义，plans/03 §8）把沉淀写入 `Suspended` 域成浆料、析晶沉入 `Sediment` 域；过滤机/沉淀池抽走固相域吐固体 item；欠饱和回溶、物品投料溶解、开口釜蒸发浓缩同引擎。**引擎边界（§8.1）：自发的归规则引擎，红氧/热解/电化学归配方层。**
-- 自研多方块模板（釜/塔/池）是后续所有容器结构的范本（plans/10-multiblock.md）。
+- 自研多方块模板（釜/塔/池）是后续所有容器结构的范本（plans/04 §8）。
 
 ## 构建
 
@@ -77,7 +77,7 @@ python3 tools/gen_species.py
 
 ## 设计基调：世界内交互优先，GUI 弱化（全模组铁律）
 
-> **有生态源码证据支撑，不是拍脑袋**：Create 本体 ~40 个 GUI 类全部是物品/物流/配置用途、createaddition 0 GUI、TFMG 仅 2 个配置 GUI、New Age/Broken Bad/Estrogen 0 GUI、Big Cannons/Steam 'n' Rails 仅在引信/物品栏有例外；匠魂重 GUI 但也提供世界内 gauge。完整证据见 `plans/00-ecosystem-recon.md §7`。任何新机制/新方块在动手前先过一遍下面四条。
+> **有生态源码证据支撑，不是拍脑袋**：Create 本体 ~40 个 GUI 类全部是物品/物流/配置用途、createaddition 0 GUI、TFMG 仅 2 个配置 GUI、New Age/Broken Bad/Estrogen 0 GUI、Big Cannons/Steam 'n' Rails 仅在引信/物品栏有例外；匠魂重 GUI 但也提供世界内 gauge。完整证据见 `plans/archive/00-ecosystem-recon.md §7（冻结）`。任何新机制/新方块在动手前先过一遍下面四条。
 
 1. **状态展示 = 世界内仪表，不是 GUI 面板**。温度/容量/进度/压力等状态用贴面仪表方块展示（参照 Create Gauge 转速/应力表、createaddition EnergyMeter、TFMG VoltMeter 模式：贴面连接结构、读内部状态、可红石输出/阈值报警，如 S02 温度计/S03 压力表/S04 浓度计）。机械信息同步走护目镜 HUD（Create `IHaveGoggleInformation` 标准通道，实现接口即自动获得）。GUI 不承担信息面板职责。
 2. **无配方选择**。反应引擎保持自动匹配（匹配到什么就是什么）；玩家通过控制输入（投什么料、加热到多少度、加压多少）定向反应。匹配失败必须可诊断：用状态渲染（仪表/指示灯/粒子）表达「为什么没反应」（缺料/温度不足/无匹配配方/产物满），不做配方选择列表。

@@ -21,7 +21,7 @@ import net.minecraftforge.fluids.FluidStack;
 import net.minecraft.ChatFormatting;
 
 /**
- * The S04 Baumé gauge (波美计, plans/12 §2 — redefined from the old
+ * The S04 Baumé gauge (波美计, plans/04 §9.2 — redefined from the old
  * "concentration meter"): a hydrometer reading <b>density as a function of
  * total dissolved solids</b> — {@code Σ dissolved units / water units} on the
  * declared °Bé scale ({@link Analyte#baume}). Species-blind by design: it

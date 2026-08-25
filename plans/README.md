@@ -2,9 +2,9 @@
 
 > 文档状态：**current**（总纲/索引/决策表；过时决策已标注 ~~superseded~~，正文已按 v2 对齐）
 
-> **状态：设计总纲；M0–M2.5 与 v2 子系统（规则引擎/离子基底/D18）已实现，见 docs/progress.md；决策表与正文已按 v2 对齐（过时决策标 ~~superseded~~）。**
-> 本目录是完整设计计划书，先回答「玩家玩什么 / 做什么 / 内容多少 / 机制多少 / 是否可实现」，再谈实现。
-> **平台已定：Create Forge 6.0.8 原生附属**（forge1 生产服已装 Create 6.0.8 + createaddition 1.3.3），见 [00-ecosystem-recon.md](00-ecosystem-recon.md) §0。
+> **工程现状与已完成单元明细（M0–M2.5 + U1/U3/U13–U18，GameTest 102/102 + JUnit 66/66）以 `docs/progress.md` 为唯一定义**，本目录只管设计。
+> 本目录是完整设计计划书，先回答「玩家玩什么 / 做什么 / 内容多少 / 机制多少 / 是否可实现」，再谈实现。**维护规约（2026-08 精简，单一事实源）**：方块清单=04 §7；反应/工艺目录=14；仪表=12；完成态=progress.md；决策已定案的档案在 `archive/`（冻结）。
+> **平台已定：Create Forge 6.0.8 原生附属**（forge1 生产服已装 Create 6.0.8 + createaddition 1.3.3），论证见 [archive/00-ecosystem-recon.md](archive/00-ecosystem-recon.md) §0（冻结）。
 
 ---
 
@@ -12,10 +12,10 @@
 
 | # | 问题 | 答案（详见文件） |
 |---|------|------------------|
-| 1 | 玩家要玩什么？ | 采矿选料 → 搭建多方块化工厂 → 铺设管线 → 调温调压跑反应 → **把副产物和废料回收成闭环**。成就感来源是「一条零排放的完整产线」和「规模化的化学帝国」。[01-core-design.md](01-core-design.md) |
-| 2 | 要做哪些东西？ | 基于 Create 生态：**釜体等约 35–39 种自研方块** + 52 条化学反应 + 61 种化学物质 + 5 种新矿物。罐/管道/泵/搅拌/热源/传送带/电网大量复用 Create 与创想附加。[00-ecosystem-recon.md](00-ecosystem-recon.md)、[04-machines.md](04-machines.md) |
-| 3 | 游戏内容有多少？ | **61 种化学物质（v2 口径见 08）、52 条化学反应、5 种新矿物、自研方块约 35–39 种、5 个阶段（T0–T4）**。单人主流程约 40–60 小时。[08-substance-catalog.md](08-substance-catalog.md)、[07-reaction-catalog.md](07-reaction-catalog.md)、[11-content-scope.md](11-content-scope.md) |
-| 4 | 要构建多少种机制？ | **10 种**：温度传热、压力密封、相态相变、浓度溶解、反应引擎、沉淀悬浮、固液分离、换热回收、管网输运、危险事故。在 [05-mechanics.md](05-mechanics.md) 逐一拆解。 |
+| 1 | 玩家要玩什么？ | 采矿选料 → 搭建多方块化工厂 → 铺设管线 → 调温调压跑反应 → **把副产物和废料回收成闭环**。成就感来源是「一条零排放的完整产线」和「规模化的化学帝国」。[archive/01-core-design.md](archive/01-core-design.md)（冻结） |
+| 2 | 要做哪些东西？ | 基于 Create 生态：**39 个自研方块注册 ID（见 04 §7）** + 52 条化学反应 + 61 种化学物质 + 5 种新矿物。罐/管道/泵/搅拌/热源/传送带/电网大量复用 Create 与创想附加。[04-machines.md](04-machines.md) |
+| 3 | 游戏内容有多少？ | **61 种化学物质（v2 口径见 14 §0.6）、52 条化学反应、5 种新矿物、~32 个自研功能件（39 注册 ID）**。单人主流程约 40–60 小时。[14-process-facility-map.md](14-process-facility-map.md)、[11-content-scope.md](11-content-scope.md) |
+| 4 | 要构建多少种机制？ | **10 种**：温度传热、压力密封、相态相变、浓度溶解、反应引擎、沉淀悬浮、固液分离、换热回收、管网输运、危险事故。逐一拆解见 [archive/05-mechanics.md](archive/05-mechanics.md)（冻结）。 |
 | 5 | 能否实现？ | **全部机制都可表达**，前提是：溶液用**离子基底单一 `mixture` 流体**（离子多重集 + 水 + 分子溶质，电中性，数据驱动）运输/储存层 100% 复用 Create；**物种退化为「命名组成模式」**（只用于配方匹配/名字/颜色/桶默认配比，浓稀是浓度不是物种）；反应采用白名单配方（ProcessingRecipe 派生）+ 规则引擎（沉淀/中和/结晶的涌现）。[03-substance-model.md](03-substance-model.md)、否决清单见下文 |
 
 ---
@@ -32,9 +32,9 @@
 | D6 | **机器分工** | **化学反应只发生在多方块机器（釜体等）里**；单方块只做辅助（泵/阀/仪表/控制） |
 | D7 | **规模** | 61 物种 / 52 反应 / 自研方块约 35–39 / 10 机制 / 5 阶段。再大则维护成本失控 |
 | D8 | **旗舰流程** | 索尔维制纯碱闭环（盐+石灰石 → 纯碱，氨与 CO₂ 循环复用）是 T2 的里程碑与教学关卡，同时是**开发主线**（开发顺序以索尔维所需方块/能力为准，见 [11-content-scope.md §2.2](11-content-scope.md)） |
-| D9 | **平台** | **Create Forge 6.0.8 原生附属**（forge1 已装）；IC2 降级为可选联动，见 [00-ecosystem-recon.md](00-ecosystem-recon.md) §0 |
+| D9 | **平台** | **Create Forge 6.0.8 原生附属**（forge1 已装）；IC2 降级为可选联动，见 [archive/00-ecosystem-recon.md](archive/00-ecosystem-recon.md) §0（冻结） |
 | D10 | **性能** | 管网按「图网络」每 tick 结算，反应低频结算（1–5 秒一次），不逐格模拟 |
-| D11 | **复用边界** | 罐/管/泵/搅拌/热源/物流/电网/配方管线直接复用 Create+创想；气体与多组分流股自研，见 [00-ecosystem-recon.md](00-ecosystem-recon.md) |
+| D11 | **复用边界** | 罐/管/泵/搅拌/热源/物流/电网/配方管线直接复用 Create+创想；气体与多组分流股自研，见 [archive/00-ecosystem-recon.md](archive/00-ecosystem-recon.md)（冻结） |
 | ~~D12~~ | ~~**全量流体注册**~~（**已被 D19 离子基底取代**） | ~~61 种物种全部注册为 Forge Fluid + 多组分溶液用组合系统~~ → v2：**纯物质注册流体（13 气体 + 导热油，水=原版），溶液/浆料 = 离子基底 `mixture` 模式别名**（浓/稀是连续浓度）；「状态敏感部分只在釜内」内核保留 |
 | D13 | **配方管线** | 反应 = ProcessingRecipe 派生（自定义 RecipeType），白拿 JEI/datagen/KubeJS 脚本化/ponder |
 | D14 | **热级对齐** | 热需求用 HeatCondition（HEATED/SUPERHEATED）+ 扩展热源注册 BoilerHeater；Blaze Burner/液体烈焰人直接可用 |
@@ -43,9 +43,9 @@
 | D17 | **事故机制** | Create 混液炸管等原生行为直接用作禁忌混合的事故表现，少写一套事故渲染 |
 | D18 | **互溶性（Miscibility）** | 液-液能否混溶由「互溶组（miscibilityGroup，数据驱动）」决定：同组互溶 → 合并成单一 `mixture`；跨组不互溶 → 分相分层、抽出时按密度**先后**抽出（非混合）。互溶性决定能否共线输送（不互溶共管=混液炸管），并给 M7 增添「倾析/分相」分离手段。详见 [03-substance-model.md §5.4](03-substance-model.md) |
 | D19 | **离子基底（v2 物质模型）** | 溶液统一为单一 `mixture` 流体：`{离子多重集 + 水 + 分子溶质}`，电中性硬约束；物种退化为「命名组成模式」（配方匹配/名字/颜色/桶默认配比）；浓/稀是浓度不是物种；**无解离/重组**——沉淀/中和/结晶是「改离子集 + 调水量」的涌现。详见 [03-substance-model.md](03-substance-model.md) |
-| D20 | **流态范式** | 反应容器分 **BATCH（批式）** 与 **CONTINUOUS（连续流）** 两种运行模式：批式=四相状态机（投料→反应→排空→复位），连续流=停留时间控制（转化率=f(V/Q)、产物+未反应进料连续流出）；控制=世界内传感器（S11–S15）+ Create 红石/阀泵，零 GUI。详见 [06-reaction-system.md](06-reaction-system.md) §10 |
+| D20 | **流态范式** | 反应容器分 **BATCH（批式）** 与 **CONTINUOUS（连续流）** 两种运行模式：批式=四相状态机（投料→反应→排空→复位），连续流=停留时间控制（转化率=f(V/Q)、产物+未反应进料连续流出）；控制=世界内传感器（S11–S15）+ Create 红石/阀泵，零 GUI。详见 [03-substance-model.md](03-substance-model.md) §13.4 |
 
-> D1–D10 为初版设计；D11–D17 为 2026-09 社区生态盘点后新增/修订，完整论证见 [00-ecosystem-recon.md](00-ecosystem-recon.md)；D18 为 2026-08 新增（互溶性概念）；D19 离子基底见 [03-substance-model.md](03-substance-model.md)；D20 流态范式（batch/continuous）见 [06-reaction-system.md](06-reaction-system.md) §10。原 12-feasibility（可实现性论证）已被代码证实取代（64/64 GameTest），其否决清单并入下表。
+> D1–D10 为初版设计；D11–D17 为 2026-09 社区生态盘点后新增/修订，完整论证见 [archive/00-ecosystem-recon.md](archive/00-ecosystem-recon.md)（冻结）；D18 为 2026-08 新增（互溶性概念）；D19 离子基底见 [03-substance-model.md](03-substance-model.md)；D20 流态范式（batch/continuous）见 [03-substance-model.md](03-substance-model.md) §13.4。原 12-feasibility（可实现性论证）已被代码证实取代（64/64 GameTest），其否决清单并入下表。
 
 ### 否决清单（不做的方案，原 12-feasibility §6）
 
@@ -59,24 +59,33 @@
 
 ---
 
-## 2. 文件索引
+## 2. 文件索引（现行 4 份，2026-08 大合并后）
+
+> **维护规约（单一事实源）**：架构/引擎/配方层=03；机器/多方块/仪表/注册清单=04；排期/单元/规格=11；物质+反应+工艺+设施=14；完成态=docs/progress.md。历史拆分件全部冻结于 archive/。
 
 | 文件 | 内容 |
 |------|------|
-| [00-ecosystem-recon.md](00-ecosystem-recon.md) | **社区生态盘点**：Create/创想/主要附属源码盘点与 Modrinth 数据，复用边界 D11–D17 |
-| [01-core-design.md](01-core-design.md) | 定位、设计目标、玩家玩法循环、成就感支柱、反设计清单 |
-| [02-progression.md](02-progression.md) | 进度线 T0–T4：每阶段新机器/新机制/里程碑/卡点 |
-| [03-substance-model.md](03-substance-model.md) | **物质抽象模型 v2**：离子基底单一 mixture（离子+水+分子溶质）、物种=命名组成模式、浓稀=浓度、恢复=涌现（沉淀/结晶/蒸馏/分相） |
-| [04-machines.md](04-machines.md) | 机器与方块全清单与规格（自研部分 + 复用部分） |
-| [05-mechanics.md](05-mechanics.md) | 10 种机制的完整定义、玩家交互、边界与简化 |
-| [06-reaction-system.md](06-reaction-system.md) | 反应引擎设计：配方结构、条件窗口、平衡简化、放热吸热、催化、禁忌组合 |
-| [07-reaction-catalog.md](07-reaction-catalog.md) | 52 条化学反应全目录（8 个模块，含条件/放热/机器/阶段） |
-| [08-substance-catalog.md](08-substance-catalog.md) | 61 种物质全目录（v2 口径：15 纯流体 + 溶液/浆料模式别名 + 18 固体 + 5 矿物，含危险属性） |
-| [09-resources-worldgen.md](09-resources-worldgen.md) | 原材料与资源链：5 种新矿物、世界生成、与 Create/原版复用 |
-| [10-multiblock.md](10-multiblock.md) | 多方块设计：成型、尺寸、材质分级、端口、状态可视化、故障 |
-| [11-content-scope.md](11-content-scope.md) | **开发计划（M3+ 开工顺序唯一定义）**：内容量统计、基线缺口 G1–G7、U1–U12 依赖序单元 + C 并行轨道、排程/DoD/工作量/风险 |
-| [12-instruments.md](12-instruments.md) | **读数仪器体系（唯一定义）**：测量诚实性原则、终点类型学（四类信号→四台化学仪表）、连续仪表 S02–S18 清单 + 试纸族、红石双输出族规范（比较器分箱 + 阈值）、三酸两碱+食盐精炼覆盖矩阵、Kw 解封前置、否决清单 |
-| [13-enthalpy-ledger.md](13-enthalpy-ledger.md) | **焓记账（U19，U18 定点分数之后的下一步）**：启用 Equilibrium 预留的 delta_h、记账点下沉到 applyMove 单入口、退休强酸冻结与体相中和两条热护栏（删 STRONG_ION_FRACTION / NEUTRALISATION_J_PER_PAIR 特例）、可选 van't Hoff 温度耦合 |
+| [03-substance-model.md](03-substance-model.md) | **架构与引擎（核心）**：离子基底单一 mixture（§1–§7）、测量诚实性（§6）、规则引擎 v2 + 引擎边界（§8）、风险与已定案（§12）、**配方层与运行模式（§13，原 06：配方结构/平衡三档/催化/禁忌/Create 边界/批式连续流）** |
+| [04-machines.md](04-machines.md) | **机器与方块（唯一定义）**：容器模板实例（§2–§3）、复用（§4）、S 系列（§5）、**多方块规范（§8，原 10：部件/尺寸/材质分级/端口/故障）**、**读数仪器体系（§9，原 12：原则/清单/红石/矩阵/否决）**、**全方块注册清单（§7，唯一归宿）** |
+| [11-content-scope.md](11-content-scope.md) | **开发计划（M3+ 开工顺序唯一定义）**：内容量、基线缺口 G1–G7、U1–U12 依赖序 + C 并行轨道、排程/DoD/风险、**附录：U19 焓记账规格（原 13）** |
+| [14-process-facility-map.md](14-process-facility-map.md) | **内容与设施映射（唯一定义）**：物质目录概览（§0.6，原 08）+ 52 条反应目录（§1，原 07）+ 30 条工艺线（16 配方驱动 + 14 引擎涌现）+ 工艺×设施矩阵 + 特有工艺取舍论证 + 42 物种收编清单 |
+
+### 归档（plans/archive/，冻结不再维护）
+
+| 文件 | 去向 |
+|------|------|
+| [00-ecosystem-recon.md](archive/00-ecosystem-recon.md) | 决策已定案入本 README 决策表（D9、D11–D17） |
+| [01-core-design.md](archive/01-core-design.md) | 定位/玩法循环（现行口径见本 README §0） |
+| [02-progression.md](archive/02-progression.md) | 阶段线 T0–T4（对外里程碑仍被 11 §2.2 引用） |
+| [05-mechanics.md](archive/05-mechanics.md) | 机制拆解；活段迁 04（M8 换热）/03 §13.2（M10 事故） |
+| [06-reaction-system.md](archive/06-reaction-system.md) | 活段迁 03 §13（配方层/流态）；执行模拟史留档 |
+| [08-substance-catalog.md](archive/08-substance-catalog.md) | 概览迁 14 §0.6；真源=species JSON + gen_species.py |
+| [09-resources-worldgen.md](archive/09-resources-worldgen.md) | 矿物规格（C3 轨道开工时解冻） |
+| [10-multiblock.md](archive/10-multiblock.md) | 规格迁 04 §8；成型实现=vessel/ 基类（U3） |
+| [12-instruments.md](archive/12-instruments.md) | 全文迁 04 §9（唯一定义随之转移） |
+| [13-enthalpy-ledger.md](archive/13-enthalpy-ledger.md) | 全文迁 11 附录（U19 规格） |
+
+> 编号空缺为归档或合并所致，**编号不复用**，避免破坏历史引用（07→14、06→03 §13、08→14 §0.6、10→04 §8、12→04 §9、13→11 附录）。
 
 ---
 
@@ -85,7 +94,7 @@
 1. **项目形态**：独立仓库（Forge mod，Kotlin 可选）已倾向；计划书暂存 `ic2-fabric/plans/chemical-addon/`，定稿后随仓库迁移。
 2. **与 IC2 的联动**：跨加载器成本高，默认不联动；若要做（如 EU→FE 桥）单独立项。
 3. **温度单位**：游戏内显示 °C（直觉）还是 K（化学感）；内部建议整数 °C。
-4. ~~电解铝 F4 是否做~~ **已定（c）**：首版不做熔融电解；氧化铝为铝线终点（T4 耐火结构件/陶瓷建材），F4 配方表预留后续版本（见 07 反应目录 F4 行、02 进度线 T3）。
+4. ~~电解铝 F4 是否做~~ **已定（c）**：首版不做熔融电解；氧化铝为铝线终点（T4 耐火结构件/陶瓷建材），F4 配方表预留后续版本（F4 条目见 14 §1 F 行；阶段线 archive/02 T3）。
 5. **手册**：用 Create ponder 场景还是独立手册/仅 JEI 展示（KubeJS 脚本化能力已白拿）。
 6. **难度取向**：事故惩罚强度（爆炸破坏 vs 仅损失物料）影响整体体验基调。
 

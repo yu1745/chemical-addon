@@ -2639,7 +2639,7 @@ public class ChemicalAddonGameTests {
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void testPapersReportQualitativeVerdicts(GameTestHelper helper) {
-		// the consumable probe family (plans/12 §2.2): dip a reactor, read the
+		// the consumable probe family (plans/04 §9.2.2): dip a reactor, read the
 		// colour, lose the paper — "what is in there", never "how much".
 		buildReactor(helper);
 		ReactorControllerBlockEntity reactor = reactor(helper);

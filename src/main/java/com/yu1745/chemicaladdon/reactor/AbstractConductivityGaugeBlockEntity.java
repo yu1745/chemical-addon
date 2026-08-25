@@ -18,7 +18,7 @@ import net.minecraftforge.fluids.FluidStack;
 import net.minecraft.ChatFormatting;
 
 /**
- * The S18 conductivity gauge (电导率计, plans/12 §2): reads the vessel's ionic
+ * The S18 conductivity gauge (电导率计, plans/04 §9.2): reads the vessel's ionic
  * strength — Σ ion units per water unit on the declared scale (1 mS per 0.1
  * concentration) — the washing endpoint instrument (U16.5). Molecular solutes
  * carry no charge and do not conduct: ammonia water reads near zero while its

@@ -75,7 +75,7 @@ public final class Chemistry {
 	/**
 	 * The ionic product of water Kw = [H⁺]·[OH⁻] = 1e-14, in the engine's own
 	 * concentration units (units / water units — the same scale every log_k is
-	 * authored on). U17 (plans/12 §5): the pH gauge's alkaline side reads
+	 * authored on). U17 (plans/04 §9.5): the pH gauge's alkaline side reads
 	 * {@code [H⁺] = Kw / [OH⁻]} and pure water (neither ion present) is pH 7 by
 	 * definition. Deliberately <b>not</b> a solver entry: a real autoionisation
 	 * pair injected into the ion domain would change the mixture's GCD ratio

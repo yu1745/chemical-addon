@@ -1,5 +1,7 @@
 # 00-ecosystem-recon · 社区生态盘点：什么已经写好了
 
+> 🔒 **冻结档案（2026-08 归档）**：平台决策（D9、D11–D17）已定案并收录于 `plans/README.md` 决策表；本文仅作论证过程存档，**不再维护**。
+
 > 文档状态：**reference**（盘点快照 2026-09；结论已吸收进 README D11–D17，正文不随 v2 演进）
 
 > 依据：本地源码盘点（create-forge_1.20.1 = Create 6.0.8 / createaddition-forge_1.20.1 = 1.3.3 / create-tfmg-forge_1.20.1 / create-diesel-generators-forge_1.20.1）+ Modrinth API 数据（1714 个 Create 相关项目）+ forge1 生产服 mods 目录实测。

@@ -19,7 +19,7 @@ import net.minecraftforge.fluids.FluidStack;
 import net.minecraft.ChatFormatting;
 
 /**
- * The S17 turbidity gauge (浊度计, plans/12 §2): reads the suspended-solid
+ * The S17 turbidity gauge (浊度计, plans/04 §9.2): reads the suspended-solid
  * volume fraction of the aqueous phase in four bins — 清 / 微浑 / 浑 / 浆
  * ({@link Analyte#turbidityBin}; the settled crystal bed is excluded). The
  * phase-state endpoint of the precipitation-type family, and the
