@@ -11,15 +11,18 @@ import com.yu1745.chemengine.kernel.IPhreeqc;
 import net.minecraftforge.fluids.FluidStack;
 
 /**
- * P4 tick 桥：游戏时间 → KINETICS 步进 + 池变化报告。
+ * tick 桥：游戏时间 → KINETICS 步进 + 池变化报告（mod 侧唯一化学主循环的驱动器）。
  *
  * <p>时间映射：REACTION_TICK（10 tick = 0.5 s 游戏时间）一步；节奏旋钮 =
- * 策展 k 值（chemistry.json 设计语义）。bulk 反应全量发射（界面反应需场景
- * 显式供 PARM，本层不管——P4c 接压力表）。
+ * 策展 k 值（chemistry.json 设计语义）。bulk 反应全量发射；interface 反应
+ * 由 {@link PressureFeed} 供压驱动（分压 0 不发射）。
  *
- * <p>产出 {@link Step}：步进后的元素/伪池总量快照（mol）——供写回层
- * （P4b：元素总量 → Mixture 物种树的反向映射）与表计消费。当前阶段
- * Step 作为观察值落日志 + GameTest 断言，不动 Mixture。
+ * <p>产出 {@link Step}：行 0 = 步进前基线（i_soln punch），末行 = 步进后终态的
+ * 元素/伪池总量快照（mol，容器总量）——供 {@link WriteBack} 写回与表计消费。
+ *
+ * <p>注意：每次 step 从进料重起（无 KINETICS 内部状态续接）——对速率只依赖当前
+ * 池浓度的反应（策展表全部如此，TOT/MOL 门控）语义等价；-m 剩量跨 tick 续接
+ * 待存档联动（capacity 1000 下无影响）。
  */
 public final class TickDriver {
 
@@ -49,24 +52,25 @@ public final class TickDriver {
 
 	private TickDriver() {}
 
-	/**
-	 * 步进一拍：进料 → 平衡（初值）→ KINETICS 推进 dt → 返回终态快照。
-	 *
-	 * <p>注意：当前每次 step 从进料重起（无 KINETICS 内部状态续接）——对
-	 * 速率只依赖当前池浓度的反应（策展表全部如此，TOT/MOL 门控）语义等价；
-	 * KINETICS 的 -m 剩量状态跨 tick 续接是 P4b 存档联动的一部分。
-	 */
-	/** 带 interface 供压的步进（P4c 主循环路径）。 */
-	public static Step stepWithPressure(List<FluidStack> fluids, Map<String, double[]> parms, double seconds) {
-		return stepInternal(fluids, parms, seconds);
+	/** 带 interface 供压 + 釜温的步进（主循环路径）。 */
+	public static Step stepWithPressure(List<FluidStack> fluids, Map<String, double[]> parms,
+			double seconds, int tempC) {
+		return stepInternal(fluids, parms, seconds, tempC);
 	}
 
 	public static Step step(List<FluidStack> fluids, double seconds) {
-		return stepInternal(fluids, null, seconds);
+		return stepInternal(fluids, null, seconds, 25);
 	}
 
-	private static Step stepInternal(List<FluidStack> fluids, Map<String, double[]> parms, double seconds) {
+	/** 测试便捷：指定温度的无供压步进。 */
+	public static Step step(List<FluidStack> fluids, double seconds, int tempC) {
+		return stepInternal(fluids, null, seconds, tempC);
+	}
+
+	private static Step stepInternal(List<FluidStack> fluids, Map<String, double[]> parms,
+			double seconds, int tempC) {
 		EngineBridge.Feed feed = EngineBridge.toFeed(fluids);
+		feed.tempC = tempC;
 		if (feed.waterKg <= 0 || feed.totals.isEmpty()) {
 			return new Step(false, Map.of(), Map.of(), 7.0, seconds);
 		}
@@ -84,17 +88,20 @@ public final class TickDriver {
 		if (!any) {
 			return new Step(false, Map.of(), Map.of(), 7.0, seconds);
 		}
-		try (IPhreeqc q = IPhreeqc.create()) {
-			// 两段模拟：初始（i_soln punch 基线）+ KINETICS 步进（末行）
+		// 共享会话（Kernel）：数据库每 JVM 装载一次——每拍 create+装库是切换初版的性能回归
+		try {
+			IPhreeqc q = Kernel.get();
+			// 两段模拟：初始（i_soln punch 基线，行 0）+ KINETICS 步进（末行）。
+			// Step 的 totals 收集全部 punch 列（含动力学新键），不只进料键。
 			IPhreeqc.RunResult r = q.run(parms == null || parms.isEmpty()
 					? feed.toScriptWithKinetics(CURATION, seconds)
 					: feed.toScriptWithKinetics(CURATION, parms.keySet(), parms, seconds));
 			int last = r.rowCount() - 1;
 			Map<String, Double> totals = new LinkedHashMap<>();
 			Map<String, Double> delta = new LinkedHashMap<>();
-			for (String k : feed.totals.keySet()) {
-				double after = r.row(last).d(k) * feed.waterKg;
-				double before = r.row(0).d(k) * feed.waterKg;
+			for (String k : feed.punchColumns(CURATION)) {
+				double after = r.row(last).dOr(k, 0.0) * feed.waterKg;
+				double before = r.row(0).dOr(k, 0.0) * feed.waterKg;
 				totals.put(k, after);
 				delta.put(k, after - before);
 			}

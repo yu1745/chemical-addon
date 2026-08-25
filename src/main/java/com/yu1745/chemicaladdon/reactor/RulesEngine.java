@@ -28,6 +28,15 @@ import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.registries.ForgeRegistries;
 
 /**
+ * <b>已退役（2026-08-20）</b>：运行时化学权威已全量切换到 IPhreeqc 内核
+ * （{@code composition.parity} 包，PressureFeed→TickDriver→WriteBack 主循环）。
+ * 本类不再被反应釜/M08 的 tick 调用；保留原因：①物流常量（MB_PER_ITEM/
+ * ITEM_UNITS/GRAIN_* /CAKE_LIQUOR_FRACTION/WASH_*）仍是 ReactorTank/ReactionLogic
+ * 的生产依赖；②GameTest 直接调用验证其行为（作为退役引擎的回归锁，待内核侧
+ * 相应能力落地后逐批迁移）。以下注释描述其历史语义。
+ *
+ * <hr>
+ *
  * Emergent chemistry rules engine (plans/03 §8, mass-action v2). Runs on a
  * vessel's contents each reaction tick, <b>before</b> the whitelist recipe
  * engine: it derives what happens from the mixture's ions + molecules directly

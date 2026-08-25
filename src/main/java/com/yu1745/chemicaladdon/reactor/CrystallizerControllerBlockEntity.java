@@ -106,15 +106,10 @@ public class CrystallizerControllerBlockEntity extends ReactorControllerBlockEnt
 		if (!isAssembled()) {
 			return; // the vessel layer already reset structure state
 		}
-		long[] vented = new long[1];
-		Solution solved = RulesEngine.apply(tank, isOpen(), items, stirringCoefficient(), vented);
-		if (solved != null) {
-			recordSpeciation(solved.report());
-		}
-		if (vented[0] > 0) {
-			condensate.fill(new FluidStack(Fluids.WATER, (int) (vented[0] / Chemistry.UNIT_PER_MB)),
-				FluidAction.EXECUTE);
-		}
+		// 内核主循环（同反应釜，2026-08 全量切换）。已知缺口：开口蒸发/冷凝回收
+		// 尚未在内核路径实现（原 U13 步骤），冷凝罐保持空——蒸发浓缩与 °Bé 终点
+		// 闭环待内核侧蒸发机制（策展 interface 池）落地后恢复。
+		stepKernelChemistry();
 		pushCondensate();
 		boolean endpoint = atEndpoint();
 		if (endpoint != lastEndpoint && level != null) {

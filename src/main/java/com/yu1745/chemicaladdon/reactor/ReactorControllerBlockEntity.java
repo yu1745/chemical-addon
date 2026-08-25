@@ -330,36 +330,12 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 			setProgress(0, null);
 			return;
 		}
-		// emergent chemistry first (mass-action equilibria / crystallisation /
-		// neutralisation / solid dissolution / evaporation derived from species
-		// data), then the whitelist recipe engine. The solved snapshot's
-		// speciation report feeds the goggles saturation lines (why-no-reaction
-		// diagnostics: SI < 0 means "not saturated enough", not "broken").
-		Solution solved = RulesEngine.apply(tank, isOpen(), items, stirringCoefficient);
-		if (solved != null) {
-			recordSpeciation(solved.report());
-		}
-		// P2/P3 驱动点：双跑观察或读数源（默认关/legacy，零行为影响；见 parity 包）。
-		if (com.yu1745.chemicaladdon.composition.parity.ChemEngineConfig.PARITY_OBSERVE) {
-			com.yu1745.chemicaladdon.composition.parity.EngineBridge.Feed feed =
-					com.yu1745.chemicaladdon.composition.parity.EngineBridge.toFeed(tank.getFluids());
-			com.yu1745.chemicaladdon.composition.parity.EngineBridge.observe(feed, "reactor");
-		}
-		if (com.yu1745.chemicaladdon.composition.parity.ChemEngineConfig.ENGINE_READINGS) {
-			com.yu1745.chemicaladdon.composition.parity.EngineReadings.refresh(tank.getFluids());
-		}
-		// P4c+P5 主循环接线（ENGINE_KINETICS 开启时）：供压→KINETICS 步进→写回。
-		// 与 RulesEngine 同批执行（双引擎期：RulesEngine 仍全量在跑，差异见 [parity] 日志）。
-		if (com.yu1745.chemicaladdon.composition.parity.ChemEngineConfig.ENGINE_KINETICS) {
-			var parms = com.yu1745.chemicaladdon.composition.parity.PressureFeed.of(
-					tank.getFluids(), tank.getTankCapacity(0), getTemperature());
-			var step = com.yu1745.chemicaladdon.composition.parity.TickDriver.stepWithPressure(
-					tank.getFluids(), parms,
-					com.yu1745.chemicaladdon.composition.parity.TickDriver.SECONDS_PER_STEP);
-			if (step.valid) {
-				com.yu1745.chemicaladdon.composition.parity.WriteBack.firstOf(tank.getFluids(), step);
-			}
-		}
+		// 化学权威 = IPhreeqc 内核（2026-08 全量切换，U13 规则引擎退役出运行时）：
+		// 供压（釜气相分压 → interface 反应）→ KINETICS 步进 → 增量写回 Mixture 离子域。
+		// 旧 RulesEngine 的沉淀悬浮/蒸发浓缩/投料溶解/脱气/反应热等待内核侧对应能力
+		// （相写回、策展 interface 池）落地后另行恢复；缺口清单见 docs/progress.md。
+		stepKernelChemistry();
+		recordSpeciation(List.of()); // 内核侧 speciation 报告待接（护目镜化验行暂歇）
 		ChemicalReactionRecipe recipe = ReactionLogic.findRecipe(this);
 		if (recipe == null) {
 			// no fully-matching recipe: diagnose whether it is a heat problem
@@ -387,6 +363,25 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 	/** Store the last solve's speciation report — shared by the reactor and M08 solve loops. */
 	protected void recordSpeciation(List<Solution.Speciation> report) {
 		speciation = report;
+	}
+
+	/**
+	 * 内核步进（反应釜与 M08 共用主循环）：供压 → KINETICS 步进 → 增量写回 +
+	 * 读数发布（pH 表计共享本拍快照，零额外求解）。
+	 */
+	protected void stepKernelChemistry() {
+		var parms = com.yu1745.chemicaladdon.composition.parity.PressureFeed.of(
+				tank.getFluids(), tank.getTankCapacity(0), getTemperature());
+		var step = com.yu1745.chemicaladdon.composition.parity.TickDriver.stepWithPressure(
+				tank.getFluids(), parms,
+				com.yu1745.chemicaladdon.composition.parity.TickDriver.SECONDS_PER_STEP,
+				getTemperature());
+		if (step.valid) {
+			com.yu1745.chemicaladdon.composition.parity.WriteBack.firstOf(tank.getFluids(), step);
+			com.yu1745.chemicaladdon.composition.parity.EngineReadings.publish(step);
+		} else {
+			com.yu1745.chemicaladdon.composition.parity.EngineReadings.invalidate();
+		}
 	}
 
 	private void setStatus(ReactorStatus value) {

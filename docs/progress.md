@@ -21,7 +21,19 @@
 | U17 分析化学层 | Kw 读数层 + S16 pH/S04 波美/S17 浊度 + 试纸族 + SI 降级 + M08 终点结晶器 | ✅ 完成（插队） |
 | M3+ 其余 | FE 接线 / 竖窑 / 索尔维 / 连续流 / 高压 / 零排放 | ⏳ 未开始（顺序见 plans/11 §2.1） |
 
-**自动化测试**：`./gradlew runGameTestServer` → **102/102 通过**；`./gradlew test` → **66/66 JUnit**。
+**自动化测试**：`./gradlew runGameTestServer` → **115/115 必测通过**（+1 optional 悬置）；`./gradlew test` → JUnit 全绿（含内核策展/性能哨兵）。
+
+## P6 · 化学权威全量切换（2026-08-20，用户决策：旧引擎从未正常工作，直接切新引擎）
+
+**IPhreeqc 内核成为唯一化学权威，U13 RulesEngine 退役出运行时**（类保留：物流常量仍是生产依赖；GameTest 直调作为退役回归锁）。
+
+- **假绿事件（务必记住）**：P2–P5 提交信息里的「108 全绿」是假的——`ParityGameTests` 缺 `@GameTestHolder(MODID)` 注解，13 个整合链测试被命名空间过滤器**静默排除**（实际只跑了 102 个）；补注解后 11/13 失败，暴露四层从未验证过的 bug。教训：新增 GameTest 类必须带 holder 注解；提交信息里的绿灯数要与日志里的 `tests are now running` 核对。
+- **修复的四层真 bug**（均为整合链路首次真跑暴露）：① 进料产 H/O 元素总量（PHREEQC 非法输入→不收敛）；② KINETICS 脚本 punch 时序错（SELECTED_OUTPUT 定义在首模拟后，不回溯 i_soln → 池 delta 恒 0）；③ 纯水进料 -totals 空列表非法；④ WriteBack 双计+标度混乱（分子域电解质不清除→与离子域双计、S/N 换算用离子质量→逐拍膨胀）。
+- **单位桥终诺（单一真相）**：**1 unit = 1e-7 g 水 = 1e-7 mol 离子/物种 formula unit**（即 1 mB = 1e-3 mol，`EngineBridge.UNITS_PER_MOL = 1e7`）；legacy 浓度比（离子 units/水 units）恰为 millimolal——旧读数/配方浓度/写回往返全部精确自洽。进料：H/O 永不作元素输入（pH charge 涌现）；伪池（OCl→Hyp/SO3→Sul/NO3→Nitra/NO2→Nitri）优先于元素归并。写回（增量迁移）：已迁移电解质物种从分子域清除、无法存储的物种（含 H/O 组分=酸类）保留、存储离子用 dominant-ion 近似（S→SO4-2、N→NH4+1、C→HCO3-1）、电荷兑底 H+1/OH-1、幂等（二次进料不膨胀）。
+- **性能回归与修复**：切换初版每拍 `IPhreeqc.create()`+重装载 460KB sit.dat（158ms/拍）+ 失败测试烧满超时 → GameTest 5–10 分钟；修：`Kernel` 共享会话（9ms/拍，JVM 一次装库）+ 正确性收敛（全绿测试提前 succeed）。现状 **83 秒/115 测试**。
+- **主循环**（`ReactorControllerBlockEntity.stepKernelChemistry`，反应釜与 M08 共用）：PressureFeed（气相分压→interface 反应）→ TickDriver（游戏 0.5s/拍→KINETICS，温度贯通）→ WriteBack（增量迁移）→ EngineReadings.publish（pH 表计共享快照，零额外求解）。EngineArchive 无条件写档（DUMP↔NBT）。
+- **已知缺口（内核路径未覆盖，待后续恢复）**：① 开口蒸发浓缩/冷凝回收（M08 终点闭环，crystallizermultiblock 测试 required=false 悬置）；② 投料溶解/投种；③ 沉淀悬浮域（固相写回待相映射）；④ 护目镜 speciation 化验行；⑤ 反应热记账。旧行为参考 RulesEngine（退役锁测试仍在验证其自身语义）。
+- 顺手修正：pH 滴定/吸收/产酸/耗酸四测试改引擎真值断言（旧断言是 legacy 虚构数值）；`ChemEngineConfig` 开关类删除（迁移期结束）。
 
 ## 已完成明细
 
@@ -47,7 +59,7 @@
 
 ### M2.5 · 反应釜可玩性改造（世界内交互优先，GUI 弱化）
 
-- **设计基调落地**：交互哲学写入 AGENTS.md（世界内交互优先、GUI 弱化，生态证据见 plans/00-ecosystem-recon.md §7：Create 本体 ~40 GUI 类全为配置/物品用途、createaddition 0 GUI、TFMG 仅 2 配置 GUI、New Age/Broken Bad/Estrogen 0 GUI）
+- **设计基调落地**：交互哲学写入 AGENTS.md（世界内交互优先、GUI 弱化，生态证据见 plans/archive/00-ecosystem-recon.md §7（冻结）：Create 本体 ~40 GUI 类全为配置/物品用途、createaddition 0 GUI、TFMG 仅 2 配置 GUI、New Age/Broken Bad/Estrogen 0 GUI）
 - **护目镜 HUD**：釜实现 `IHaveGoggleInformation`——戴护目镜看控制器显示：温度+热级（无/加热/超级加热）、诊断状态、多流体内容、物品、反应进度（Create 标准通道）
 - **诊断状态**：`ReactorStatus` 枚举——未成型/反应中/温度不满足/输出已满/无匹配配方（每 10 tick 自动判定，原因可诊断）
 - **成型反馈**：`tryAssemble()` 返回结构化结果（面+问题类型+坐标），失败 chat 报具体缺砖位置；成功音效+粒子
@@ -285,6 +297,15 @@ M3 首单元（plans/11 §2.1）：修掉 G1/G2/G3 三条公共地基缺口，�
 - **置换洗涤（机上）**：过滤机新增洗水罐（清水管道注入自动路由到洗水，其余进料）+ `FilteringLogic` generic 路径带洗水调用 extractSolids——13 孔体积洗水把母液打到单位网格以下，单物种饼出**纯物品**，洗水 3900 mB 入滤液。
 - **S18 电导率计**（仪表族第三台，plans/12 §2）：读数=10×(Σ离子 units/水 units) 声明 mS 标尺——**分子溶质不导电**（氨水 0 mS vs 铵盐高，波美计做不了的区分）；方块/面板双形式（S03 模式复制），绿针表盘（gen_species）；**报警方向反转**（基类新钩子 `alarmWhenBelow`）：信号=电导率**降至**设定点以下——洗涤完成/水净的终点事件，默认 5 mS。
 - 踩坑：mixture mB 视图经比例 tag 往返有 ±1 重分配（units 精确）——床完好断言放宽 ±2；裸 tank 补清水后要 `collapseIfNeeded()` 并相（真釜里规则引擎每 tick 做）。
+
+### U17 · 分析化学层 + 终点控制
+
+「测量诚实性」（plans/03 §6）落地：玩家常态无 SI——护目镜 SI 行降级为 `ChemicalAddon.ASSAY_ON` dev 旋钮，化学身份靠仪表/试纸挣。GameTest 102/102 + JUnit 66/66 全绿。
+
+- **试纸/试剂族 7 件**（`TestPaperItem`，对釜控制器/壁砖右键蘸取消耗）：pH 系列（石蕊二点/酚酞 ≈8.2/广泛 ±1 档）+ 离子检验（AgNO₃ 检 Cl⁻/BaCl₂ 检 SO₄²⁻/KSCN 检 Fe³⁺）+ 蓝钴玻璃焰色镜（K 紫透过镜/Na 黄/Ca 砖红，K 优先）。
+- **物理量仪表三台**（仪表族唯一定义 plans/12）：**S16 pH 计**（`Analyte.ph`：酸侧直读/碱侧 Kw=1e-14 换算/中和定点 pH 7；固定中心零点表盘 pH7=12 点钟、1 级=1 pH、空手右键切跌破/升破触发）；**S04 波美计**（溶解 units/水 units 声明式线性换算，锚=曲线饱和盐水 0.72→30°Bé、1 级=2°Bé）；**S17 浊度计**（4 档 1%/5%/20%，沉底床不计、初浑报警、比较器 0/5/10/15）——全部方块/面板双形式进 vessel_walls。**Kw 决策**：落读数层常数而非求解器条目（真实自电离对会改 GCD ratio-tag 身份，见 12 §5）。
+- **M08 终点结晶器**（`CrystallizerControllerBlockEntity` 反应釜子类）：°Bé 设定点世界内滚动 + 到点切热（`heatTarget` 覆写）+ 终点强充能/比较器 °Bé 进度 + 排汽冷凝回收为馏出水产物（`RulesEngine` 通气量累加→内置罐被动外推）——「只析 A 不析 B」由设定点低于 B 饱和线挣得（KNO₃/NaCl 分步结晶端到端）。
+- **溶液物种直读**：H⁺ 换算（HCl/烧碱 packed 桶 → pH 1/13）。验收要点：pH 滴定终点（碱 13→中和 7→报警→方向切换→比较器 1:1）；波美锚点；浊度 4 档；试纸 7 种 verdictKey 阳性/阴性矩阵；M08 引擎级选择性结晶（24°Bé、冷后亚稳、投种只析 KNO₃≈94 mB、NaCl 全留母液）+ 方块级（组装/设定点 24/终点红石 15/馏出水 ≥400 mB）；`AnalyteTest` 6 例（pH 三例穷尽/两侧对数/等当点 ±1 mB 跳 11↔7↔3/氨水弱碱/波美锚/浊度档）。
 
 ### U18 · 定点分数（量子网格 10⁷/mB）
 

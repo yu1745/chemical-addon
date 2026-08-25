@@ -15,9 +15,9 @@ import net.minecraftforge.fluids.FluidStack;
  * 全精度文本；恢复用原始 dump 文本（不重算、零漂移、池分布原样）。
  * 存档字段挂在釜 NBT 的 {@code chemengineDump} 字符串。
  *
- * <p>当前阶段：写档时机 = VesselBlockEntity.write 且 ENGINE_READINGS 开启；
- * 恢复 = read 时读回缓存字符串（供 {@link #peekDump}/后续 KINETICS 步进使用），
- * <b>不</b>回写 Mixture（Mixture 四域仍是游戏的显示/交互权威，P4 决定翻转点）。
+ * <p>当前阶段：写档时机 = VesselBlockEntity.write（非 clientPacket）；恢复 = read
+ * 时读回缓存字符串（供 {@link #peekDump}/后续 KINETICS 步进使用），<b>不</b>回写
+ * Mixture（Mixture 四域仍是游戏的显示/交互权威，P4 决定翻转点）。
  */
 public final class EngineArchive {
 
@@ -46,18 +46,15 @@ public final class EngineArchive {
 		if (!any) {
 			return null;
 		}
-		try (IPhreeqc q = IPhreeqc.create()) {
-			return q.archive(b.build());
+		try {
+			return Kernel.get().archive(b.build());
 		} catch (Exception e) {
 			return null;
 		}
 	}
 
-	/** 写档侧：ENGINE_READINGS 开启且有有效进料时挂 dump 字符串。 */
+	/** 写档侧：有有效进料时挂 dump 字符串（全量切换后无条件执行）。 */
 	public static void write(CompoundTag tag, List<FluidStack> fluids) {
-		if (!ChemEngineConfig.ENGINE_READINGS) {
-			return;
-		}
 		String dump = archiveOf(fluids);
 		if (dump != null) {
 			tag.putString(KEY, dump);
