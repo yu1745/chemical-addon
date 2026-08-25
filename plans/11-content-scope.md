@@ -58,7 +58,7 @@
 | **U16 反应热能量记账**（插队 ✅） | J/unit 账本 + ΔT=Q/(feedUnits×c) 质量反比 + 蒸发潜热自限 | U13/U14 | 2–3 天 | ✅ 明细见 docs/progress.md §U16 |
 | **U16.5 湿饼夹带与洗涤**（插队 ✅） | 残液率夹带 + residue 母液相 + 再浆/置换洗涤两路 + S18 电导率计 | U15 | 3 天 | ✅ 明细见 docs/progress.md §U16.5 |
 | **U17 分析化学层 + 终点控制**（插队 ✅） | S16 pH/S04 波美/S17 浊度 + 试纸族 7 件 + SI 降级 + M08 终点结晶器 | U15 | 1.5–2 周 | ✅ 明细见 docs/progress.md §U17 |
-| **U18 定点分数**（插队 ✅） | 求解刻度量子化 10⁷/mB：Mixture long 通道 + 引擎量子往返 + 分块协同移动 | — | — | ✅ 明细见 docs/progress.md §U18（焓记账后继 U19 见本文件附录） |
+| **U18 定点分数**（插队 ✅） | 求解刻度量子化 10⁷/mB：Mixture long 通道 + 引擎量子往返 + 分块协同移动 | — | — | ✅ 明细见 docs/progress.md §U18（后继 U20 烠记账见本文件附录；U19 已被引擎切换占用，见 docs/progress.md §U19） |
 
 **关键语义与回退**：
 - **U1**：温度**存储**维持 per-FluidStack NBT（运输正确性已验证，不动），只把**作用面**扩到全相；密封本单元只做开/闭二值，材质分级耐压留 U11。
@@ -109,9 +109,9 @@
 
 ---
 
-## 附录 · U19 烠记账规格（原 13-enthalpy-ledger 全文并入，2026-08）
+## 附录 · U20 焠记账规格（原 13-enthalpy-ledger，重编号自 U19）
 
-> 状态：**计划**（U18 定点分数已落地，本单元是其直接后继）。前置：U13（equilibria 统一条目）、U16（J/unit 账本）、U18（量子网格 10⁷/mB）。
+> 状态：**计划，且需按 U19 引擎切换重新对照**（2026-08：本规格原针对已退役的自研 Solution 求解器——STRONG_ION_FRACTION/neutraliseDirect 等护栏已随 RulesEngine 退役不再是活代码；IPhreeqc 内核侧热记账应基于 sit.dat 自带 delta_h 与 REACTION_TEMPERATURE，保留本文作为玩法目标与验收语义，实现路径待重设计）。前置：U13/U16/U18（历史单元，语义见 docs/progress.md）。
 
 ### 动机：退休最后两条热护栏
 
@@ -126,7 +126,7 @@
 
 ### 机制：每条目 ΔH，记在每一次移动上
 
-`Equilibrium` 已解析并保留 `delta_h`（kJ/mol，`Equilibrium.java` 的 `deltaH` 字段，现 v1 未用）。U19 启用它：
+`Equilibrium` 已解析并保留 `delta_h`（kJ/mol，`Equilibrium.java` 的 `deltaH` 字段，现 v1 未用）。U20 启用它：
 
 1. **记账点下沉到 `applyMove`**：它是所有平衡移动的唯一入口（松弛 `solveEntry`、协同移动 `coupleDeficits`、中和 `neutralise` 全走它）。在这里累加 `energyJ += m × deltaH(eq) × J_PER_EVENT`（符号随 m），就不存在「哪条路径漏了记账」——强酸冻结当年防的「静默质子化不记账」从结构上消失。中和的 `NEUTRALISATION_J_PER_PAIR` 改为水条目 `H2O = H+1 + OH-1` 的 delta_h（补 ΔH≈+57.3 kJ/mol 即正向离解吸热、中和放热），删掉特例。
 2. **配方层不改**：红氧/热解/电化学仍是配方层（03 §8.1 边界），配方的 `deltaHeat` 走 U16 既有通道，两边在 `energyJ` 汇合。

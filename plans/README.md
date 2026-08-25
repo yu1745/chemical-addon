@@ -65,9 +65,9 @@
 
 | 文件 | 内容 |
 |------|------|
-| [03-substance-model.md](03-substance-model.md) | **架构与引擎（核心）**：离子基底单一 mixture（§1–§7）、测量诚实性（§6）、规则引擎 v2 + 引擎边界（§8）、风险与已定案（§12）、**配方层与运行模式（§13，原 06：配方结构/平衡三档/催化/禁忌/Create 边界/批式连续流）** |
+| [03-substance-model.md](03-substance-model.md) | **架构与引擎（核心）**：离子基底单一 mixture（§1–§7）、测量诚实性（§6）、化学内核（IPhreeqc，§8，U19 切换）+ 引擎边界 v2、风险与已定案（§12）、**配方层与运行模式（§13，原 06：配方结构/平衡三档/催化/禁忌/Create 边界/批式连续流）** |
 | [04-machines.md](04-machines.md) | **机器与方块（唯一定义）**：容器模板实例（§2–§3）、复用（§4）、S 系列（§5）、**多方块规范（§8，原 10：部件/尺寸/材质分级/端口/故障）**、**读数仪器体系（§9，原 12：原则/清单/红石/矩阵/否决）**、**全方块注册清单（§7，唯一归宿）** |
-| [11-content-scope.md](11-content-scope.md) | **开发计划（M3+ 开工顺序唯一定义）**：内容量、基线缺口 G1–G7、U1–U12 依赖序 + C 并行轨道、排程/DoD/风险、**附录：U19 焓记账规格（原 13）** |
+| [11-content-scope.md](11-content-scope.md) | **开发计划（M3+ 开工顺序唯一定义）**：内容量、基线缺口 G1–G7、U1–U12 依赖序 + C 并行轨道、排程/DoD/风险、**附录：U20 焓记账规格（原 13，需按 U19 引擎切换重设计）** |
 | [14-process-facility-map.md](14-process-facility-map.md) | **内容与设施映射（唯一定义）**：物质目录概览（§0.6，原 08）+ 52 条反应目录（§1，原 07）+ 30 条工艺线（16 配方驱动 + 14 引擎涌现）+ 工艺×设施矩阵 + 特有工艺取舍论证 + 42 物种收编清单 |
 
 ### 归档（plans/archive/，冻结不再维护）
@@ -83,7 +83,7 @@
 | [09-resources-worldgen.md](archive/09-resources-worldgen.md) | 矿物规格（C3 轨道开工时解冻） |
 | [10-multiblock.md](archive/10-multiblock.md) | 规格迁 04 §8；成型实现=vessel/ 基类（U3） |
 | [12-instruments.md](archive/12-instruments.md) | 全文迁 04 §9（唯一定义随之转移） |
-| [13-enthalpy-ledger.md](archive/13-enthalpy-ledger.md) | 全文迁 11 附录（U19 规格） |
+| [13-enthalpy-ledger.md](archive/13-enthalpy-ledger.md) | 全文迁 11 附录（现编号 U20） |
 
 > 编号空缺为归档或合并所致，**编号不复用**，避免破坏历史引用（07→14、06→03 §13、08→14 §0.6、10→04 §8、12→04 §9、13→11 附录）。
 

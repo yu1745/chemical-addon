@@ -14,7 +14,7 @@
 
 **归并规则**（与既有架构决策严格对齐，03 §8.1「自发的归规则引擎、红氧/热解/电化学归配方层」）：
 
-1. **Track C 的 YES 步 → 引擎涌现层**（mod 侧=RulesEngine v2 equilibria 条目，未来内核=chem-engine）：**零配方、零新设施**，只需物种 JSON/平衡条目数据收编（C1 轨道）。Track C 的「已实现」注记指 chem-engine 内核验收通过；mod 侧收编进度=U13–U18 已落地的部分。
+1. **Track C 的 YES 步 → 引擎涌现层**（mod 侧运行时=IPhreeqc 内核（U19 切换，03 §8.3），旧 RulesEngine 已退役；YES/NO 判定即内核能力判定，切换后依然成立）：**零配方、零新设施**，只需物种 JSON/策展表数据收编（C1 轨道）。Track C 的「已实现」注记指 chem-engine 内核验收通过；mod 侧收编进度=U13–U18 已落地的部分。
 2. **Track C 的 NO/PARTIAL 步 → 二分**：气体合成/红氧/电解/煅烧类 → mod **配方层**（chemical_reaction 白名单）+ 对应设施（竖窑 U4/吸收塔 U6/电解槽 U10/高压釜 U11）；冶金（炼铁/火法炼铜）、有机（电石-乙炔）、KMnO₄/KCN → **出圈不做**（D15 无机主线 + 原版/Create 已覆盖炼铁）。
 3. **§1 的 52 条 ≈ Track C 的 NO 中非出圈部分 + 物理过程**——两边互相印证：每条驱动反应在 Track C 里对应一个 NO/PARTIAL 步；Track C 每个引擎步在 §1 里根本不需要登记（涌现）。
 4. **Track C 契约升格为 mod 内容完备性契约**：「除 thermal_oil 外所有插件物种必须有生产链覆盖」（`IndustrialProcessBlueprintTest` 校验）——C1/C2 轨道的完成定义以此为准。
@@ -183,7 +183,7 @@
 | P25 | 海水提镁 | MagnesiumChloride/MagnesiumHydroxide | Mg(OH)₂ 沉淀（石灰乳/烧碱两路）+酸溶回 MgCl₂，全 YES | 釜+沉淀池；U15 MgCl₂ 曲线已在 |
 | P26 | 磷肥（过磷酸钙） | Superphosphate | 磷灰石+硫酸→磷酸二氢钙+石膏（酸溶+质子化+沉淀三联），YES | 釜；磷矿已在 09 目录（冻结）；磷酸/磷灰石物种待收编 |
 | P27 | KCl/光卤石分离 | PotassiumChloride | 光卤石溶解度差分离+KCl 结晶，YES | ✅ U15 苦卤盐（NaCl+MgCl₂）数据已在 |
-| P28 | KSCN 分析试剂 | PotassiumThiocyanate | NH₄SCN+KOH 交换法，YES | 釜；U17 试纸族（KSCN 检 Fe³⁺）的**消耗品自产闭环** |
+| P28 | KSCN 分析试剂 | PotassiumThiocyanate | NH₄SCN+KOH 交换法，YES | 釜；U17 试纸族（KSCN 检 Fe³⁺）的**消耗品自产闭环**（试纸保底走 loot，自产为后期通道，04 §9.2.2） |
 | P29 | 漂白粉 | BleachingPowder | 2Cl₂+2Ca(OH)₂→Ca(ClO)₂+CaCl₂（Cl₂ 碱性歧化），YES | 釜（C2 漂白液的钙基变体，母液场景） |
 | P30 | 小苏打碳化法 | SodiumBicarbonate | 饱和纯碱液通 CO₂ 碳化，YES | 釜（D2 的孪生路线，纯碱→小苏打往返） |
 
@@ -257,7 +257,7 @@
 
 - **分离**：过滤机（含置换洗涤）+ 沉淀池（含再浆洗涤）+ M08 结晶器（蒸发/冷却/终点/投种/馏出回收）
 - **仪表**：S02 温度/S03 压力/S04 波美/S16 pH/S17 浊度/S18 电导 + 试纸族 7 件 + 护目镜 HUD/speciation
-- **引擎**：规则引擎 v2（沉淀/结晶/回溶/络合/弱电解质/动力学）+ 能量记账（放热/潜热/质量耦合）+ 晶粒投种 + 混合盐渣 + 互溶分相/分液口软管
+- **引擎**：IPhreeqc 内核（U19 切换，03 §8.3；沉淀/络合/红氧/介稳伪池全量）+ 旧 RulesEngine 退役回归锁 + 能量记账 + 晶粒投种 + 混合盐渣 + 互溶分相/分液口软管
 - **数据（chem-engine 已验证待收编）**：42 物种 + P17–P30 的平衡条目——**全部 C1 轨道，零方块成本**
 
 ## 5. 特有工艺逐个论证（做 / 简化 / 合并 / 砍）
