@@ -26,6 +26,7 @@ import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlock;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlockEntity;
 import com.yu1745.chemicaladdon.reactor.CrystallizerControllerBlock;
 import com.yu1745.chemicaladdon.reactor.CrystallizerControllerBlockEntity;
+import com.yu1745.chemicaladdon.reactor.MeteringInletBlockEntity;
 import com.yu1745.chemicaladdon.reactor.DecantHoseBlockEntity;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlockEntity;
 import com.yu1745.chemicaladdon.reactor.GasDistributorBlock;
@@ -4459,6 +4460,216 @@ public class ChemicalAddonGameTests {
 	 *  the structure-relative cell (hx, hy, hz) — any cell of floor, walls or roof
 	 *  (-1 = plain brick shell). Assembles it and returns the controller at
 	 *  (x0+2, 2, z0). Used to prove the B1 placement rule (roof-only part). */
+	// --------------------------------------------- construction package B4
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselB4InletBindsAndMetersThroughOutwardFace(GameTestHelper helper) {
+		ReactorControllerBlockEntity vessel = buildReactor5x5x5WithInletAt(helper, 0, 0, 1, 3, 0, Direction.SOUTH);
+		MeteringInletBlockEntity inlet = (MeteringInletBlockEntity) helper.getBlockEntity(new BlockPos(1, 3, 0));
+		helper.assertTrue(vessel.getBlockPos().equals(inlet.getMasterPos()),
+			"a preinstalled inlet must bind during first assembly");
+		StructureCapabilities snapshot = ((StructureAccess) vessel).getStructureCapabilities();
+		helper.assertTrue(snapshot.hasBoundPart(MeteringInletBlockEntity.PART_ID)
+				&& snapshot.hasPart(MeteringInletBlockEntity.PART_ID),
+			"a correctly installed inlet must be recorded as an installed part");
+		helper.assertTrue(snapshot.capabilities().size() == 2 && snapshot.has(ProcessCapability.MIXED_VOLUME)
+				&& snapshot.has(ProcessCapability.SEALED),
+			"the metering inlet must contribute its part id but no extra process capability");
+
+		// directionality: only the outward (NORTH) face is a fluid endpoint
+		helper.assertTrue(inlet.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH).isPresent(),
+			"the outward face must expose the metering inlet");
+		helper.assertFalse(inlet.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.SOUTH).isPresent(),
+			"the vessel-facing side must not expose a pipe endpoint");
+		helper.assertFalse(inlet.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.UP).isPresent(),
+			"an unmetered face must not proxy the raw vessel tank");
+
+		IFluidHandler endpoint = inlet.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH)
+			.orElseThrow(() -> new IllegalStateException());
+		// default dose is 1000 mB; a partial EXECUTE counts only what entered
+		helper.assertTrue(endpoint.fill(new FluidStack(Fluids.WATER, 600), FluidAction.EXECUTE) == 600,
+			"the inlet must admit liquid below the dose");
+		helper.assertTrue(inlet.getAdmittedMb() == 600 && vessel.getTank().getTotalAmount() == 600,
+			"the admitted counter must track actual EXECUTE fills into the tank");
+		inlet.refreshDiagnostic();
+		helper.assertTrue(inlet.getStatus() == MeteringInletBlockEntity.Status.METERING,
+			"a partially dosed batch must report METERING");
+		// SIMULATE reports the dose-limited remainder without counting it
+		helper.assertTrue(endpoint.fill(new FluidStack(Fluids.WATER, 900), FluidAction.SIMULATE) == 400,
+			"SIMULATE must be capped at the remaining dose");
+		helper.assertTrue(inlet.getAdmittedMb() == 600,
+			"SIMULATE must not change the admitted counter");
+		helper.assertTrue(endpoint.drain(100, FluidAction.EXECUTE).isEmpty(),
+			"the inlet must never drain");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselB4InletStopsAtDoseAndSignalsDone(GameTestHelper helper) {
+		ReactorControllerBlockEntity vessel = buildReactor5x5x5WithInletAt(helper, 0, 0, 1, 3, 0, Direction.SOUTH);
+		MeteringInletBlockEntity inlet = (MeteringInletBlockEntity) helper.getBlockEntity(new BlockPos(1, 3, 0));
+		IFluidHandler endpoint = inlet.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH)
+			.orElseThrow(() -> new IllegalStateException());
+		// an oversized offer is trimmed to exactly the configured dose
+		helper.assertTrue(endpoint.fill(new FluidStack(Fluids.WATER, 5000), FluidAction.EXECUTE) == 1000,
+			"an oversized fill must be trimmed to the 1000 mB dose");
+		helper.assertTrue(inlet.getAdmittedMb() == 1000 && vessel.getTank().getTotalAmount() == 1000,
+			"the batch must stop at the dose");
+		inlet.refreshDiagnostic();
+		helper.assertTrue(inlet.getStatus() == MeteringInletBlockEntity.Status.DONE,
+			"a completed batch must report DONE");
+		helper.assertTrue(inlet.doneSignal() == 15, "a DONE batch must emit strong redstone 15");
+		helper.assertTrue(inlet.analogSignal() == 15, "the comparator must read full scale when done");
+		// block-level redstone wiring (strong signal + comparator) — absolute pos
+		BlockPos abs = helper.absolutePos(new BlockPos(1, 3, 0));
+		helper.assertTrue(helper.getLevel().getBlockState(abs)
+			.getSignal(helper.getLevel(), abs, Direction.NORTH) == 15,
+			"the block state must emit the strong DONE signal");
+		helper.assertTrue(helper.getLevel().getBlockState(abs)
+			.getAnalogOutputSignal(helper.getLevel(), abs) == 15,
+			"the comparator output must be full when done");
+		helper.assertTrue(endpoint.fill(new FluidStack(Fluids.WATER, 100), FluidAction.EXECUTE) == 0,
+			"further fills must be blocked once the batch is DONE");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselB4InletResetAndDoseScrollReArmTheBatch(GameTestHelper helper) {
+		ReactorControllerBlockEntity vessel = buildReactor5x5x5WithInletAt(helper, 0, 0, 1, 3, 0, Direction.SOUTH);
+		MeteringInletBlockEntity inlet = (MeteringInletBlockEntity) helper.getBlockEntity(new BlockPos(1, 3, 0));
+		IFluidHandler endpoint = inlet.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH)
+			.orElseThrow(() -> new IllegalStateException());
+		// proportional comparator mid-batch: 500/1000 -> 7
+		endpoint.fill(new FluidStack(Fluids.WATER, 500), FluidAction.EXECUTE);
+		helper.assertTrue(inlet.analogSignal() == 7, "the comparator must scale admitted/dose (got " + inlet.analogSignal() + ")");
+		// the physical reset: empty-hand right click clears the counter
+		inlet.resetBatch();
+		helper.assertTrue(inlet.getAdmittedMb() == 0, "the reset must clear the admitted counter");
+		inlet.refreshDiagnostic();
+		helper.assertTrue(inlet.getStatus() == MeteringInletBlockEntity.Status.READY,
+			"a reset inlet must be READY again");
+		helper.assertTrue(inlet.doneSignal() == 0 && inlet.analogSignal() == 0,
+			"a reset inlet must stop signaling");
+		helper.assertTrue(endpoint.fill(new FluidStack(Fluids.WATER, 1200), FluidAction.EXECUTE) == 1000,
+			"a reset batch must accept a full dose again (tank holds it) ");
+		// scrolling the dose down re-limits the NEXT batch immediately
+		inlet.resetBatch();
+		inlet.setDoseSteps(2); // 200 mB
+		helper.assertTrue(inlet.getDoseMb() == 200, "the world-scroll dose must be reconfigurable");
+		helper.assertTrue(endpoint.fill(new FluidStack(Fluids.WATER, 1000), FluidAction.EXECUTE) == 200,
+			"a scrolled-down dose must trim the batch to 200 mB");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselB4InletRejectsGasAndDiagnosesCapacity(GameTestHelper helper) {
+		ReactorControllerBlockEntity vessel = buildReactor5x5x5WithInletAt(helper, 0, 0, 1, 3, 0, Direction.SOUTH);
+		MeteringInletBlockEntity inlet = (MeteringInletBlockEntity) helper.getBlockEntity(new BlockPos(1, 3, 0));
+		IFluidHandler endpoint = inlet.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH)
+			.orElseThrow(() -> new IllegalStateException());
+		// gases (lighter-than-air) never pass the liquid inlet
+		helper.assertTrue(endpoint.fill(new FluidStack(AllFluids.OXYGEN.get().getSource(), 100), FluidAction.EXECUTE) == 0,
+			"gas must never enter through the metering inlet");
+		helper.assertTrue(inlet.getStatus() == MeteringInletBlockEntity.Status.NON_LIQUID,
+			"a gas offer must diagnose NON_LIQUID");
+		helper.assertTrue(inlet.getAdmittedMb() == 0, "a rejected gas offer must not count");
+		// a full vessel reports NO_CAPACITY
+		vessel.getTank().fill(new FluidStack(Fluids.WATER,
+			vessel.getTank().getTankCapacity(0) - vessel.getTank().getTotalAmount()), FluidAction.EXECUTE);
+		helper.assertTrue(endpoint.fill(new FluidStack(Fluids.WATER, 100), FluidAction.EXECUTE) == 0,
+			"a full vessel must accept nothing");
+		helper.assertTrue(inlet.getStatus() == MeteringInletBlockEntity.Status.NO_CAPACITY,
+			"a full vessel must diagnose NO_CAPACITY");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselB4MisplacedInletStaysBoundAndDiagnosable(GameTestHelper helper) {
+		// FACING points out of the vessel: still a legal shell cell, never an endpoint
+		ReactorControllerBlockEntity vessel = buildReactor5x5x5WithInletAt(helper, 0, 0, 1, 3, 0, Direction.NORTH);
+		MeteringInletBlockEntity inlet = (MeteringInletBlockEntity) helper.getBlockEntity(new BlockPos(1, 3, 0));
+		helper.assertTrue(vessel.getBlockPos().equals(inlet.getMasterPos()),
+			"a misplaced inlet is still a legal bound shell cell");
+		inlet.refreshDiagnostic();
+		helper.assertTrue(inlet.getStatus() == MeteringInletBlockEntity.Status.MISPLACED,
+			"an outward-facing inlet must report MISPLACED");
+		for (Direction side : Direction.values()) {
+			helper.assertFalse(inlet.getCapability(ForgeCapabilities.FLUID_HANDLER, side).isPresent(),
+				"a misplaced inlet must publish no fluid endpoint (side " + side + ")");
+		}
+		StructureCapabilities snapshot = ((StructureAccess) vessel).getStructureCapabilities();
+		helper.assertTrue(snapshot.hasBoundPart(MeteringInletBlockEntity.PART_ID)
+				&& !snapshot.hasPart(MeteringInletBlockEntity.PART_ID),
+			"a misplaced inlet must remain bound but ineffective");
+		helper.assertTrue(inlet.doneSignal() == 0 && inlet.analogSignal() == 0,
+			"a misplaced inlet must emit no redstone");
+		// unbinding (controller broken) resets the diagnostic to UNBOUND — the
+		// controller sits at the structure-relative cell (2, 2, 0)
+		helper.setBlock(new BlockPos(2, 2, 0), Blocks.AIR.defaultBlockState());
+		inlet.refreshDiagnostic();
+		helper.assertTrue(inlet.getStatus() == MeteringInletBlockEntity.Status.UNBOUND,
+			"an unbound inlet must diagnose UNBOUND");
+		helper.assertTrue(inlet.analogSignal() == 0, "an unbound inlet must emit no comparator signal");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselB4InletStateSurvivesReloadAndRemovalRevokes(GameTestHelper helper) {
+		ReactorControllerBlockEntity vessel = buildReactor5x5x5WithInletAt(helper, 0, 0, 1, 3, 0, Direction.SOUTH);
+		MeteringInletBlockEntity inlet = (MeteringInletBlockEntity) helper.getBlockEntity(new BlockPos(1, 3, 0));
+		IFluidHandler endpoint = inlet.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH)
+			.orElseThrow(() -> new IllegalStateException());
+		inlet.setDoseSteps(5); // 500 mB
+		endpoint.fill(new FluidStack(Fluids.WATER, 300), FluidAction.EXECUTE);
+		CompoundTag saved = inlet.saveWithoutMetadata();
+		inlet.load(saved);
+		helper.assertTrue(inlet.getAdmittedMb() == 300 && inlet.getDoseMb() == 500,
+			"the admitted counter and the scrolled dose must survive a reload");
+		helper.assertTrue(endpoint.fill(new FluidStack(Fluids.WATER, 1000), FluidAction.EXECUTE) == 200,
+			"a reloaded inlet must still limit the batch to the remaining dose");
+		// removal revokes the endpoint and the part
+		helper.setBlock(new BlockPos(1, 3, 0), Blocks.AIR.defaultBlockState());
+		helper.assertFalse(inlet.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH).isPresent(),
+			"removing the inlet must revoke its external capability");
+		helper.assertFalse(((StructureAccess) vessel).getStructureCapabilities()
+			.hasPart(MeteringInletBlockEntity.PART_ID),
+			"removal must revoke the part id");
+		helper.succeed();
+	}
+
+	/** Builds a 5×5×5 sealed reactor with the B4 metering inlet replacing the
+	 *  brick at the structure-relative cell (ix, iy, iz), FACING set to
+	 *  {@code facing} (SOUTH on the near wall points into the vessel). */
+	private static ReactorControllerBlockEntity buildReactor5x5x5WithInletAt(GameTestHelper helper, int x0, int z0,
+		int ix, int iy, int iz, Direction facing) {
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		BlockState inlet = AllBlocks.METERING_INLET.get().defaultBlockState()
+			.setValue(BlockStateProperties.FACING, facing);
+		int localIx = ix - x0;
+		int localIz = iz - z0;
+		for (int x = 0; x <= 4; x++) {
+			for (int z = 0; z <= 4; z++) {
+				helper.setBlock(new BlockPos(x0 + x, 1, z0 + z), x == localIx && 1 == iy && z == localIz ? inlet : brick);
+				helper.setBlock(new BlockPos(x0 + x, 5, z0 + z), x == localIx && 5 == iy && z == localIz ? inlet : brick);
+			}
+		}
+		for (int y = 2; y <= 4; y++) {
+			for (int x = 0; x <= 4; x++) {
+				for (int z = 0; z <= 4; z++) {
+					if ((x == 0 || x == 4 || z == 0 || z == 4) && !(y == 2 && x == 2 && z == 0)) {
+						BlockState wall = x == localIx && y == iy && z == localIz ? inlet : brick;
+						helper.setBlock(new BlockPos(x0 + x, y, z0 + z), wall);
+					}
+				}
+			}
+		}
+		helper.setBlock(new BlockPos(x0 + 2, 2, z0), controller);
+		ReactorControllerBlockEntity be = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(x0 + 2, 2, z0));
+		helper.assertTrue(be.tryAssemble().ok(), "5x5x5 B4 reactor should assemble");
+		return be;
+	}
+
 	private static ReactorControllerBlockEntity buildReactor5x5x5WithHeadAt(GameTestHelper helper, int x0, int z0,
 			int hx, int hy, int hz) {
 		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();

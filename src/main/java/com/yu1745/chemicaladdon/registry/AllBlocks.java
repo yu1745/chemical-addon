@@ -6,6 +6,7 @@ import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.client.connected.ConnectedModelBuilder;
 import com.yu1745.chemicaladdon.item.GaugeBlockItem;
 import com.yu1745.chemicaladdon.reactor.LiquidLevelGaugeBlock;
+import com.yu1745.chemicaladdon.reactor.MeteringInletBlock;
 import com.yu1745.chemicaladdon.reactor.BaumeGaugeBlock;
 import com.yu1745.chemicaladdon.reactor.BaumeGaugePanelBlock;
 import com.yu1745.chemicaladdon.reactor.LiquidLevelGaugePanelBlock;
@@ -439,6 +440,31 @@ public class AllBlocks {
 				.lang("Status Port")
 				.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(),
 					prov.models().cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
+				.simpleItem()
+				.register();
+
+	/** B4 directional batch-metered liquid inlet. FACING points into the vessel. */
+	public static final BlockEntry<MeteringInletBlock> METERING_INLET =
+			REGISTRATE.block("metering_inlet", MeteringInletBlock::new)
+				.properties(p -> p.mapColor(MapColor.METAL).strength(3.0f, 6.0f))
+				.lang("Metering Inlet")
+				.blockstate((ctx, prov) -> {
+					ModelFile model = prov.models().getBuilder(ctx.getName())
+						.parent(new ModelFile.UncheckedModelFile("minecraft:block/cube"))
+						.texture("down", prov.modLoc("block/metering_inlet_side"))
+						.texture("up", prov.modLoc("block/metering_inlet_side"))
+						.texture("north", prov.modLoc("block/metering_inlet_back"))
+						.texture("south", prov.modLoc("block/metering_inlet_front"))
+						.texture("east", prov.modLoc("block/metering_inlet_side"))
+						.texture("west", prov.modLoc("block/metering_inlet_side"));
+					prov.getVariantBuilder(ctx.get()).forAllStates(state -> {
+						Direction facing = state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING);
+						int x = facing == Direction.UP ? 270 : facing == Direction.DOWN ? 90 : 0;
+						int y = facing.getAxis().isVertical() ? 0 : (int) facing.toYRot();
+						return net.minecraftforge.client.model.generators.ConfiguredModel.builder()
+							.modelFile(model).rotationX(x).rotationY(y).build();
+					});
+				})
 				.simpleItem()
 				.register();
 

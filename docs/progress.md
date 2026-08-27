@@ -28,8 +28,9 @@
 | **施工包 B3** | 催化托盘：侧壁壳格、朝内放置、单槽催化剂库存（catalysts 标签）、仅外侧面 ITEM_HANDLER、世界存取无 GUI、catalyst_tray 部件 + CATALYST_BED 快照、每件 100 批成功后才消耗、多托盘确定性首选、诊断+护目镜 | ✅ 代码完成（B3 9/9 过；整套 149 跑中既有 pH 测试基线失败，见下） |
 | M3+ 其余 | FE 接线 / 竖窑 / 索尔维 / 连续流 / 高压 / 零排放 | ⏳ 未开始（顺序见 `plans/10-development.md`） |
 | **B 状态口（墙体）** | 固定功能状态口：vessel_walls 壳块、IMasterBound 绑定、仅经 ProcessReadings 读 master、右键状态播报、护目镜状态+进度、固定红石编码（未绑定沉默；REACTING 强 0/比较器 4；非运行强 15 + NOT_ASSEMBLED=0/TEMPERATURE=8/OUTPUT_FULL=12/NO_RECIPE=15）、仅编码态变化才更新邻居 | ✅ 代码完成（见下节） |
+| **B4 计量投料口** | 朝内侧壁液体入口、外侧唯一 FLUID_HANDLER、世界滚轮剂量 100–16000mB、实收截断、空手重置、DONE 红石/比较器 | ✅ 代码完成（合并后待总回归） |
 
-**自动化测试**：`./gradlew test` → **JUnit 385 用例，0 失败，12 skip**（B3 新增 `CatalystUsageTest` 6）。`./gradlew runGameTestServer` → **153 测试全部通过（148 必测基线 + S11 液位计 2 + B 状态口 3）**（`phGaugeReadsTitrationEndpoint` 仍保持注释禁用，见 B3 节）。S11 轮实跑：150/150 全绿、`build -x test` 通过。
+**自动化测试**：合并后总回归：`./gradlew test` → **JUnit 389 用例，0 失败，12 skip**；`./gradlew runGameTestServer` → **159/159 必测通过**（148 基线 + S11 2 + 状态口 3 + 计量投料口 6；`phGaugeReadsTitrationEndpoint` 保持注释禁用）。
 
 ## B 状态口（墙体单形态，2026-08）
 
@@ -41,6 +42,14 @@
 - **文件**：`reactor/StatusPortBlock`（继承 ChemicalBrickBlock：放置自动重装配、拆除通知 master）+ `reactor/StatusPortBlockEntity`（继承 ChemicalBrickBlockEntity，实现 IHaveGoggleInformation）；注册 AllBlocks/AllBlockEntities，`vessel_walls.json` 入墙；资源经 `tools/gen_species.py`（状态窗+四级指示灯贴图、双语 lang 4 键）+ `runData`（cubeAll blockstate/item model/loot）。
 - **GameTest +3（153/153 全绿）**：`vesselStatusPortBindsUnboundSilenceAndMapping`（装配绑定、杂散未绑定完全沉默、固定映射纯函数锁定、空釜 NO_RECIPE 强 15/比较器 15）；`vesselStatusPortReactingIsNotCompletion`（硫燃烧批 REACTING 强 0/比较器 4，批完成离开 REACTING 后强 15）；`vesselStatusPortTeardownAndRebind`（拆壁砖脱绑沉默、修复重装配重绑恢复信号）。首轮 3 测全败揭了两个测试夹具问题：状态名大小写（master 发布大写枚举名）与相对/绝对坐标（getSignal 需 absolutePos），修复后全绿；未改动产品逻辑。
 - **遗留**：客户端实机验收（贴图/护目镜/右键播报）未做。
+
+## B4 计量投料口（2026-08）
+
+`metering_inlet` 是侧壁壳方块（FACING 朝内），仅外侧暴露 Forge 流体入口；只收液体、气体必须走 B2 分布器。世界内滚轮设置单批 **100–16000 mB**（步进 100、默认 1000），只对 EXECUTE 实收计数并在达量时截断；空手右键物理重置。
+
+- **自动化**：DONE 输出强红石 15，比较器按 admitted/dose 比例 0–15；无效/未绑定为 0。稳定部件 id `chemicaladdon:metering_inlet`，暂不附加过程能力。
+- **诊断**：READY/METERING/DONE/unbound/misplaced/no-capacity/non-liquid，经护目镜和右键显示；无全结构 tick 扫描，完整 NBT 更新包防客户端状态丢失。
+- **测试**：独立 worktree 已新增 4 JUnit 与 6 GameTest，JUnit 389/0 failed/12 skip、GameTest 156/156；合并后须与状态口做一次总回归。
 
 ## S11 液位计（双形态，2026-08）
 

@@ -126,6 +126,7 @@ BLOCKS = [
     ("gas_distributor",    "气体分布器", "Gas Distributor",  0x68747A),
     ("catalyst_tray",      "催化托盘", "Catalyst Tray",    0x6E5A46),
     ("status_port",        "状态口",   "Status Port",      0x76695E),
+    ("metering_inlet",     "计量投料口", "Metering Inlet",   0x5E6E8A),
 ]
 
 # Consumable test papers / qualitative reagents (U17, plans/12 §2.2): one-time
@@ -765,6 +766,34 @@ def make_catalyst_tray_textures(rgb):
     return front, back
 
 
+def make_metering_inlet_textures(rgb):
+    """B4 inlet face set: internal nozzle, external valved coupling."""
+    r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
+    front = []
+    back = []
+    for y in range(16):
+        front_row = []
+        back_row = []
+        for x in range(16):
+            if (4 <= x <= 11) and (5 <= y <= 10):
+                front_row += [22, 26, 32, 255] if (6 <= x <= 9 and 7 <= y <= 8) else [150, 158, 168, 255]
+            else:
+                front_row += [r, g, b, 255]
+            dx, dy = x - 7.5, y - 7.5
+            d2 = dx * dx + dy * dy
+            if d2 <= 20:
+                back_row += [20, 23, 27, 255] if d2 <= 9 else [176, 183, 190, 255]
+            elif y in (3, 4) and x in (3, 4, 11, 12):
+                back_row += [235, 200, 60, 255]
+            elif y in (12, 13) and 4 <= x <= 11 and (x - 4) % 2 == 0:
+                back_row += [240, 240, 240, 255]
+            else:
+                back_row += [r, g, b, 255]
+        front.append(front_row)
+        back.append(back_row)
+    return front, back
+
+
 def make_coil_texture(rgb):
     """Decant hose block placeholder: concentric coil rings of hose on a dark
     mounting plate (the visible block is mostly the BE renderer's 3D coil;
@@ -955,6 +984,10 @@ def gen_block_textures():
     write_png(os.path.join(d, "catalyst_tray_side.png"), make_panel_texture(0x6E5A46))
     # B status port: shell casing with status window + step indicator
     write_png(os.path.join(d, "status_port.png"), make_status_port_texture(0x76695E))
+    inlet_front, inlet_back = make_metering_inlet_textures(0x5E6E8A)
+    write_png(os.path.join(d, "metering_inlet_front.png"), inlet_front)
+    write_png(os.path.join(d, "metering_inlet_back.png"), inlet_back)
+    write_png(os.path.join(d, "metering_inlet_side.png"), make_panel_texture(0x5E6E8A))
 
 
 # Extra lang keys added by hand (GUIs, goggles, diagnostics, assemble messages).
@@ -1016,6 +1049,16 @@ EXTRA_LANG_ZH = {
     "goggles.chemicaladdon.status_port_progress": "进度：%s%%",
     "message.chemicaladdon.status_port": "状态口：%s",
     "status_port.chemicaladdon.unbound": "未连接反应釜",
+    "goggles.chemicaladdon.metering_inlet": "计量投料口",
+    "goggles.chemicaladdon.metering_inlet.progress": "本批：%s/%s mB（余 %s mB）",
+    "metering_inlet.chemicaladdon.dose": "投料量",
+    "metering_inlet.chemicaladdon.status.unbound": "未绑定反应釜",
+    "metering_inlet.chemicaladdon.status.misplaced": "位置或朝向错误（需侧壁、朝内）",
+    "metering_inlet.chemicaladdon.status.non_liquid": "仅接受液体流体（气体走分布器）",
+    "metering_inlet.chemicaladdon.status.done": "本批已达投料量",
+    "metering_inlet.chemicaladdon.status.no_capacity": "反应釜无容量",
+    "metering_inlet.chemicaladdon.status.metering": "计量投料中",
+    "metering_inlet.chemicaladdon.status.ready": "待投料（空手右键重置批次）"
     "goggles.chemicaladdon.crystallizer_condensate": "馏出水量：%s mB",
     "goggles.chemicaladdon.crystallizer_state": "状态：",
     "goggles.chemicaladdon.crystallizer_endpoint": "已到终点（停热）",
@@ -1139,6 +1182,16 @@ EXTRA_LANG_EN = {
     "goggles.chemicaladdon.status_port_progress": "Progress: %s%%",
     "message.chemicaladdon.status_port": "Status port: %s",
     "status_port.chemicaladdon.unbound": "Not attached to a reactor",
+    "goggles.chemicaladdon.metering_inlet": "Metering Inlet",
+    "goggles.chemicaladdon.metering_inlet.progress": "Batch: %s/%s mB (%s mB left)",
+    "metering_inlet.chemicaladdon.dose": "Batch Dose",
+    "metering_inlet.chemicaladdon.status.unbound": "Not bound to a vessel",
+    "metering_inlet.chemicaladdon.status.misplaced": "Wrong position or facing (side wall, inward)",
+    "metering_inlet.chemicaladdon.status.non_liquid": "Liquids only (gases go to the distributor)",
+    "metering_inlet.chemicaladdon.status.done": "Batch dose reached",
+    "metering_inlet.chemicaladdon.status.no_capacity": "Vessel has no capacity",
+    "metering_inlet.chemicaladdon.status.metering": "Metering batch",
+    "metering_inlet.chemicaladdon.status.ready": "Ready (empty-hand click resets)"
     "goggles.chemicaladdon.crystallizer_condensate": "Distillate: %s mB",
     "goggles.chemicaladdon.crystallizer_state": "Status:",
     "goggles.chemicaladdon.crystallizer_endpoint": "endpoint reached (heat cut)",

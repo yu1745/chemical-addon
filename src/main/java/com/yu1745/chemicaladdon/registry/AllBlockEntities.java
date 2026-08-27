@@ -23,6 +23,7 @@ import com.yu1745.chemicaladdon.reactor.StatusPortBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ThermometerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ThermometerPanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.LiquidLevelGaugeBlockEntity;
+import com.yu1745.chemicaladdon.reactor.MeteringInletBlockEntity;
 import com.yu1745.chemicaladdon.reactor.LiquidLevelGaugePanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.TurbidityGaugeBlockEntity;
 import com.yu1745.chemicaladdon.reactor.TurbidityGaugePanelBlockEntity;
@@ -164,6 +165,11 @@ public class AllBlockEntities {
 	public static final RegistryObject<BlockEntityType<StatusPortBlockEntity>> STATUS_PORT =
 			REGISTER.register("status_port",
 				() -> BlockEntityType.Builder.of(StatusPortBlockEntity::new, AllBlocks.STATUS_PORT.get())
+					.build(null));
+
+	public static final RegistryObject<BlockEntityType<MeteringInletBlockEntity>> METERING_INLET =
+			REGISTER.register("metering_inlet",
+				() -> BlockEntityType.Builder.of(MeteringInletBlockEntity::new, AllBlocks.METERING_INLET.get())
 					.build(null));
 
 	public static void register(IEventBus modEventBus) {

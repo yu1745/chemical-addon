@@ -1,0 +1,11 @@
+{
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "down": "chemicaladdon:block/metering_inlet_side",
+    "east": "chemicaladdon:block/metering_inlet_side",
+    "north": "chemicaladdon:block/metering_inlet_back",
+    "south": "chemicaladdon:block/metering_inlet_front",
+    "up": "chemicaladdon:block/metering_inlet_side",
+    "west": "chemicaladdon:block/metering_inlet_side"
+  }
+}

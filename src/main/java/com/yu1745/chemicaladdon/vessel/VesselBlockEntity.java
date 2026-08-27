@@ -1063,6 +1063,15 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 	}
 
 	/**
+	 * B4 placement gate: a metering inlet is the liquid counterpart of the
+	 * catalyst tray — a side-wall shell cell with FACING strictly into the
+	 * hollow interior (floor/roof/outward/vertical facings fail).
+	 */
+	public boolean isMeteringInletPosition(BlockPos pos, Direction facing) {
+		return isCatalystTrayPosition(pos, facing);
+	}
+
+	/**
 	 * Recorded positions of one installed shell part id, in deterministic
 	 * assembly order (B3: charging the first tray when several are installed).
 	 * Reads the recorded bookkeeping — never a whole-structure scan.
