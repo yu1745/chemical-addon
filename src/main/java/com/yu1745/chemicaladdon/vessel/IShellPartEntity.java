@@ -51,4 +51,14 @@ public interface IShellPartEntity {
 	default Set<ProcessCapability> effectiveCapabilities() {
 		return Set.of();
 	}
+
+	/**
+	 * A recipe batch this part gated has completed SUCCESSFULLY (B3 catalyst
+	 * ledger). Returns true when this part absorbed the charge — e.g. the
+	 * catalyst tray counts one batch against its front item and consumes it at
+	 * the configured lifetime. Non-consuming parts return false.
+	 */
+	default boolean recordBatchCompletion() {
+		return false;
+	}
 }

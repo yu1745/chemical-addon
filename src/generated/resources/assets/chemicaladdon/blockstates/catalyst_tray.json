@@ -1,0 +1,27 @@
+{
+  "variants": {
+    "facing=down": {
+      "model": "chemicaladdon:block/catalyst_tray",
+      "x": 90
+    },
+    "facing=east": {
+      "model": "chemicaladdon:block/catalyst_tray",
+      "y": 270
+    },
+    "facing=north": {
+      "model": "chemicaladdon:block/catalyst_tray",
+      "y": 180
+    },
+    "facing=south": {
+      "model": "chemicaladdon:block/catalyst_tray"
+    },
+    "facing=up": {
+      "model": "chemicaladdon:block/catalyst_tray",
+      "x": 270
+    },
+    "facing=west": {
+      "model": "chemicaladdon:block/catalyst_tray",
+      "y": 90
+    }
+  }
+}

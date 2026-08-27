@@ -92,5 +92,12 @@
   "gas_distributor.chemicaladdon.status.non_gas": "Gas fluids only",
   "gas_distributor.chemicaladdon.status.no_capacity": "Vessel has no capacity",
   "gas_distributor.chemicaladdon.status.rate_limited": "Rate limit reached: 250 mB/10 ticks",
-  "gas_distributor.chemicaladdon.status.accepting": "Accepting gas"
+  "gas_distributor.chemicaladdon.status.accepting": "Accepting gas",
+  "goggles.chemicaladdon.catalyst_tray": "Catalyst Tray",
+  "goggles.chemicaladdon.catalyst_tray.charge": "Catalyst: %s x%s (%s batches left)",
+  "goggles.chemicaladdon.catalyst_tray.empty": "Catalyst slot empty",
+  "catalyst_tray.chemicaladdon.status.unbound": "Not bound to a vessel",
+  "catalyst_tray.chemicaladdon.status.wrong_position_or_facing": "Wrong position or facing (side wall, inward)",
+  "catalyst_tray.chemicaladdon.status.empty": "No catalyst loaded",
+  "catalyst_tray.chemicaladdon.status.active": "Catalyst bed active"
 }

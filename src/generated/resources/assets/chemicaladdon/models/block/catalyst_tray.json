@@ -1,0 +1,11 @@
+{
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "down": "chemicaladdon:block/catalyst_tray_side",
+    "east": "chemicaladdon:block/catalyst_tray_side",
+    "north": "chemicaladdon:block/catalyst_tray_back",
+    "south": "chemicaladdon:block/catalyst_tray_front",
+    "up": "chemicaladdon:block/catalyst_tray_side",
+    "west": "chemicaladdon:block/catalyst_tray_side"
+  }
+}

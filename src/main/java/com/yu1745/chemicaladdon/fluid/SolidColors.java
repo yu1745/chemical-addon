@@ -37,6 +37,7 @@ public final class SolidColors {
 		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "magnesium_chloride"), 0xFFE8E8F0);
 		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "potassium_alum"), 0xFFF0F0F8);
 		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "filter_cake"), 0xFF908878);
+		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "vanadium_pentoxide"), 0xFFC8963C);
 	}
 
 	/** @return the solid's ARGB colour, or -1 (white) if unknown. */

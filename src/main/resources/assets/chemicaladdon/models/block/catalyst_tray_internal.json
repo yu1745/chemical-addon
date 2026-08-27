@@ -1,0 +1,42 @@
+{
+  "textures": {
+    "metal": "chemicaladdon:block/catalyst_tray_side",
+    "bed": "chemicaladdon:block/catalyst_tray_front"
+  },
+  "elements": [
+    {
+      "from": [2, 5, 8],
+      "to": [14, 7, 28],
+      "faces": {
+        "down": { "texture": "#metal" },
+        "up": { "texture": "#bed" },
+        "north": { "texture": "#metal" },
+        "south": { "texture": "#metal" },
+        "west": { "texture": "#metal" },
+        "east": { "texture": "#metal" }
+      }
+    },
+    {
+      "from": [1, 7, 8],
+      "to": [3, 10, 28],
+      "faces": {
+        "up": { "texture": "#metal" },
+        "north": { "texture": "#metal" },
+        "south": { "texture": "#metal" },
+        "west": { "texture": "#metal" },
+        "east": { "texture": "#metal" }
+      }
+    },
+    {
+      "from": [13, 7, 8],
+      "to": [15, 10, 28],
+      "faces": {
+        "up": { "texture": "#metal" },
+        "north": { "texture": "#metal" },
+        "south": { "texture": "#metal" },
+        "west": { "texture": "#metal" },
+        "east": { "texture": "#metal" }
+      }
+    }
+  ]
+}

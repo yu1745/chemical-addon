@@ -1025,6 +1025,72 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 		return false;
 	}
 
+	/**
+	 * B3 placement gate: a catalyst tray may occupy a side-wall shell cell with
+	 * its bed FACING strictly into the hollow interior. Floor, roof and
+	 * outward/vertical facings intentionally fail this test.
+	 */
+	public boolean isCatalystTrayPosition(BlockPos pos, Direction facing) {
+		if (!assembled || inward == null || pos == null || facing == null || pos.equals(worldPosition)
+			|| facing.getAxis().isVertical()) {
+			return false;
+		}
+		Direction side = inward.getAxis() == Direction.Axis.X ? Direction.NORTH : Direction.EAST;
+		int dx = pos.getX() - worldPosition.getX();
+		int dz = pos.getZ() - worldPosition.getZ();
+		int s = dx * side.getStepX() + dz * side.getStepZ();
+		int d = dx * inward.getStepX() + dz * inward.getStepZ();
+		int half = (size - 1) / 2;
+		int sStart = -half;
+		int sEnd = sStart + size - 1;
+		if (s < sStart || s > sEnd || d < 0 || d >= size) {
+			return false;
+		}
+		int y = pos.getY() - worldPosition.getY();
+		if (y < -ringLayer || y > height - 1 - ringLayer) {
+			return false; // excludes the floor and the roof plane — wall rings only
+		}
+		if (s == sStart && facing == side) {
+			return true;
+		}
+		if (s == sEnd && facing == side.getOpposite()) {
+			return true;
+		}
+		if (d == 0 && facing == inward) {
+			return true;
+		}
+		return d == size - 1 && facing == inward.getOpposite();
+	}
+
+	/**
+	 * Recorded positions of one installed shell part id, in deterministic
+	 * assembly order (B3: charging the first tray when several are installed).
+	 * Reads the recorded bookkeeping — never a whole-structure scan.
+	 */
+	public List<BlockPos> getShellPartPositions(ResourceLocation partId) {
+		ensureShellPartsScanned();
+		return List.copyOf(shellParts.getOrDefault(partId, List.of()));
+	}
+
+	/**
+	 * B3 catalyst ledger: one catalyst-required recipe batch completed
+	 * successfully. Charges the FIRST effective part with that id in
+	 * deterministic assembly order; returns false when no effective part
+	 * carried the charge.
+	 */
+	public boolean chargePartBatch(ResourceLocation partId) {
+		if (level == null) {
+			return false;
+		}
+		for (BlockPos pos : getShellPartPositions(partId)) {
+			if (level.getBlockEntity(pos) instanceof IShellPartEntity part
+				&& part.partId().equals(partId) && part.isPartEffective() && part.recordBatchCompletion()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	public ReactorTank getTank() {
 		return tank;
 	}

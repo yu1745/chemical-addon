@@ -96,6 +96,17 @@ public class GasDistributorBlockEntity extends BlockEntity implements IMasterBou
 	}
 
 	@Override
+	public CompoundTag getUpdateTag() {
+		return saveWithoutMetadata(); // master binding, status, rate window
+	}
+
+	@Nullable
+	@Override
+	public ClientboundBlockEntityDataPacket getUpdatePacket() {
+		return ClientboundBlockEntityDataPacket.create(this);
+	}
+
+	@Override
 	public void setMaster(@Nullable BlockPos masterPos) {
 		this.masterPos = masterPos;
 		setChanged();

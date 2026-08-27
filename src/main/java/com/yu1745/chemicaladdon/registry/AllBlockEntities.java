@@ -4,6 +4,7 @@ import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.reactor.BaumeGaugeBlockEntity;
 import com.yu1745.chemicaladdon.reactor.BaumeGaugePanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlockEntity;
+import com.yu1745.chemicaladdon.reactor.CatalystTrayBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ConductivityGaugeBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ConductivityGaugePanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.CrystallizerControllerBlockEntity;
@@ -140,6 +141,11 @@ public class AllBlockEntities {
 	public static final RegistryObject<BlockEntityType<StirringHeadBlockEntity>> STIRRING_HEAD =
 			REGISTER.register("stirring_head",
 				() -> BlockEntityType.Builder.of(StirringHeadBlockEntity::new, AllBlocks.STIRRING_HEAD.get())
+					.build(null));
+
+	public static final RegistryObject<BlockEntityType<CatalystTrayBlockEntity>> CATALYST_TRAY =
+			REGISTER.register("catalyst_tray",
+				() -> BlockEntityType.Builder.of(CatalystTrayBlockEntity::new, AllBlocks.CATALYST_TRAY.get())
 					.build(null));
 
 	public static void register(IEventBus modEventBus) {

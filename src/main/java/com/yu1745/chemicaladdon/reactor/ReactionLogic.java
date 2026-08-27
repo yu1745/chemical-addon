@@ -248,6 +248,12 @@ final class ReactionLogic {
 		// of reaction heat warms a full big vessel by single digits, the same
 		// batch in a nearly-empty one flashes hot — concentrated dilution /
 		// neutralisation runaway becomes emergent instead of a flat constant.
+		// B3 catalyst ledger: a successful catalyst-required batch charges the
+		// FIRST effective tray in deterministic assembly order; consumption
+		// happens here — after the batch truly completed — never mid-progress.
+		if (CatalystTrayBlockEntity.recipeRequiresCatalyst(recipe)) {
+			reactor.chargePartBatch(CatalystTrayBlockEntity.PART_ID);
+		}
 		if (recipe.getDeltaHeat() != 0) {
 			tank.collapseIfNeeded();
 			long totalUnits = 0;

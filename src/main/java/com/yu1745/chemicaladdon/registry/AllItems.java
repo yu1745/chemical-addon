@@ -114,6 +114,10 @@ public class AllItems {
 		REGISTRATE.item("filter_cake", Item::new)
 			.lang("Filter Cake")
 			.register();
+	public static final ItemEntry<Item> VANADIUM_PENTOXIDE =
+		REGISTRATE.item("vanadium_pentoxide", Item::new)
+			.lang("Vanadium Pentoxide Catalyst")
+			.register();
 	public static final ItemEntry<Item> ROCK_SALT_GRAIN =
 		REGISTRATE.item("rock_salt_grain", Item::new)
 			.lang("Rock Salt Grains")

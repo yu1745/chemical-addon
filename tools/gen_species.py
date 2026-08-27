@@ -79,6 +79,8 @@ SOLIDS = [
     ("magnesium_chloride",     "氯化镁", "Magnesium Chloride", 0xE8E8F0),
     ("potassium_alum",         "钾明矾", "Potassium Alum",  0xF0F0F8),
     ("filter_cake",            "滤渣",   "Filter Cake",     0x908878),
+    # B3 catalyst: contact-process vanadium catalyst carrier item (catalysts item tag)
+    ("vanadium_pentoxide",      "五氧化二钒催化剂", "Vanadium Pentoxide Catalyst", 0xC8963C),
 ]
 
 # Crystallisable solids that get a "grain" item variant (U15, plans/03 §5): a grain
@@ -120,6 +122,7 @@ BLOCKS = [
     ("crystallizer_controller", "终点结晶器", "Crystallizer Controller", 0x6E7A6E),
     ("stirring_head",      "搅拌头", "Stirring Head",      0x707880),
     ("gas_distributor",    "气体分布器", "Gas Distributor",  0x68747A),
+    ("catalyst_tray",      "催化托盘", "Catalyst Tray",    0x6E5A46),
 ]
 
 # Consumable test papers / qualitative reagents (U17, plans/12 §2.2): one-time
@@ -705,6 +708,37 @@ def make_gas_distributor_textures(rgb):
     return front, back, side
 
 
+def make_catalyst_tray_textures(rgb):
+    """B3 catalyst tray face set (see gen_block_textures for orientation)."""
+    r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
+    front = []
+    back = []
+    for y in range(16):
+        front_row = []
+        back_row = []
+        for x in range(16):
+            # Internal face: a shallow grid tray — lattice bars every 4 px with
+            # amber catalyst grains sitting in the cells (deterministic pattern).
+            if (y % 4) == 3 or (x % 4) == 3:
+                front_row += [int(r * 0.6), int(g * 0.6), int(b * 0.6), 255]  # tray bars
+            elif (x * 7 + y * 13) % 5 < 2:
+                front_row += [200, 150, 60, 255]   # catalyst grains (vanadium amber)
+            else:
+                front_row += [34, 30, 26, 255]     # tray recess
+            # External face: flanged access plate with four bolt dots.
+            if x in (2, 13) and y in (2, 13):
+                back_row += [170, 178, 186, 255]   # bolts
+            elif x in (1, 14) or y in (1, 14):
+                back_row += [140, 128, 108, 255]   # flange
+            elif x in (4, 5, 10, 11) and y in (6, 7, 8, 9):
+                back_row += [48, 44, 40, 255]      # slot opening
+            else:
+                back_row += [r, g, b, 255]
+        front.append(front_row)
+        back.append(back_row)
+    return front, back
+
+
 def make_coil_texture(rgb):
     """Decant hose block placeholder: concentric coil rings of hose on a dark
     mounting plate (the visible block is mostly the BE renderer's 3D coil;
@@ -883,6 +917,13 @@ def gen_block_textures():
     write_png(os.path.join(d, "gas_distributor_front.png"), gas_front)
     write_png(os.path.join(d, "gas_distributor_back.png"), gas_back)
     write_png(os.path.join(d, "gas_distributor_side.png"), gas_side)
+    # B3 catalyst tray: FACING points into the vessel. The inward face is a
+    # perforated tray bed speckled with catalyst grains, the outward face is a
+    # flanged access plate (the sole item endpoint), the other four are casing.
+    tray_front, tray_back = make_catalyst_tray_textures(0x6E5A46)
+    write_png(os.path.join(d, "catalyst_tray_front.png"), tray_front)
+    write_png(os.path.join(d, "catalyst_tray_back.png"), tray_back)
+    write_png(os.path.join(d, "catalyst_tray_side.png"), make_panel_texture(0x6E5A46))
 
 
 # Extra lang keys added by hand (GUIs, goggles, diagnostics, assemble messages).
@@ -991,6 +1032,13 @@ EXTRA_LANG_ZH = {
     "gas_distributor.chemicaladdon.status.no_capacity": "反应釜无容量",
     "gas_distributor.chemicaladdon.status.rate_limited": "达到 250 mB/10 tick 限流",
     "gas_distributor.chemicaladdon.status.accepting": "可接受气体",
+    "goggles.chemicaladdon.catalyst_tray": "催化托盘",
+    "goggles.chemicaladdon.catalyst_tray.charge": "催化剂：%s ×%s（剩余 %s 批）",
+    "goggles.chemicaladdon.catalyst_tray.empty": "催化剂槽空",
+    "catalyst_tray.chemicaladdon.status.unbound": "未绑定反应釜",
+    "catalyst_tray.chemicaladdon.status.wrong_position_or_facing": "位置或朝向错误（需侧壁、朝内）",
+    "catalyst_tray.chemicaladdon.status.empty": "未装催化剂",
+    "catalyst_tray.chemicaladdon.status.active": "催化床工作中",
 }
 
 EXTRA_LANG_EN = {
@@ -1092,6 +1140,13 @@ EXTRA_LANG_EN = {
     "gas_distributor.chemicaladdon.status.no_capacity": "Vessel has no capacity",
     "gas_distributor.chemicaladdon.status.rate_limited": "Rate limit reached: 250 mB/10 ticks",
     "gas_distributor.chemicaladdon.status.accepting": "Accepting gas",
+    "goggles.chemicaladdon.catalyst_tray": "Catalyst Tray",
+    "goggles.chemicaladdon.catalyst_tray.charge": "Catalyst: %s x%s (%s batches left)",
+    "goggles.chemicaladdon.catalyst_tray.empty": "Catalyst slot empty",
+    "catalyst_tray.chemicaladdon.status.unbound": "Not bound to a vessel",
+    "catalyst_tray.chemicaladdon.status.wrong_position_or_facing": "Wrong position or facing (side wall, inward)",
+    "catalyst_tray.chemicaladdon.status.empty": "No catalyst loaded",
+    "catalyst_tray.chemicaladdon.status.active": "Catalyst bed active",
 }
 
 

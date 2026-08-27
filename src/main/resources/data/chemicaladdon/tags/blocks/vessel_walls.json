@@ -6,6 +6,7 @@
     "chemicaladdon:decant_port",
     "chemicaladdon:stirring_head",
     "chemicaladdon:gas_distributor",
+    "chemicaladdon:catalyst_tray",
     "chemicaladdon:thermometer",
     "chemicaladdon:pressure_gauge",
     "chemicaladdon:conductivity_gauge",

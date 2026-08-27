@@ -9,6 +9,7 @@ import com.yu1745.chemicaladdon.reactor.BaumeGaugeBlock;
 import com.yu1745.chemicaladdon.reactor.BaumeGaugePanelBlock;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlock;
 import com.yu1745.chemicaladdon.reactor.ChemicalGlassBlock;
+import com.yu1745.chemicaladdon.reactor.CatalystTrayBlock;
 import com.yu1745.chemicaladdon.reactor.ConductivityGaugeBlock;
 import com.yu1745.chemicaladdon.reactor.ConductivityGaugePanelBlock;
 import com.yu1745.chemicaladdon.reactor.CrystallizerControllerBlock;
@@ -362,6 +363,37 @@ public class AllBlocks {
 				.lang("Stirring Head")
 				.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(),
 					prov.models().getExistingFile(prov.modLoc("block/" + ctx.getName()))))
+				.simpleItem()
+				.register();
+
+	/** B3 catalyst tray (催化托盘): directional side-wall shell block; FACING points
+	 * into the vessel, the opposite face is the sole item endpoint (world
+	 * insert/extract, no GUI). */
+	public static final BlockEntry<CatalystTrayBlock> CATALYST_TRAY =
+			REGISTRATE.block("catalyst_tray", CatalystTrayBlock::new)
+				.properties(p -> p.mapColor(MapColor.METAL).strength(3.0f, 6.0f))
+				.lang("Catalyst Tray")
+				.blockstate((ctx, prov) -> {
+					ModelFile model = prov.models().getBuilder(ctx.getName())
+						.parent(new ModelFile.UncheckedModelFile("minecraft:block/cube"))
+						.texture("down", prov.modLoc("block/catalyst_tray_side"))
+						.texture("up", prov.modLoc("block/catalyst_tray_side"))
+						.texture("north", prov.modLoc("block/catalyst_tray_back"))
+						.texture("south", prov.modLoc("block/catalyst_tray_front"))
+						.texture("east", prov.modLoc("block/catalyst_tray_side"))
+						.texture("west", prov.modLoc("block/catalyst_tray_side"));
+					prov.getVariantBuilder(ctx.get()).forAllStates(state -> {
+						Direction facing = state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING);
+						// base model front is SOUTH (B2 convention)
+						int x = facing == Direction.UP ? 270 : facing == Direction.DOWN ? 90 : 0;
+						int y = facing.getAxis().isVertical() ? 0 : (int) facing.toYRot();
+							return net.minecraftforge.client.model.generators.ConfiguredModel.builder()
+								.modelFile(model)
+								.rotationX(x)
+								.rotationY(y)
+								.build();
+						});
+				})
 				.simpleItem()
 				.register();
 

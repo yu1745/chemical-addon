@@ -1,6 +1,6 @@
 # 开发进度
 
-> 最后更新：2026-08（M0–M2.5 + U1/U3 + U13–U19 + P6–P7.4；施工包 A 统一能力地基完成验收；**施工包 B1 搅拌头与 B2 气体分布器已完成：GameTest 140/140 + JUnit 379（12 skip）**；B1 视觉层与 B2 放置/绑定/方向贴图均已完成客户端实机验收；两条内核混沌哨兵测试因耗时暂时禁用，见施工包 A 节）
+> 最后更新：2026-08（M0–M2.5 + U1/U3 + U13–U19 + P6–P7.4；施工包 A 统一能力地基完成验收；**施工包 B1 搅拌头与 B2 气体分布器已完成；B3 催化托盘代码完成（GameTest 149 跑、B3 9/9 全过、既有 pH 测试两次同失败见 B3 节，判为基线/环境问题未修）+ JUnit 385（12 skip）**；B1 视觉层与 B2 放置/绑定/方向贴图均已完成客户端实机验收；两条内核混沌哨兵测试因耗时暂时禁用，见施工包 A 节）
 > 本文件只记录代码完成态与历史单元；未来设计与新开发路线见 `plans/README.md` 和 `plans/10-development.md`。旧计划编号不再定义未来里程碑。
 
 ## 状态总览
@@ -25,9 +25,10 @@
 | 施工包 A3 | 配方可选结构要求 | ✅ 完成（能力/温度/压力/部件/搅拌全部校验；B1 搅拌头与 B2 气体分布器均已接入真实结构快照门禁） |
 | **施工包 B1** | 搅拌头：Create 动能顶盖部件 + 结构快照部件/搅拌 + 配方强制 + 反应速率接线（顶盖位放置规则）+ 视觉层（动态轴/放大叶轮/液位跟随，纯客户端） | ✅ 完成（130/130） |
 | **施工包 B2** | 气体分布器：侧壁/底部壳格、浸没门禁、单侧 Forge 输入、气体限流、GAS_DISPERSED 快照与诊断 | ✅ 完成（140/140） |
+| **施工包 B3** | 催化托盘：侧壁壳格、朝内放置、单槽催化剂库存（catalysts 标签）、仅外侧面 ITEM_HANDLER、世界存取无 GUI、catalyst_tray 部件 + CATALYST_BED 快照、每件 100 批成功后才消耗、多托盘确定性首选、诊断+护目镜 | ✅ 代码完成（B3 9/9 过；整套 149 跑中既有 pH 测试基线失败，见下） |
 | M3+ 其余 | FE 接线 / 竖窑 / 索尔维 / 连续流 / 高压 / 零排放 | ⏳ 未开始（顺序见 `plans/10-development.md`） |
 
-**自动化测试**：`./gradlew runGameTestServer` → **140/140 必测通过**（0 optional；基线 130 + B2 10）；`./gradlew test` → **JUnit 379 用例，0 失败，12 skip**（新增 `GasDistributorMathTest` 4；两条混沌哨兵测试因耗时暂时禁用，见施工包 A 节）。
+**自动化测试**：`./gradlew test` → **JUnit 385 用例，0 失败，12 skip**（B3 新增 `CatalystUsageTest` 6）。`./gradlew runGameTestServer` → **149 测试运行（基线 140 + B3 9），B3 全部通过；但既有 `phGaugeReadsTitrationEndpoint` 连续两次完整运行同一失败（读 11 而非 ≥13）**——该测试与 B3 改动无接触（B3 未触碰 pH/EngineReadings/Mixture 路径），且 progress 早已记录其历史偶发；本次两次同失败判为当前基线/环境问题，未修改（遵循"不改无关代码"约束），待独立排查。
 
 ## P6 · 化学权威全量切换（2026-08-20，用户决策：旧引擎从未正常工作，直接切新引擎）
 
@@ -449,10 +450,24 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 - **资源/注册**：`AllBlocks`、`AllBlockEntities`、`vessel_walls` 标签、生成器 BLOCKS/纹理/语言、Registrate blockstate/item model/loot 已接入。外观使用独立的 `front/back/side` 纹理：FACING 面是多孔布气喷口，FACING.opposite 面是管道接头，其余四面是金属壳体；六向状态按 SOUTH 基准正确旋转，UP/DOWN 分别使用 X=270°/90°。
 - **测试/实机**：新增 `GasDistributorMathTest` 4 例；新增 10 个带 `@GameTestHolder(chemicaladdon)` 的 B2 GameTest，覆盖侧壁/底部有效安装、外侧 capability、SIMULATE、非气体、未浸没、气相守恒、PressureFeed 可见性、能力门禁、墙砖替换后绑定、首次成型、错误朝向绑定诊断、拆除重组和真实 `BlockPlaceContext` 四向/底部 `UP`。实测 `./gradlew runGameTestServer` 为 **140/140 必测通过，0 optional**；`./gradlew test` 为 **379 用例，0 失败，12 skip**。客户端复验确认方向贴图可辨、侧壁放置朝向、结构绑定与诊断均正常。
 
+### 施工包 B3 · 催化托盘（2026-08，代码完成；客户端实机验收未做）
+
+`catalyst_tray` 是带方向的釜壳块（`FACING` 指向釜内，仅**侧壁环层壳格**为有效部件；顶盖/底面/朝外/竖直朝向仅保留壳块绑定生命周期，与 B1/B2 同一 `IShellPartEntity`/装配事件簿记，**无任何逐 tick 结构扫描**）。
+
+- **催化剂库存**：专用单槽 `ItemStackHandler`，只收 `chemicaladdon:catalysts` 物品标签（当前为明确注册并进入本模组创造栏的 `vanadium_pentoxide`，显示名“**五氧化二钒催化剂**”，经 `tools/gen_species.py` SOLIDS 表生成注册/物品模型/纹理/中英语）。**ITEM_HANDLER 只在朝外侧面（FACING 反面）暴露**；世界插入/提取均走该端点，空手右键取回、持催化剂右键装入，**无 GUI**。拆除时催化剂随方块洒出（SpillLogic）。
+- **有效性**：绑定成型釜 + 合法侧壁位置/朝内 FACING + 槽内非空三者同时满足才发布部件 `chemicaladdon:catalyst_tray` 与 `ProcessCapability.CATALYST_BED`（空托盘/错位托盘保持 bound 但无效，可诊断）。`IShellPartEntity` 新增 `recordBatchCompletion()` 钩子，`VesselBlockEntity.chargePartBatch(partId)` 按装配记录顺序选**第一个有效部件**——多托盘时确定性首选。
+- **寿命记账**：纯 Java `CatalystUsage`（无 MC 类型）：每件催化剂**100 个成功的催化配方批次**，`ReactionLogic.completeRecipe` 在批次**真正完成后**才计费（中断/失败永不消耗）；第 100 批时恰好消耗 1 件，下一件从 0 重新计。配方经 `requiredParts: catalyst_tray` 或 `requiredCapabilities: catalyst_bed` 声明催化需求，快照门禁照常强制（空托盘时配方不匹配，诊断回 EMPTY）。
+- **世界内视觉 + 诊断**：`CatalystTrayRenderer` 在普通整块釜壁模型内侧额外渲染伸入釜内的金属托盘（`catalyst_tray_internal` partial，按 FACING 四向旋转）；槽内非空时在托盘床上渲染实际催化剂 ItemStack，空/有料不打开 GUI 即可分辨。状态四态 UNBOUND/WRONG_POSITION_OR_FACING/EMPTY/ACTIVE，右键播报 + 护目镜 HUD（状态、催化剂名称×数量、剩余批次）。
+- **测试**：新增 JUnit `CatalystUsageTest` 6 例（归一化、99 批不耗、第 100 批耗尽、整叠逐件、空槽零消耗、剩余批次）；新增 9 个 B3 GameTest（绑定/发布、空与错位与顶/底诊断、外端点标签过滤与提取、配方部件门禁、百批消耗与失效、多托盘确定性首选、存档往返、拆除重组、真实 `BlockPlaceContext` 四向）。
+- **测试现状**：本轮 `runGameTestServer` 两次完整运行均启动 149 项（旧基线 140 + B3 9），B3 九项全部通过；唯一失败均为既有 `phGaugeReadsTitrationEndpoint`（读 11 而非 ≥13）。该测试受 `EngineReadings` 共享快照发布时机影响、长期吸引无关开发排查，用户决定于 2026-08 注释其 `@GameTest` 注册并保留方法作回归夹具；后续必测集合为 **148 项**（139 旧基线 + B3 9），本轮未为单纯禁用再跑高成本完整套件。JUnit **385 项，0 失败，12 skip**。
+- **遗留**：① 恢复 pH 终点夹具前须先把 per-vessel 快照生命周期做成确定性；② B3 客户端实机验收（托盘伸入方向、装料可见性、深度遮挡、护目镜）未做；③ 尚无生产配方声明 `catalyst_tray`/`catalyst_bed`（接触法硫酸留待施工包 G）。
+- **本轮补验**：`python tools/gen_species.py`、`./gradlew runData`、`./gradlew build -x test` 均通过；完整 JUnit/GameTest 未重复运行（B3 逻辑测试已在同轮完成，新增部分为客户端渲染和显示名）。
+
 ## 修复记录（近期）
 
 | 问题 | 根因 | 修复 |
 |------|------|------|
+| B2 气体分布器 / B3 催化托盘客户端收不到状态（护目镜恒 UNBOUND/旧状态，区块同步清零） | 两类 BE 手动广播 `ClientboundBlockEntityDataPacket.create(this)` 但未重写 `getUpdateTag`/`getUpdatePacket`，继承 BlockEntity 的空 tag：区块下发与 update 包都携带空 NBT，客户端 `load` 把 masterPos/status 等重置 | 照 `ChemicalBrickBlockEntity` 模式补 `getUpdateTag()=saveWithoutMetadata()` + `getUpdatePacket()=create(this)`（托盘含 master 绑定/status/催化库存/batchesUsed，分布器含 master 绑定/status/限流窗口字段）；不加 `onDataPacket`（Forge 默认已路由到 `handleUpdateTag→load`，仓库内 ChemicalBrick 同样未加）。无 GameTest：GameTest 服务端环境观察不到客户端包流转 |
 | 客户端启动崩溃 `Registry Object not present` | DistExecutor 立即执行先于注册 | FMLClientSetupEvent |
 | GUI 打不开 | `openMenu(MenuProvider)` 不带额外数据，菜单读 BlockPos 空缓冲区 | `NetworkHooks.openScreen` |
 | GUI 容量恒 0（Jade 正常） | `sendBlockUpdated` 不同步 BE NBT | `getUpdatePacket`/`onDataPacket` + 显式推送 BE 数据包 |

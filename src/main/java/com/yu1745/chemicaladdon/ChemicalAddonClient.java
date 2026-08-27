@@ -1,6 +1,7 @@
 package com.yu1745.chemicaladdon;
 
 import com.yu1745.chemicaladdon.client.connected.ConnectedModel;
+import com.yu1745.chemicaladdon.reactor.CatalystTrayRenderer;
 import com.yu1745.chemicaladdon.reactor.DecantHoseRenderer;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerRenderer;
 import com.yu1745.chemicaladdon.reactor.StirringHeadRenderer;
@@ -37,6 +38,10 @@ public class ChemicalAddonClient {
 		// bake (same clinit-forcing pattern as VesselGaugeRenderer.init)
 		StirringHeadRenderer.init();
 		BlockEntityRenderers.register(AllBlockEntities.STIRRING_HEAD.get(), StirringHeadRenderer::new);
+		// B3 catalyst tray visuals: a metal shelf projects into the vessel and the
+		// loaded catalyst item is visible on the bed (world feedback, no GUI).
+		CatalystTrayRenderer.init();
+		BlockEntityRenderers.register(AllBlockEntities.CATALYST_TRAY.get(), CatalystTrayRenderer::new);
 		// render the S02/S03 gauge dial needles (both forms: full-cube wall block + thin panel),
 		// chasing the synced reading — one renderer for all four block entities
 		// (must run before ModelEvent.RegisterAdditional so the gauge_needle partial
