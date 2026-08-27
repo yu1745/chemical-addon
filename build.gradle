@@ -58,8 +58,10 @@ minecraft {
 
         gameTestServer {
             workingDirectory project.file('run')
+            // GameTest runs repeatedly during development; registry-level debug
+            // output adds disk/console I/O but does not aid normal test diagnosis.
             property 'forge.logging.markers', 'REGISTRIES'
-            property 'forge.logging.console.level', 'debug'
+            property 'forge.logging.console.level', 'info'
             property 'forge.enabledGameTestNamespaces', 'chemicaladdon'
             // Create's mixins need refmap remapping in dev runs
             arg '-mixin.config=create.mixins.json'
@@ -144,14 +146,76 @@ dependencies {
     implementation 'net.java.dev.jna:jna:5.16.0'
 }
 
-test {
-    useJUnitPlatform()
-    // the mapped minecraft jar carries ResourceLocation; the test JVM needs no
-    // Forge bootstrap because nothing touches registries or NBT
-    testLogging {
+def configureJUnitTest = { Test task ->
+    task.useJUnitPlatform()
+    // The mapped minecraft jar carries ResourceLocation; test JVMs need no
+    // Forge bootstrap because nothing touches registries or NBT.
+    task.testLogging {
         events "failed", "skipped"
         exceptionFormat "full"
     }
+    task.maxParallelForks = 1
+}
+
+// Keep Gradle's conventional `test` task as the serial, release-equivalent
+// suite. Native IPhreeqc, SpeciesManager and the audit system have shared
+// process state and must not be mixed into a parallel fork pool.
+test {
+    configureJUnitTest(delegate)
+}
+
+// Fast check for ordinary blocks, resources and gameplay changes. Composition
+// stays here intentionally: its mutable SpeciesManager registry is not safe to
+// fork in parallel, but it is inexpensive and directly supports mod behavior.
+tasks.register('modTest', Test) {
+    group = 'verification'
+    description = 'Runs mod-facing composition, reactor and recipe unit tests.'
+    configureJUnitTest(delegate)
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    include 'com/yu1745/chemicaladdon/composition/**'
+    include 'com/yu1745/chemicaladdon/reactor/**'
+    include 'com/yu1745/chemicaladdon/recipe/**'
+}
+
+// Pure Java engine tests can use isolated JVM forks. PhysicsAudit changes a
+// system property and native/parity suites have not been stress-proven for
+// concurrent IPhreeqc use, so both remain in their own serial tasks below.
+tasks.register('engineUnitTest', Test) {
+    group = 'verification'
+    description = 'Runs non-native chem-engine tests in up to two isolated JVM forks.'
+    configureJUnitTest(delegate)
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    include 'com/yu1745/chemengine/**'
+    exclude 'com/yu1745/chemengine/kernel/**'
+    exclude 'com/yu1745/chemengine/PhysicsAuditTest.class'
+    maxParallelForks = 2
+}
+
+tasks.register('engineAuditTest', Test) {
+    group = 'verification'
+    description = 'Runs the serial chem-engine physics audit (mutates a system property).'
+    configureJUnitTest(delegate)
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    include 'com/yu1745/chemengine/PhysicsAuditTest.class'
+}
+
+tasks.register('engineKernelTest', Test) {
+    group = 'verification'
+    description = 'Runs serial native IPhreeqc kernel and parity tests.'
+    configureJUnitTest(delegate)
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    include 'com/yu1745/chemengine/kernel/**'
+    include 'com/yu1745/chemicaladdon/parity/**'
+}
+
+tasks.register('engineTest') {
+    group = 'verification'
+    description = 'Runs all engine checks: parallel-safe Java unit tests plus serial audit and native suites.'
+    dependsOn 'engineUnitTest', 'engineAuditTest', 'engineKernelTest'
 }
 
 // Example for how to get properties into the manifest for reading at runtime.

@@ -13,7 +13,9 @@
 
 ```bash
 ./gradlew build          # 编译 + 打包（JDK 17 已由 gradle.properties 的 org.gradle.java.home 钉定）
-./gradlew test           # 引擎 JUnit（composition 层剥离 MC + chemengine 内核套件，364 用例）
+./gradlew modTest        # 方块/资源/玩法改动的快速 JUnit（composition + reactor + recipe，串行）
+./gradlew engineTest     # 引擎 JUnit：纯 Java 单元最多双 JVM fork；审计与 IPhreeqc/parity 保持串行
+./gradlew test           # 完整、串行的 release-equivalent JUnit（兼容 Gradle 约定）
 ./gradlew runData        # 未来 datagen（配方/模型 provider 接入后使用）
 ./run-server.sh          # 冒烟测试：启动 dev 服务器、输出透传，识别到 "Done (" 后
                          # 三级关闭（组 SIGTERM → 轮询 → SIGKILL）并退出 0；
@@ -23,7 +25,7 @@
 
 > ⚠️ runServer 永不自行返回：不要用 `cmd | script` 或 `cmd && script` 形式调用；`run-server.sh` 自行负责启动与收尾。关闭策略为纯 PID 方案（`$!` → PGID → 整组信号），**禁止**在脚本里用进程名/路径匹配（会误伤容器内的生产服 forge1 JVM）。
 >
-> ⚠️ **控制测试频率**：`./gradlew test` 与 `./gradlew runGameTestServer` 都是高成本操作。一次连续开发任务中，先集中完成代码修改、静态检查和必要的轻量验证，**只在该轮开发全部完成、准备交付前各运行至多一次所需的完整测试**；禁止每改一个文件、每完成一个子任务或每次修补后重复触发。仅当末轮测试确实失败并完成针对性修复后，才允许重跑对应失败的测试。若本轮此前已经运行并通过 `./gradlew test`，后续构建必须使用 `./gradlew build -x test`，避免 `build` 再次触发同一批测试。若用户明确要求测试优先或逐步验证，则以用户要求为准。
+> ⚠️ **控制测试频率与范围**：一次连续开发任务中，先集中完成代码修改、静态检查和必要的轻量验证，**只在该轮开发全部完成、准备交付前各运行至多一次所需测试**；禁止每改一个文件、每完成一个子任务或每次修补后重复触发。普通方块/资源/玩法改动跑 `./gradlew modTest`，不必重跑未触及的化学内核；改动 `chemengine/`、`composition/`、parity/bridge、物种/数据库测试资源或构建/依赖时跑 `./gradlew engineTest`，发布和跨边界改动才跑完整 `./gradlew test`。`./gradlew runGameTestServer` 仍只在需要服务端行为覆盖的本轮末尾运行一次。仅当末轮测试确实失败并完成针对性修复后，才允许重跑对应失败测试。完整 JUnit 已通过后，后续构建必须使用 `./gradlew build -x test`，避免重复执行。若用户明确要求测试优先或逐步验证，则以用户要求为准。
 
 ### 运行时依赖（mod）怎么加
 

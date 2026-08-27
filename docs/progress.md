@@ -28,9 +28,18 @@
 | **施工包 B3** | 催化托盘：侧壁壳格、朝内放置、单槽催化剂库存（catalysts 标签）、仅外侧面 ITEM_HANDLER、世界存取无 GUI、catalyst_tray 部件 + CATALYST_BED 快照、每件 100 批成功后才消耗、多托盘确定性首选、诊断+护目镜 | ✅ 代码完成（B3 9/9 过；整套 149 跑中既有 pH 测试基线失败，见下） |
 | M3+ 其余 | FE 接线 / 竖窑 / 索尔维 / 连续流 / 高压 / 零排放 | ⏳ 未开始（顺序见 `plans/10-development.md`） |
 | **B 状态口（墙体）** | 固定功能状态口：vessel_walls 壳块、IMasterBound 绑定、仅经 ProcessReadings 读 master、右键状态播报、护目镜状态+进度、固定红石编码（未绑定沉默；REACTING 强 0/比较器 4；非运行强 15 + NOT_ASSEMBLED=0/TEMPERATURE=8/OUTPUT_FULL=12/NO_RECIPE=15）、仅编码态变化才更新邻居 | ✅ 代码完成（见下节） |
-| **B4 计量投料口** | 朝内侧壁液体入口、外侧唯一 FLUID_HANDLER、世界滚轮剂量 100–16000mB、实收截断、空手重置、DONE 红石/比较器 | ✅ 代码完成（合并后待总回归） |
+| **B4 计量投料口** | 朝内侧壁液体入口、外侧唯一 FLUID_HANDLER、世界滚轮剂量 100–16000mB、实收截断、空手重置、DONE 红石/比较器 | ✅ 完成（合并总回归 159/159） |
 
 **自动化测试**：合并后总回归：`./gradlew test` → **JUnit 389 用例，0 失败，12 skip**；`./gradlew runGameTestServer` → **159/159 必测通过**（148 基线 + S11 2 + 状态口 3 + 计量投料口 6；`phGaugeReadsTitrationEndpoint` 保持注释禁用）。
+
+## JUnit 测试分组（2026-08）
+
+`build.gradle` 保留 Gradle 约定的 `./gradlew test` 作为完整、串行的 release-equivalent 套件；新增按源码边界筛选的任务，避免普通玩法改动反复运行未触及的内核。
+
+- `./gradlew modTest`：`chemicaladdon.composition`、`reactor`、`recipe`，共 **93** 项；因 `SpeciesManager` 全局可变注册表保持单 JVM。
+- `./gradlew engineTest`：`engineUnitTest`（**191** 项，12 skip，最多两个隔离 JVM fork）+ `engineAuditTest`（**11** 项，系统属性审计，串行）+ `engineKernelTest`（**94** 项，IPhreeqc/parity，串行）。
+- 首次分组全量验证：四组共 **389** 项、0 failed、12 skip；不把 native IPhreeqc 或 `PhysicsAuditTest` 放进并行池。普通方块/资源/玩法改动使用 `modTest`；引擎、composition、parity、测试数据或构建依赖变更使用 `engineTest`；发布/跨边界改动使用完整 `test`。
+- **GameTest 启动基线与减噪**：`runGameTestServer --profile`（159/159）总计 **1m13.78s**，其中 Gradle task **1m1.42s**；日志显示 Forge 服务端启动约 21s、测试实际运行约 32s、关闭约 2s，余量为启动前/后进程工作。已启用 Gradle daemon（仅复用 Gradle，不复用 MC 服务端）并将 GameTest 控制台从 `debug` 降至 `info`；性能报告留在本地 `build/reports/profile/`。不并行 native IPhreeqc，也不为提速跳过 Create mixin/Forge 启动路径。
 
 ## B 状态口（墙体单形态，2026-08）
 
@@ -49,7 +58,7 @@
 
 - **自动化**：DONE 输出强红石 15，比较器按 admitted/dose 比例 0–15；无效/未绑定为 0。稳定部件 id `chemicaladdon:metering_inlet`，暂不附加过程能力。
 - **诊断**：READY/METERING/DONE/unbound/misplaced/no-capacity/non-liquid，经护目镜和右键显示；无全结构 tick 扫描，完整 NBT 更新包防客户端状态丢失。
-- **测试**：独立 worktree 已新增 4 JUnit 与 6 GameTest，JUnit 389/0 failed/12 skip、GameTest 156/156；合并后须与状态口做一次总回归。
+- **测试**：新增 4 JUnit 与 6 GameTest；合并状态口后的总回归为 JUnit 389/0 failed/12 skip、GameTest 159/159。
 
 ## S11 液位计（双形态，2026-08）
 
@@ -543,8 +552,10 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 
 ```bash
 ./gradlew build              # 构建
-./gradlew test               # 引擎 JUnit（composition 层，无需 MC 启动）
-./gradlew runGameTestServer  # 施工包 A 基线 125/125
+./gradlew modTest            # 方块/资源/玩法改动的快速 JUnit（93 项）
+./gradlew engineTest         # 引擎分组 JUnit（296 项；仅纯 Java 分组最多双 JVM fork）
+./gradlew test               # 完整、串行 release-equivalent JUnit（389 项）
+./gradlew runGameTestServer  # 服务端 GameTest（当前 159/159 必测）
 ./run-server.sh              # 服务端冒烟（自动关闭）
 ./gradlew runClient          # 客户端（自动进 "New World"，-PquickPlayWorld= 覆盖）
 python3 tools/gen_species.py # 改物种后重新生成资源/注册代码
