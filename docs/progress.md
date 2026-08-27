@@ -33,8 +33,17 @@
 | **施工包 D1 炉式垂直切片** | furnace_controller 多方块（3×3~7×7×高至 12 环密闭）、料床/产品分口、Blaze Burner 炉底供热、calcination 配方管线（石灰/重碱/氢氧化铝三线+炉气回收）、欠烧/过热诊断 | ✅ 完成（GameTest 168/168） |
 | **施工包 E1 塔式垂直切片** | tower_controller（3×3/5×5×高至 16 环密闭）+ tower_packing 内部件（分层计级，空塔无收益）、顶喷淋/侧气口/底采出三向端口、段数限速气液传质、液泛可测可恢复 | ✅ 完成（GameTest 171/171） |
 | **施工包 F1 电解槽** | electrolyzer 单方块：chemical_reaction 能力门禁（electrolysis）+ energyFe 字段，FE 驱动氯碱（盐水→烧碱液+H₂+Cl₂）与水电解（H₂+O₂）双线，断电诊断/恢复 | ✅ 完成（GameTest 173/173） |
+| **施工包 F2 换热器** | heat_exchanger 单方块：南北面热流/东西面冷流双罐，只交换能量不交换组成，焦耳守恒+回收计量+ΔT 瓶颈读数 | ✅ 完成（GameTest 175/175） |
 
-**自动化测试**：施工包 F1 后：`./gradlew runGameTestServer` → **173/173 必测通过**（148 基线 + S11 2 + 状态口 3 + 计量投料口 6 + 池式 5 + 炉式 4 + 塔式 3 + 电解槽 2；`phGaugeReadsTitrationEndpoint` 保持注释禁用）；JUnit 分组见「JUnit 测试分组」节。
+**自动化测试**：施工包 F2 后：`./gradlew runGameTestServer` → **175/175 必测通过**（148 基线 + S11 2 + 状态口 3 + 计量投料口 6 + 池式 5 + 炉式 4 + 塔式 3 + 电解槽 2 + 换热器 2；`phGaugeReadsTitrationEndpoint` 保持注释禁用）；JUnit 分组见「JUnit 测试分组」节。
+
+## 施工包 F2 · 换热器（2026-08）
+
+**第二台专用单方块**（plans/07 §2.3 / plans/10 F 废热回收）：两股物料只交换能量、永不交换组成。
+
+- **`heat_exchanger`**：双独立多流体罐（各 4000 mB）；面端口分工——南北 = 热流、东西 = 冷流（同面双向：进/出同罐）；每 10 tick 一步：双流朝质量加权平衡温度以 0.8 效率逼近（逆流逼近度），冷侧所得焦耳入回收计量（c = 4.18 J/mB·°C，U16 账本同源）；单侧空罐不换热（无免费环境热）；护目镜/右键显示两侧温度/量、累计回收 J 与活 ΔT（>50°C 标红 = 对该流量 undersized）。
+- **GameTest +2（175/175）**：`heatExchangerRecoversAndConserves`（80°/20° 双 1000 mB 水 → 平衡 ±2°C，总焦耳守恒 ≤4200 J 容差，回收 >100 kJ，组成不动）；`heatExchangerIdleSideExchangesNothing`（空冷侧温度保持、计量不动）。
+- **待做（F 剩余）**：压缩机/真空（转速/FE→气压条件）、温压/流量统一读数表、换热器串联回收接入蒸馏/炉气线。
 
 ## 施工包 F1 · 电解槽（2026-08）
 
@@ -603,7 +612,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 ./gradlew modTest            # 方块/资源/玩法改动的快速 JUnit（93 项）
 ./gradlew engineTest         # 引擎分组 JUnit（296 项；仅纯 Java 分组最多双 JVM fork）
 ./gradlew test               # 完整、串行 release-equivalent JUnit（389 项）
-./gradlew runGameTestServer  # 服务端 GameTest（当前 173/173 必测；2026-08-28 起部分用例的固定等待改为逐 tick 轮询（首个有效状态即续行），详见 GameTests 内 waitFor 助手）
+./gradlew runGameTestServer  # 服务端 GameTest（当前 175/175 必测；2026-08-28 起部分用例的固定等待改为逐 tick 轮询（首个有效状态即续行），详见 GameTests 内 waitFor 助手）
 ./run-server.sh              # 服务端冒烟（自动关闭）
 ./gradlew runClient          # 客户端（自动进 "New World"，-PquickPlayWorld= 覆盖）
 python3 tools/gen_species.py # 改物种后重新生成资源/注册代码

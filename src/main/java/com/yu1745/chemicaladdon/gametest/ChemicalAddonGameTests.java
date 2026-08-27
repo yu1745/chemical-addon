@@ -29,6 +29,7 @@ import com.yu1745.chemicaladdon.reactor.CrystallizerControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.FurnaceControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.TowerControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ElectrolyzerBlockEntity;
+import com.yu1745.chemicaladdon.reactor.HeatExchangerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.MeteringInletBlockEntity;
 import com.yu1745.chemicaladdon.reactor.DecantHoseBlockEntity;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlockEntity;
@@ -4124,6 +4125,78 @@ public class ChemicalAddonGameTests {
 				helper.assertTrue(hasSpecies(be.getOutput(), "water", 700), "filtrate water should be produced");
 			})
 			.thenSucceed();
+	}
+
+	// -------------------------------------------------------- heat exchanger (F)
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 40)
+	public static void heatExchangerRecoversAndConserves(GameTestHelper helper) {
+		// 两股只交换能量不交换组成（plans/07 §2.3）：热水放热、冷水升温，
+		// 总焦耳守恒，回收计量累积
+		helper.setBlock(new BlockPos(4, 1, 4), AllBlocks.HEAT_EXCHANGER.get().defaultBlockState());
+		HeatExchangerBlockEntity hx = (HeatExchangerBlockEntity) helper.getBlockEntity(new BlockPos(4, 1, 4));
+		FluidStack hot = new FluidStack(Fluids.WATER, 1000);
+		com.yu1745.chemicaladdon.fluid.Temperature.set(hot, 80);
+		FluidStack cold = new FluidStack(Fluids.WATER, 1000);
+		com.yu1745.chemicaladdon.fluid.Temperature.set(cold, 20);
+		// face ports: hot on north, cold on east — the fills land in separate tanks
+		IFluidHandler hotPort = hx.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH)
+			.orElseThrow(() -> new GameTestAssertException("hot capability missing"));
+		IFluidHandler coldPort = hx.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.EAST)
+			.orElseThrow(() -> new GameTestAssertException("cold capability missing"));
+		helper.assertTrue(hotPort.fill(hot, FluidAction.EXECUTE) == 1000, "the hot port takes the hot stream");
+		helper.assertTrue(coldPort.fill(cold, FluidAction.EXECUTE) == 1000, "the cold port takes the cold stream");
+		long joulesBefore = joulesOf(hx);
+		// stable end state: both streams approach the amount-weighted midpoint
+		waitFor(helper.startSequence()
+				.thenIdle(TICKS),
+			() -> Math.abs(hx.getDeltaT()) <= 2)
+			.thenExecute(() -> {
+				helper.assertTrue(hx.getHotTank().getTotalAmount() == 1000
+					&& hx.getColdTank().getTotalAmount() == 1000, "no composition moved between the streams");
+				long joulesAfter = joulesOf(hx);
+				helper.assertTrue(Math.abs(joulesAfter - joulesBefore) <= 4200,
+					"energy is conserved across the pair (got " + joulesBefore + " -> " + joulesAfter + " J)");
+				helper.assertTrue(hx.getRecoveredJ() > 100000, "the recovered-heat meter accumulates ("
+						+ (int) hx.getRecoveredJ() + " J)");
+			})
+			.thenSucceed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void heatExchangerIdleSideExchangesNothing(GameTestHelper helper) {
+		// 单侧空罐：无免费环境热——热侧温度保持，回收计量不动
+		helper.setBlock(new BlockPos(4, 1, 4), AllBlocks.HEAT_EXCHANGER.get().defaultBlockState());
+		HeatExchangerBlockEntity hx = (HeatExchangerBlockEntity) helper.getBlockEntity(new BlockPos(4, 1, 4));
+		FluidStack hot = new FluidStack(Fluids.WATER, 1000);
+		com.yu1745.chemicaladdon.fluid.Temperature.set(hot, 80);
+		hx.getHotTank().fill(hot, FluidAction.EXECUTE);
+		waitFor(helper.startSequence()
+				.thenIdle(TICKS * 2),
+			() -> com.yu1745.chemicaladdon.fluid.Temperature
+				.get(hx.getHotTank().getFluids().get(0)) == 80 && hx.getRecoveredJ() == 0)
+			.thenExecute(() -> {
+				helper.assertTrue(hx.getRecoveredJ() == 0, "an empty cold side recovers nothing");
+				helper.assertTrue(com.yu1745.chemicaladdon.fluid.Temperature
+					.get(hx.getHotTank().getFluids().get(0)) == 80, "the hot stream keeps its temperature");
+			})
+			.thenSucceed();
+	}
+
+	/** Total thermal energy of both exchanger streams (J, water-scale c). */
+	private static long joulesOf(HeatExchangerBlockEntity hx) {
+		return Math.round((avgTempOf(hx.getHotTank()) + avgTempOf(hx.getColdTank())) * 1000
+			* HeatExchangerBlockEntity.SPECIFIC_HEAT);
+	}
+
+	private static double avgTempOf(ReactorTank tank) {
+		long weighted = 0;
+		int total = 0;
+		for (FluidStack stack : tank.getFluids()) {
+			weighted += (long) com.yu1745.chemicaladdon.fluid.Temperature.get(stack) * stack.getAmount();
+			total += stack.getAmount();
+		}
+		return total > 0 ? (double) weighted / total : 0;
 	}
 
 	// --------------------------------------------------------- electrolyzer (F)

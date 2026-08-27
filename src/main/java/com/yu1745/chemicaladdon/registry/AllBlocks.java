@@ -9,6 +9,7 @@ import com.yu1745.chemicaladdon.reactor.LiquidLevelGaugeBlock;
 import com.yu1745.chemicaladdon.reactor.MeteringInletBlock;
 import com.yu1745.chemicaladdon.reactor.FurnaceControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ElectrolyzerBlockEntity;
+import com.yu1745.chemicaladdon.reactor.HeatExchangerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.TowerControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.BaumeGaugeBlock;
 import com.yu1745.chemicaladdon.reactor.BaumeGaugePanelBlock;
@@ -142,6 +143,16 @@ public class AllBlocks {
 		REGISTRATE.block("furnace_controller", FurnaceControllerBlockEntity.FurnaceControllerBlock::new)
 			.properties(p -> p.mapColor(MapColor.COLOR_ORANGE).strength(4.0f, 8.0f))
 			.lang("Furnace Controller")
+			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
+				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
+			.simpleItem()
+			.register();
+
+	/** 施工包 F：换热器（两股只交换能量不交换组成）。 */
+	public static final BlockEntry<HeatExchangerBlockEntity.HeatExchangerBlock> HEAT_EXCHANGER =
+		REGISTRATE.block("heat_exchanger", HeatExchangerBlockEntity.HeatExchangerBlock::new)
+			.properties(p -> p.mapColor(MapColor.COLOR_GRAY).strength(3.0f, 6.0f))
+			.lang("Heat Exchanger")
 			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
 				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
 			.simpleItem()

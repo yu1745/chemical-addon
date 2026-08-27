@@ -110,6 +110,7 @@ BLOCKS = [
     ("tower_controller",   "吸收塔控制器", "Tower Controller", 0x3868A8),
     ("tower_packing",      "塔填料",       "Tower Packing",    0x8A6A48),
     ("electrolyzer",      "电解槽", "Electrolyzer",     0x5E7A8A),
+    ("heat_exchanger",    "换热器", "Heat Exchanger",   0x7A7A8A),
     ("thermometer",       "温度计", "Thermometer",      0x5A5A62),
     ("thermometer_panel",  "温度计面板", "Thermometer Panel", 0x6A6A72),
     ("pressure_gauge",     "压力表", "Pressure Gauge",      0x5A6272),
@@ -945,6 +946,7 @@ def gen_block_textures():
     write_png(os.path.join(d, "tower_controller.png"), make_panel_texture(0x3868A8))
     write_png(os.path.join(d, "tower_packing.png"), make_brick_texture(0x8A6A48))
     write_png(os.path.join(d, "electrolyzer.png"), make_panel_texture(0x5E7A8A))
+    write_png(os.path.join(d, "heat_exchanger.png"), make_panel_texture(0x7A7A8A))
     write_png(os.path.join(d, "thermometer.png"), make_dial_texture(0x5A5A62))
     write_png(os.path.join(d, "thermometer_panel.png"), make_dial_texture(0x6A6A72))
     write_png(os.path.join(d, "pressure_gauge.png"), make_dial_texture(0x5A6272, needle=(72, 108, 188), dial=(226, 232, 244)))
@@ -1112,6 +1114,10 @@ EXTRA_LANG_ZH = {
     "status.chemicaladdon.cell_no_power": "断电",
     "status.chemicaladdon.cell_running": "电解中",
     "status.chemicaladdon.cell_output_full": "输出已满",
+    "goggles.chemicaladdon.hx_hot": "热侧：%s°C / %s mB",
+    "goggles.chemicaladdon.hx_cold": "冷侧：%s°C / %s mB",
+    "goggles.chemicaladdon.hx_recovered": "累计回收：%s J",
+    "goggles.chemicaladdon.hx_delta": "ΔT：%s°C",
     "status.chemicaladdon.not_assembled": "未成型",
     "status.chemicaladdon.reacting": "反应中",
     "status.chemicaladdon.temperature": "温度不满足",
@@ -1262,6 +1268,10 @@ EXTRA_LANG_EN = {
     "status.chemicaladdon.cell_no_power": "No power",
     "status.chemicaladdon.cell_running": "Running",
     "status.chemicaladdon.cell_output_full": "Output full",
+    "goggles.chemicaladdon.hx_hot": "Hot side: %s°C / %s mB",
+    "goggles.chemicaladdon.hx_cold": "Cold side: %s°C / %s mB",
+    "goggles.chemicaladdon.hx_recovered": "Recovered: %s J",
+    "goggles.chemicaladdon.hx_delta": "ΔT: %s°C",
     "status.chemicaladdon.not_assembled": "Not assembled",
     "status.chemicaladdon.reacting": "Reacting",
     "status.chemicaladdon.temperature": "Temperature not met",
