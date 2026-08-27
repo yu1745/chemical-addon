@@ -70,6 +70,7 @@ import java.util.Map;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
+import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.gametest.framework.GameTestSequence;
 import net.minecraft.network.FriendlyByteBuf;
@@ -1011,10 +1012,13 @@ public class ChemicalAddonGameTests {
 			reactor.getTank().fill(new FluidStack(AllFluids.OXYGEN.get().getSource(), 1000), FluidAction.EXECUTE);
 		}
 		// reaction steps run every 10 ticks: plain rate 1.25 → 0.125/step (needs 8
-		// steps = 80 t); stirred rate 2.5 → 0.25/step (completes at 40 t). 74 t is
-		// past the stirred completion and before the plain one.
-		helper.startSequence()
-			.thenIdle(74)
+		// steps = 80 t); stirred rate 2.5 → 0.25/step (completes at 40 t). The
+		// valid window opens at 50 t (stirred done, plain past 0.5 progress) and
+		// closes at 80 t — poll it instead of parking on a fixed tick.
+		waitFor(helper.startSequence()
+				.thenIdle(50),
+			() -> hasFluid(stirred, AllFluids.SULFUR_DIOXIDE.get().getSource(), 900)
+				&& plain.getProgress() > 0.5f && plain.getProgress() < 1.0f)
 			.thenExecute(() -> {
 				helper.assertTrue(hasFluid(stirred, AllFluids.SULFUR_DIOXIDE.get().getSource(), 900),
 					"the stirred reactor must have completed its batch (2× rate)");
@@ -2177,8 +2181,9 @@ public class ChemicalAddonGameTests {
 		be.getTank().fill(new FluidStack(Fluids.WATER, 1000), FluidAction.EXECUTE);
 		be.getTank().fill(new FluidStack(AllFluids.THERMAL_OIL.get().getSource(), 1000), FluidAction.EXECUTE);
 		be.getTank().fill(new FluidStack(AllFluids.SULFUR_DIOXIDE.get().getSource(), 1000), FluidAction.EXECUTE);
-		helper.startSequence()
-			.thenIdle(TICKS * 25) // so2_absorption: 200 ticks + slack
+		waitFor(helper.startSequence()
+				.thenIdle(TICKS * 10), // so2_absorption: 200 ticks processingTime
+			() -> hasIon(be.getTank(), "H+1", 200) && hasIon(be.getTank(), "SO4-2", 100))
 			.thenExecute(() -> {
 				// the absorption product lands in the ion domain (the same expansion
 				// reactorAbsorbsSulfurDioxide asserts on)
@@ -2670,8 +2675,10 @@ public class ChemicalAddonGameTests {
 		}
 		be.getItems().setStackInSlot(0, new ItemStack(AllItems.SULFUR.get()));
 		be.getTank().fill(new FluidStack(AllFluids.OXYGEN.get().getSource(), 1000), FluidAction.EXECUTE);
-		helper.startSequence()
-			.thenIdle(TICKS * 25)
+		waitFor(helper.startSequence()
+				.thenIdle(TICKS * 5), // KINDLED burner heat-up lead
+			() -> be.getTemperature() >= 400
+				&& hasFluid(be, AllFluids.SULFUR_DIOXIDE.get().getSource(), 900))
 			.thenExecute(() -> {
 				helper.assertTrue(be.getTemperature() >= 400, "temperature should rise with a KINDLED burner below");
 				helper.assertTrue(hasFluid(be, AllFluids.SULFUR_DIOXIDE.get().getSource(), 900), "SO2 should be produced");
@@ -2685,8 +2692,10 @@ public class ChemicalAddonGameTests {
 		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
 		be.getTank().fill(new FluidStack(AllFluids.SULFUR_DIOXIDE.get().getSource(), 1000), FluidAction.EXECUTE);
 		be.getTank().fill(new FluidStack(Fluids.WATER, 1000), FluidAction.EXECUTE);
-		helper.startSequence()
-			.thenIdle(TICKS * 25)
+		waitFor(helper.startSequence()
+				.thenIdle(TICKS * 10), // so2_absorption: 200 ticks processingTime
+			() -> hasIon(be.getTank(), "H+1", 200) && hasIon(be.getTank(), "SO4-2", 100)
+				&& hasSpecies(be.getTank(), "water", 2000))
 			.thenExecute(() -> {
 				helper.assertTrue(hasIon(be.getTank(), "H+1", 200), "sulfuric acid should expand to 200 H+ ions");
 				helper.assertTrue(hasIon(be.getTank(), "SO4-2", 100), "sulfuric acid should expand to 100 SO4-- ions");
@@ -3817,17 +3826,16 @@ public class ChemicalAddonGameTests {
 		be.getTank().fill(liquor, FluidAction.EXECUTE);
 		be.setPinnedTemperature(100); // the burner's job during concentration
 
-		// poll for the endpoint in 5 s stages; at the endpoint drop the pin —
-		// the unpinned heatTarget() override returns ambient (the real heat cut)
-		GameTestSequence seq = helper.startSequence();
-		for (int i = 0; i < 10; i++) {
-			seq.thenIdle(TICKS * 5).thenExecute(() -> {
-				if (be.atEndpoint() && be.getPinnedTemperature() == 100) {
-					be.setPinnedTemperature(-1); // cut the burner
-				}
-			});
-		}
+		// poll for the endpoint tick-by-tick; at the first endpoint tick drop the
+		// pin — the unpinned heatTarget() override returns ambient (the real heat
+		// cut). Polling continues at the first valid state instead of parking
+		// through ten fixed 5 s stages; the timeoutTicks bound is unchanged.
+		GameTestSequence seq = waitFor(helper.startSequence()
+				.thenIdle(TICKS * 5),
+				() -> be.atEndpoint() && be.getPinnedTemperature() == 100
+					&& be.getCondensateMb() >= 1000);
 		seq.thenExecute(() -> {
+				be.setPinnedTemperature(-1); // cut the burner
 				helper.assertTrue(be.atEndpoint(), "the endpoint event fires at the °Bé setpoint");
 				helper.assertTrue(be.getCondensateMb() >= 1000,
 					"the vented steam condenses as the distillate product (got " + be.getCondensateMb() + " mB)");
@@ -3837,6 +3845,9 @@ public class ChemicalAddonGameTests {
 					.getAnalogOutputSignal(state, helper.getLevel(), absolute) == 15,
 					"the endpoint drives the redstone output to 15");
 			})
+			// the tail (cool → fast-forward → seed → crystallise) keeps the original
+			// fixed cadence: the seed lands at a proven thermal state, and polling
+			// the crystallisation tick proved to alter the co-salt behaviour (NaCl)
 			.thenIdle(TICKS * 10)
 			.thenExecute(() -> {
 				helper.assertTrue(be.getTemperature() < 100,
@@ -3968,8 +3979,10 @@ public class ChemicalAddonGameTests {
 			Map.of("H+1", 400, "SO4-2", 200),
 			1200);
 		be.getTank().fill(mix, FluidAction.EXECUTE);
-		helper.startSequence()
-			.thenIdle(TICKS * 8) // 160 ticks > processingTime 100
+		waitFor(helper.startSequence()
+				.thenIdle(TICKS * 5), // processingTime 100 ticks
+			() -> !hasIon(be.getTank(), "H+1", 1) && !hasIon(be.getTank(), "SO4-2", 1)
+				&& hasSpecies(be.getTank(), "water", 1200))
 			.thenExecute(() -> {
 				helper.assertTrue(!hasIon(be.getTank(), "H+1", 1) && !hasIon(be.getTank(), "SO4-2", 1),
 					"the acid ions should be consumed by the solution ingredient");
@@ -3984,8 +3997,10 @@ public class ChemicalAddonGameTests {
 		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
 		be.getTank().fill(new FluidStack(AllFluids.SULFUR_TRIOXIDE.get().getSource(), 1000), FluidAction.EXECUTE);
 		be.getTank().fill(new FluidStack(Fluids.WATER, 600), FluidAction.EXECUTE);
-		helper.startSequence()
-			.thenIdle(TICKS * 8) // 160 ticks > processingTime 100
+		waitFor(helper.startSequence()
+				.thenIdle(TICKS * 5), // processingTime 100 ticks
+			() -> hasIon(be.getTank(), "H+1", 400) && hasIon(be.getTank(), "SO4-2", 200)
+				&& hasSpecies(be.getTank(), "water", 600))
 			.thenExecute(() -> {
 				helper.assertTrue(hasIon(be.getTank(), "H+1", 400) && hasIon(be.getTank(), "SO4-2", 200),
 					"concentrated acid should be produced as dissolved ions");
@@ -4086,8 +4101,11 @@ public class ChemicalAddonGameTests {
 			Map.of(bicarbonate, 1000),
 			2000);
 		be.getInput().fill(slurry, FluidAction.EXECUTE);
-		helper.startSequence()
-			.thenIdle(TICKS * 15)
+		waitFor(helper.startSequence()
+				.thenIdle(TICKS), // the press works on its own interval
+			() -> !be.getItems().getStackInSlot(0).isEmpty()
+				&& be.getItems().getStackInSlot(0).is(AllItems.SODIUM_BICARBONATE.get())
+				&& hasSpecies(be.getOutput(), "water", 700))
 			.thenExecute(() -> {
 				helper.assertTrue(!be.getItems().getStackInSlot(0).isEmpty()
 					&& be.getItems().getStackInSlot(0).is(AllItems.SODIUM_BICARBONATE.get()),
@@ -4723,6 +4741,22 @@ public class ChemicalAddonGameTests {
 		return be;
 	}
 
+	// ------------------------------------------------------------------ shared test helpers
+
+	/**
+	 * Polls every tick until the condition first holds, then continues the sequence
+	 * (the vanilla thenWaitUntil retry idiom: an unfinished condition throws and the
+	 * event retries next tick). Use after a thenIdle lead for the model's minimum
+	 * duration; the test's timeoutTicks remains the hard failure bound.
+	 */
+	private static GameTestSequence waitFor(GameTestSequence seq, java.util.function.BooleanSupplier condition) {
+		return seq.thenWaitUntil(() -> {
+			if (!condition.getAsBoolean()) {
+				throw new GameTestAssertException("Waiting");
+			}
+		});
+	}
+
 	private static boolean hasFluid(ReactorControllerBlockEntity be, net.minecraft.world.level.material.Fluid fluid, int minAmount) {
 		for (FluidStack stack : be.getTank().getFluids()) {
 			if (stack.getFluid() == fluid && stack.getAmount() >= minAmount) {
@@ -4839,8 +4873,9 @@ public class ChemicalAddonGameTests {
 		BlockPos stray = new BlockPos(9, 1, 9);
 		helper.setBlock(stray, AllBlocks.STATUS_PORT.get().defaultBlockState());
 		StatusPortBlockEntity strayPort = (StatusPortBlockEntity) helper.getBlockEntity(stray);
-		helper.startSequence()
-			.thenIdle(25) // past the reactor's first reaction step (onAssembled parks at REACTING)
+		waitFor(helper.startSequence()
+				.thenIdle(10), // one reaction step (onAssembled parks at REACTING until then)
+			() -> "no_recipe".equals(port.getStatusName()))
 			.thenExecute(() -> {
 				helper.assertTrue(strayPort.getStatusName() == null, "an unbound port must publish no status");
 				helper.assertTrue(strongSignalOf(helper, stray) == 0 && comparatorSignalOf(helper, stray) == 0,
@@ -4875,7 +4910,13 @@ public class ChemicalAddonGameTests {
 				helper.assertTrue(comparatorSignalOf(helper, portPos) == 4,
 					"REACTING must map to comparator 4 (got " + comparatorSignalOf(helper, portPos) + ")");
 			})
-			.thenIdle(75) // past the 80-t batch completion of the B1 fixture
+			// past the 80-t batch completion of the B1 fixture — poll for the first
+			// tick the status leaves REACTING
+			.thenWaitUntil(() -> {
+				if ("reacting".equals(port.getStatusName())) {
+					throw new GameTestAssertException("Waiting");
+				}
+			})
 			.thenExecute(() -> {
 				helper.assertTrue(!"reacting".equals(port.getStatusName()),
 					"the finished batch must leave REACTING (got " + port.getStatusName() + ")");
@@ -4895,7 +4936,11 @@ public class ChemicalAddonGameTests {
 		helper.setBlock(wallBrick, Blocks.AIR.defaultBlockState());
 		helper.assertFalse(vessel.isAssembled(), "breaking a wall brick must de-assemble the vessel");
 		helper.startSequence()
-			.thenIdle(25)
+			.thenWaitUntil(() -> {
+				if (port.getStatusName() != null) {
+					throw new GameTestAssertException("Waiting");
+				}
+			})
 			.thenExecute(() -> {
 				helper.assertTrue(port.getStatusName() == null,
 					"a de-assembled master must detach the port (got " + port.getStatusName() + ")");
@@ -4907,7 +4952,12 @@ public class ChemicalAddonGameTests {
 				helper.setBlock(wallBrick, AllBlocks.CHEMICAL_BRICK.get().defaultBlockState());
 				helper.assertTrue(vessel.isAssembled(), "repairing the wall must re-assemble the vessel");
 			})
-			.thenIdle(25) // re-assembled parks at REACTING until the first reaction step
+			.thenIdle(10) // one reaction step after re-assembly
+			.thenWaitUntil(() -> {
+				if (!"no_recipe".equals(port.getStatusName())) {
+					throw new GameTestAssertException("Waiting");
+				}
+			})
 			.thenExecute(() -> {
 				helper.assertTrue("no_recipe".equals(port.getStatusName()),
 				"the re-bound port must publish the master status again (got " + port.getStatusName() + ")");

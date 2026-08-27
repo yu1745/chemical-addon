@@ -555,7 +555,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 ./gradlew modTest            # 方块/资源/玩法改动的快速 JUnit（93 项）
 ./gradlew engineTest         # 引擎分组 JUnit（296 项；仅纯 Java 分组最多双 JVM fork）
 ./gradlew test               # 完整、串行 release-equivalent JUnit（389 项）
-./gradlew runGameTestServer  # 服务端 GameTest（当前 159/159 必测）
+./gradlew runGameTestServer  # 服务端 GameTest（当前 159/159 必测；2026-08-28 起部分用例的固定等待改为逐 tick 轮询（首个有效状态即续行），测试窗口总 tick 数 ~2080→~1480，详见 GameTests 内 waitFor 助手）
 ./run-server.sh              # 服务端冒烟（自动关闭）
 ./gradlew runClient          # 客户端（自动进 "New World"，-PquickPlayWorld= 覆盖）
 python3 tools/gen_species.py # 改物种后重新生成资源/注册代码
