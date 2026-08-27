@@ -30,8 +30,20 @@
 | **B 状态口（墙体）** | 固定功能状态口：vessel_walls 壳块、IMasterBound 绑定、仅经 ProcessReadings 读 master、右键状态播报、护目镜状态+进度、固定红石编码（未绑定沉默；REACTING 强 0/比较器 4；非运行强 15 + NOT_ASSEMBLED=0/TEMPERATURE=8/OUTPUT_FULL=12/NO_RECIPE=15）、仅编码态变化才更新邻居 | ✅ 代码完成（见下节） |
 | **B4 计量投料口** | 朝内侧壁液体入口、外侧唯一 FLUID_HANDLER、世界滚轮剂量 100–16000mB、实收截断、空手重置、DONE 红石/比较器 | ✅ 完成（合并总回归 159/159） |
 | **施工包 C1/C2 池式工程化** | 池几何 3×3~15×15×深 1~4 真实化、面积通量沉降、底泥床容量、溢流/底泥双口、超抽夹带+扰动回悬反馈环、底泥再浆化联过滤机 | ✅ 完成（GameTest 164/164） |
+| **施工包 D1 炉式垂直切片** | furnace_controller 多方块（3×3~7×7×高至 12 环密闭）、料床/产品分口、Blaze Burner 炉底供热、calcination 配方管线（石灰/重碱/氢氧化铝三线+炉气回收）、欠烧/过热诊断 | ✅ 完成（GameTest 168/168） |
 
-**自动化测试**：施工包 C 后：`./gradlew runGameTestServer` → **164/164 必测通过**（148 基线 + S11 2 + 状态口 3 + 计量投料口 6 + 池式 5；`phGaugeReadsTitrationEndpoint` 保持注释禁用）；JUnit 分组见「JUnit 测试分组」节。
+**自动化测试**：施工包 D1 后：`./gradlew runGameTestServer` → **168/168 必测通过**（148 基线 + S11 2 + 状态口 3 + 计量投料口 6 + 池式 5 + 炉式 4；`phGaugeReadsTitrationEndpoint` 保持注释禁用）；JUnit 分组见「JUnit 测试分组」节。
+
+## 施工包 D1 · 炉式垂直切片（2026-08）
+
+**第四拓扑落地**（plans/06 §2/§4/§7 步 1+2）：`furnace_controller` 复用 vessel 结构层（空心壳 3×3~7×7、环高至 12、密闭顶）但独立炉况状态机——固体料床热处理，不调用水相反应引擎。
+
+- **结构/状态**：`FurnaceControllerBlockEntity`（VesselBlockEntity 子类）：几何 minRings 1 / maxRings 12；炉气容量 = 内腔块数×1000 mB；状态机 `FurnaceStatus{NOT_ASSEMBLED, NO_RECIPE, UNDERHEATED, CALCINING, OUTPUT_FULL, OVERHEATED}`（过热 = minTemp+300 °C，D1 仅诊断，结瘝惩罚待 FE 电极）。实现 ProcessReadings → 温度计/状态口直接可用。
+- **供热**：炉底内腔足印全扫 Blaze Burner（工业炉多烧嘴），KINDLED 500/SEETHING 900 °C；松弛步 +±1 保底——纯 /10 截断会把 900 °C 炉永远卡在 ~891 °C（首版真 bug，测试钉出）。床温独立字段（炉内无液体，不复用流体温度 NBT）。
+- **calcination 配方**（新 RecipeType，ProcessingRecipe + `minTempC` 字段）：石灰石→生石灰+CO₂（900 °C，SEETHING 级）、重碱→纯碱+CO₂+水汽（300 °C——索尔维闭环的煅烧步）、氢氧化铝→氧化铝+水汽（500 °C）。**踩坑**：Create 6.0.8 ProcessingRecipe 的流体产出读统一 `results` 数组（entry 带 `fluid` 键），不读 `fluidResults` 键——首版 JSON 全部静默零填充。
+- **物品口分工**：ITEM_HANDLER 视图单向——插入只进料床（slot 0），抽取只出产品（slot 1），料床永不被抽回；炉气经 tank 侧口接管（气相负密度）。
+- **GameTest +4（168/168）**：`furnaceAssemblesSealedAndSplitsPorts`（密闭成型/容量/双口单向）、`furnaceCalcinesLimestoneToLimeAndGas`（生石灰+CO₂ 可接管）、`furnaceUnderheatedChargeStaysRaw`（欠烧生料不转化、状态口读 UNDERHEATED、到温后转化）、`furnaceCalcinesSodaAndAlumina`（两线+炉气守恒）。
+- **待做（D 剩余）**：耐火材料专用壳块、气氛/料柱/焙烧/热回收、熔融浴与炉渣分层（玻璃或金属示范）、FE 电热。
 
 ## 施工包 C1/C2 · 池式工程化（2026-08）
 
@@ -568,7 +580,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 ./gradlew modTest            # 方块/资源/玩法改动的快速 JUnit（93 项）
 ./gradlew engineTest         # 引擎分组 JUnit（296 项；仅纯 Java 分组最多双 JVM fork）
 ./gradlew test               # 完整、串行 release-equivalent JUnit（389 项）
-./gradlew runGameTestServer  # 服务端 GameTest（当前 164/164 必测；2026-08-28 起部分用例的固定等待改为逐 tick 轮询（首个有效状态即续行），测试窗口总 tick 数 ~2080→~1480，详见 GameTests 内 waitFor 助手）
+./gradlew runGameTestServer  # 服务端 GameTest（当前 168/168 必测；2026-08-28 起部分用例的固定等待改为逐 tick 轮询（首个有效状态即续行），详见 GameTests 内 waitFor 助手）
 ./run-server.sh              # 服务端冒烟（自动关闭）
 ./gradlew runClient          # 客户端（自动进 "New World"，-PquickPlayWorld= 覆盖）
 python3 tools/gen_species.py # 改物种后重新生成资源/注册代码

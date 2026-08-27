@@ -1,0 +1,12 @@
+{
+  "type": "chemicaladdon:calcination",
+  "ingredients": [
+    { "item": "chemicaladdon:aluminium_hydroxide" }
+  ],
+  "results": [
+    { "item": "chemicaladdon:alumina" },
+    { "fluid": "minecraft:water", "amount": 1000 }
+  ],
+  "minTempC": 500,
+  "processingTime": 100
+}

@@ -1,0 +1,12 @@
+{
+  "type": "chemicaladdon:calcination",
+  "ingredients": [
+    { "item": "chemicaladdon:limestone" }
+  ],
+  "results": [
+    { "item": "chemicaladdon:quicklime" },
+    { "fluid": "chemicaladdon:carbon_dioxide", "amount": 1000 }
+  ],
+  "minTempC": 900,
+  "processingTime": 100
+}

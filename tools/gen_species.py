@@ -106,6 +106,7 @@ BLOCKS = [
     ("reactor_controller", "反应釜控制器", "Reactor Controller", 0x6E6E6E),
     ("filter_press",      "过滤机", "Filter Press",      0x7A7A8A),
     ("settling_basin",    "沉淀池控制器", "Settling Basin", 0x5E6E7A),
+    ("furnace_controller", "煅烧炉控制器", "Furnace Controller", 0xB05828),
     ("electrolyzer",      "电解槽", "Electrolyzer",     0x5E7A8A),
     ("thermometer",       "温度计", "Thermometer",      0x5A5A62),
     ("thermometer_panel",  "温度计面板", "Thermometer Panel", 0x6A6A72),
@@ -938,6 +939,7 @@ def gen_block_textures():
     write_png(os.path.join(d, "reactor_controller_open.png"), make_open_panel_texture(0x6E6E6E))
     write_png(os.path.join(d, "filter_press.png"), make_panel_texture(0x7A7A8A))
     write_png(os.path.join(d, "settling_basin.png"), make_panel_texture(0x5E6E7A))
+    write_png(os.path.join(d, "furnace_controller.png"), make_panel_texture(0xB05828))
     write_png(os.path.join(d, "electrolyzer.png"), make_panel_texture(0x5E7A8A))
     write_png(os.path.join(d, "thermometer.png"), make_dial_texture(0x5A5A62))
     write_png(os.path.join(d, "thermometer_panel.png"), make_dial_texture(0x6A6A72))
@@ -1058,7 +1060,7 @@ EXTRA_LANG_ZH = {
     "metering_inlet.chemicaladdon.status.done": "本批已达投料量",
     "metering_inlet.chemicaladdon.status.no_capacity": "反应釜无容量",
     "metering_inlet.chemicaladdon.status.metering": "计量投料中",
-    "metering_inlet.chemicaladdon.status.ready": "待投料（空手右键重置批次）"
+    "metering_inlet.chemicaladdon.status.ready": "待投料（空手右键重置批次）",
     "goggles.chemicaladdon.crystallizer_condensate": "馏出水量：%s mB",
     "goggles.chemicaladdon.crystallizer_state": "状态：",
     "goggles.chemicaladdon.crystallizer_endpoint": "已到终点（停热）",
@@ -1089,6 +1091,9 @@ EXTRA_LANG_ZH = {
     "turbidity_gauge.chemicaladdon.threshold": "报警阈值",
     "liquid_level_gauge.chemicaladdon.threshold": "报警阈值",
     "crystallizer.chemicaladdon.setpoint": "终点设定（°Bé）",
+    "status.chemicaladdon.underheated": "欠烧（温度不足）",
+    "status.chemicaladdon.calcining": "煅烧中",
+    "status.chemicaladdon.overheated": "过热警告",
     "status.chemicaladdon.not_assembled": "未成型",
     "status.chemicaladdon.reacting": "反应中",
     "status.chemicaladdon.temperature": "温度不满足",
@@ -1191,7 +1196,7 @@ EXTRA_LANG_EN = {
     "metering_inlet.chemicaladdon.status.done": "Batch dose reached",
     "metering_inlet.chemicaladdon.status.no_capacity": "Vessel has no capacity",
     "metering_inlet.chemicaladdon.status.metering": "Metering batch",
-    "metering_inlet.chemicaladdon.status.ready": "Ready (empty-hand click resets)"
+    "metering_inlet.chemicaladdon.status.ready": "Ready (empty-hand click resets)",
     "goggles.chemicaladdon.crystallizer_condensate": "Distillate: %s mB",
     "goggles.chemicaladdon.crystallizer_state": "Status:",
     "goggles.chemicaladdon.crystallizer_endpoint": "endpoint reached (heat cut)",
@@ -1222,6 +1227,9 @@ EXTRA_LANG_EN = {
     "turbidity_gauge.chemicaladdon.threshold": "Alarm Threshold",
     "liquid_level_gauge.chemicaladdon.threshold": "Alarm Threshold",
     "crystallizer.chemicaladdon.setpoint": "Endpoint Setpoint (°Bé)",
+    "status.chemicaladdon.underheated": "Underheated (raw charge)",
+    "status.chemicaladdon.calcining": "Calcining",
+    "status.chemicaladdon.overheated": "Overheated",
     "status.chemicaladdon.not_assembled": "Not assembled",
     "status.chemicaladdon.reacting": "Reacting",
     "status.chemicaladdon.temperature": "Temperature not met",

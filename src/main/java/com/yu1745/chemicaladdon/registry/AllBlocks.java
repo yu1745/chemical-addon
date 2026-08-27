@@ -7,6 +7,7 @@ import com.yu1745.chemicaladdon.client.connected.ConnectedModelBuilder;
 import com.yu1745.chemicaladdon.item.GaugeBlockItem;
 import com.yu1745.chemicaladdon.reactor.LiquidLevelGaugeBlock;
 import com.yu1745.chemicaladdon.reactor.MeteringInletBlock;
+import com.yu1745.chemicaladdon.reactor.FurnaceControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.BaumeGaugeBlock;
 import com.yu1745.chemicaladdon.reactor.BaumeGaugePanelBlock;
 import com.yu1745.chemicaladdon.reactor.LiquidLevelGaugePanelBlock;
@@ -127,6 +128,16 @@ public class AllBlocks {
 		REGISTRATE.block("settling_basin", SettlingBasinBlock::new)
 			.properties(p -> p.mapColor(MapColor.METAL).strength(3.0f, 6.0f))
 			.lang("Settling Basin")
+			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
+				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
+			.simpleItem()
+			.register();
+
+	/** 施工包 D：煅烧炉控制器（炉式拓扑）。 */
+	public static final BlockEntry<FurnaceControllerBlockEntity.FurnaceControllerBlock> FURNACE_CONTROLLER =
+		REGISTRATE.block("furnace_controller", FurnaceControllerBlockEntity.FurnaceControllerBlock::new)
+			.properties(p -> p.mapColor(MapColor.COLOR_ORANGE).strength(4.0f, 8.0f))
+			.lang("Furnace Controller")
 			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
 				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
 			.simpleItem()
