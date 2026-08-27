@@ -1,0 +1,27 @@
+{
+  "variants": {
+    "facing=down": {
+      "model": "chemicaladdon:block/metering_inlet",
+      "x": 90
+    },
+    "facing=east": {
+      "model": "chemicaladdon:block/metering_inlet",
+      "y": 270
+    },
+    "facing=north": {
+      "model": "chemicaladdon:block/metering_inlet",
+      "y": 180
+    },
+    "facing=south": {
+      "model": "chemicaladdon:block/metering_inlet"
+    },
+    "facing=up": {
+      "model": "chemicaladdon:block/metering_inlet",
+      "x": 270
+    },
+    "facing=west": {
+      "model": "chemicaladdon:block/metering_inlet",
+      "y": 90
+    }
+  }
+}

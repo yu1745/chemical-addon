@@ -1,6 +1,6 @@
 # 开发进度
 
-> 最后更新：2026-08（M0–M2.5 + U1/U3 + U13–U19 + P6–P7.4；施工包 A 统一能力地基完成验收；**施工包 B1 搅拌头与 B2 气体分布器已完成；B3 催化托盘代码完成（GameTest 149 跑、B3 9/9 全过、既有 pH 测试两次同失败见 B3 节，判为基线/环境问题未修）+ JUnit 385（12 skip）**；B1 视觉层与 B2 放置/绑定/方向贴图均已完成客户端实机验收；**S11 液位计（双形态）已落地（GameTest 150 全过，phGauge 保持禁用）**；两条内核混沌哨兵测试因耗时暂时禁用，见施工包 A 节）
+> 最后更新：2026-08（M0–M2.5 + U1/U3 + U13–U19 + P6–P7.4；施工包 A 统一能力地基完成验收；**施工包 B1 搅拌头与 B2 气体分布器已完成；B3 催化托盘代码完成（GameTest 149 跑、B3 9/9 全过、既有 pH 测试两次同失败见 B3 节，判为基线/环境问题未修）+ JUnit 385（12 skip）**；B1 视觉层与 B2 放置/绑定/方向贴图均已完成客户端实机验收；**S11 液位计（双形态）已落地**；**B4 计量投料口（独立切片，worktree 内实现）代码完成，本轮实跑：JUnit 389（0 失败，12 skip）、GameTest 156/156 全绿（150 基线 + B4 新增 6）、build -x test 通过**；两条内核混沌哨兵测试因耗时暂时禁用，见施工包 A 节）
 > 本文件只记录代码完成态与历史单元；未来设计与新开发路线见 `plans/README.md` 和 `plans/10-development.md`。旧计划编号不再定义未来里程碑。
 
 ## 状态总览
@@ -26,6 +26,7 @@
 | **施工包 B1** | 搅拌头：Create 动能顶盖部件 + 结构快照部件/搅拌 + 配方强制 + 反应速率接线（顶盖位放置规则）+ 视觉层（动态轴/放大叶轮/液位跟随，纯客户端） | ✅ 完成（130/130） |
 | **施工包 B2** | 气体分布器：侧壁/底部壳格、浸没门禁、单侧 Forge 输入、气体限流、GAS_DISPERSED 快照与诊断 | ✅ 完成（140/140） |
 | **施工包 B3** | 催化托盘：侧壁壳格、朝内放置、单槽催化剂库存（catalysts 标签）、仅外侧面 ITEM_HANDLER、世界存取无 GUI、catalyst_tray 部件 + CATALYST_BED 快照、每件 100 批成功后才消耗、多托盘确定性首选、诊断+护目镜 | ✅ 代码完成（B3 9/9 过；整套 149 跑中既有 pH 测试基线失败，见下） |
+| **施工包 B4** | 计量投料口：侧壁壳格、FACING 朝内、仅外侧面 Forge 流体入口（只收液体、拒绝气体）、世界滚动没量 100–16000 mB（步进 100，默认 1000）、只计 EXECUTE 实收、空手右键重置批次、DONE 强红石 15 + 比较器按 admitted/dose、metering_inlet 部件（无过程能力）、诊断+护目镜 | ✅ 代码完成（本 worktree 独立实现；JUnit +4，GameTest +6） |
 | M3+ 其余 | FE 接线 / 竖窑 / 索尔维 / 连续流 / 高压 / 零排放 | ⏳ 未开始（顺序见 `plans/10-development.md`） |
 
 **自动化测试**：`./gradlew test` → **JUnit 385 用例，0 失败，12 skip**（B3 新增 `CatalystUsageTest` 6）。`./gradlew runGameTestServer` → **150 测试全部通过（148 必测基线 + S11 液位计新增 2）**（`phGaugeReadsTitrationEndpoint` 仍保持注释禁用，见 B3 节）。S11 轮实跑：150/150 全绿、`build -x test` 通过。
@@ -38,6 +39,16 @@
 - **仪表族参数**：阈值 1%/格、0–100 格、里程碑每 10%、默认 80%（留气垫）；报警 = 读数≥阈值；比较器/表盘动态量程照基类（0..阈值 → 0..15，12 点钟 = 0%）。
 - **文件**：`reactor/AbstractLiquidLevelGaugeBlockEntity` + 墙/板四类 + 注册（AllBlocks/AllBlockEntities/ChemicalAddonClient 渲染器）；资源经 `tools/gen_species.py`（表盘贴图青色指针、双语 lang）+ `runData`（blockstate/item model/loot）；面板手写模型 JSON；`vessel_walls.json` 入墙形态。
 - **GameTest +2（150/150）**：`liquidLevelGaugeReadsLiquidOnlyFill`（50% 读数/比较器 9、气垫不抬液位、达 80% 报警 15+比较器 15、排空归零、拆控制器脱离后零红石）；`liquidLevelGaugePanelReadsAndAlarms`（贴面经壳块 master 读书、阈值/报警/红石）。首跑揭了测试自身一个容量算错（气垫占用容量使二次补液不足），修正后全绿。
+
+## B4 计量投料口（2026-08，施工包 B 独立切片）
+
+**玩法契约（最小闭环）**：批式投料需要计量 —— `metering_inlet` 是侧壁壳方块，FACING 朝内，仅外侧面暴露 Forge `FLUID_HANDLER` 入口；只收液体（lighter-than-air 气体一律拒绝，气体走 B2 分布器）；直到世界滚动配置的批量剂量到达前持续放行，到达后阻断。剂量 100–16000 mB、步进 100、默认 1000（Create `ScrollValueBehaviour` 世界内值框，无 GUI）；计数只计 EXECUTE 实收；空手右键 = 物理重置当前批。诊断 READY/METERING/DONE/unbound/misplaced/no-capacity/non-liquid（护目镜 + 右键聊天行）。
+
+- **红石自动化**：DONE 强红石 15（getSignal/getDirectSignal）；比较器按 admitted/dose 比例 0–15，无效/未绑恒 0（与 S11 仪表同风格）。部件 id `chemicaladdon:metering_inlet` 稳定发布，但**不附带任何过程能力**（通用批式自动化待状态口）。放置门禁复用 B3 侧壁朝内规则（`VesselBlockEntity.isMeteringInletPosition`）。
+- **绑定生命周期**：照 B2/B3 模式 —— 首次装配绑 master、同尺寸替换 onLoad 事件期修复、拆除走 handleStructuralBlockRemoved、错误朝向仍绑定但 MISPLACED 且无端点；无任何整结构 tick 扫描（BE 不 tick）。BE 客户端同步：`getUpdateTag`=saveWithoutMetadata / `getUpdatePacket` 显式重写（B2/B3 曾因此踩坑）。
+- **文件**：`reactor/MeteringInletBlock` + `MeteringInletBlockEntity`（SmartBlockEntity，行为值框）+ `MeteringInletMath`（纯剂量算术，MC-free）；`vessel/VesselBlockEntity` 增放置门禁；注册（AllBlocks/AllBlockEntities/ChemicalAddonClient SmartBlockEntityRenderer）；资源经 `gen_species.py`（三面贴图 + 双语 lang）+ `runData`（blockstate/item model/loot）；`vessel_walls` 入标签。
+- **测试**：JUnit `MeteringInletMathTest` +4；GameTest +6（绑定/方向性/simulate 不计数/剂量裁剪/DONE 红石与比较器/重置与剂量滚动/拒气/满釜诊断/MISPLACED 无端点/重载持久/拆除回收）。
+- **未做**：客户端实机验收（值框位置/贴图辨识度）；与状态口/批式自动化的对接留待后续单元；未代理普通壁面流体能力（B2 惯例——避免绕过计量的非计量入口）。
 
 ## P6 · 化学权威全量切换（2026-08-20，用户决策：旧引擎从未正常工作，直接切新引擎）
 

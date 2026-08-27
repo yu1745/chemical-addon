@@ -62,6 +62,10 @@ public class ChemicalAddonClient {
 		BlockEntityRenderers.register(AllBlockEntities.TURBIDITY_GAUGE_PANEL.get(), VesselGaugeRenderer::new);
 		BlockEntityRenderers.register(AllBlockEntities.LIQUID_LEVEL_GAUGE.get(), VesselGaugeRenderer::new);
 		BlockEntityRenderers.register(AllBlockEntities.LIQUID_LEVEL_GAUGE_PANEL.get(), VesselGaugeRenderer::new);
+		// B4 metering inlet: plain SmartBlockEntityRenderer — renders the
+		// world-scroll dose value box on the outward face (no other visuals)
+		BlockEntityRenderers.register(AllBlockEntities.METERING_INLET.get(),
+			com.simibubi.create.foundation.blockEntity.renderer.SmartBlockEntityRenderer::new);
 
 		// per-stack fluid tint for every DynamicFluidContainerModel item: the sample
 		// vial (any fluid with NBT) and every species bucket (still sprite + tint).
