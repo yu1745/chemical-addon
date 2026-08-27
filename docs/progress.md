@@ -1,6 +1,6 @@
 # 开发进度
 
-> 最后更新：2026-08（M0–M2.5 + U1/U3 + U13–U19 + P6–P7.4；**施工包 A 统一能力地基完成验收：GameTest 125/125 + JUnit 364 全绿**；两条内核混沌哨兵测试因耗时暂时禁用，见施工包 A 节）
+> 最后更新：2026-08（M0–M2.5 + U1/U3 + U13–U19 + P6–P7.4；施工包 A 统一能力地基完成验收；**施工包 B1 搅拌头完成验收（含顶盖位畄件规则）：GameTest 128/128（连跑 2 次）+ JUnit 364 全绿；随后 B1 视觉层（动态轴+放大叶轮）落地并完成客户端实机验收；液体跨 BER 深度遮挡修复后，整根轴与叶轮在液下均正确可见：GameTest 130/130 + JUnit 374**；两条内核混沌哨兵测试因耗时暂时禁用，见施工包 A 节）
 > 本文件只记录代码完成态与历史单元；未来设计与新开发路线见 `plans/README.md` 和 `plans/10-development.md`。旧计划编号不再定义未来里程碑。
 
 ## 状态总览
@@ -22,10 +22,11 @@
 | U18 定点分数 | 量子网格 10⁷/mB + Mixture long 通道 + 引擎量子往返 | ✅ 完成（插队） |
 | **U19 引擎切换（parity）** | IPhreeqc 内核接管运行时化学（EngineBridge/TickDriver/WriteBack 主循环）+ RulesEngine 退役 | ✅ 完成（插队；内核 vendor commit c988ea9） |
 | 施工包 A1/A2 | 窄过程接口 + 结构能力快照 | ✅ 完成 |
-| 施工包 A3 | 配方可选结构要求 | 🟡 按设计部分实现：能力/温度/压力已校验；部件/搅拌仅数据化（待 B1/B2 提供真实快照/读数） |
+| 施工包 A3 | 配方可选结构要求 | ✅ 完成（能力/温度/压力/部件/搅拌全部校验；部件与搅拌门禁由 B1 搅拌头快照启用，B2 分布器待做） |
+| **施工包 B1** | 搅拌头：Create 动能顶盖部件 + 结构快照部件/搅拌 + 配方强制 + 反应速率接线（顶盖位放置规则）+ 视觉层（动态轴/放大叶轮/液位跟随，纯客户端） | ✅ 完成（130/130） |
 | M3+ 其余 | FE 接线 / 竖窑 / 索尔维 / 连续流 / 高压 / 零排放 | ⏳ 未开始（顺序见 `plans/10-development.md`） |
 
-**自动化测试**：`./gradlew runGameTestServer` → **125/125 必测通过**（2026-08 施工包 A 验收实测，0 optional）；`./gradlew test` → JUnit 364 用例全绿（12 skip 带理由；两条混沌哨兵测试因耗时暂时禁用，见施工包 A 节）。
+**自动化测试**：`./gradlew runGameTestServer` → **130/130 必测通过**（2026-08 B1 验收实测连跑 2 次 128/128 全绿，0 optional；B1 视觉层后 = 125 基线 + B1 逻辑 3 + B1 视觉 2，实测 130/130）；`./gradlew test` → JUnit 374 用例全绿（12 skip 带理由；= 原 364 + `StirShaftMathTest` 10；两条混沌哨兵测试因耗时暂时禁用，见施工包 A 节）。
 
 ## P6 · 化学权威全量切换（2026-08-20，用户决策：旧引擎从未正常工作，直接切新引擎）
 
@@ -273,7 +274,7 @@ M3 首单元（plans/11 §2.1）：修掉 G1/G2/G3 三条公共地基缺口，�
 - **G1 多相加热**：`updateHeat` 删「恰好单相才松弛」的 early-return——D18 后气体是永久旁观相，旧逻辑下液+气共存时**谁都不升温**（装料即冻结在入釜温度）。现在每个相独立向热源目标松弛（每 HEAT_TICK 1/10，与旧单相行为逐位一致，零回归）。
 - **G2 容器温度 = 全相加权 + 放热全体**：`getTemperature()` 从「entry 0 的温度」改为**全相按量加权平均**（存储仍 per-stack NBT，运输身份不动）；`completeRecipe` 的 deltaHeat 从只打 `fluids.get(0)` 改为**作用全体相**（每相 +Δ，保相位差、加权均值恰好抬 Δ）。规则引擎的放热维持相内语义（旁观相不参与求解，由 updateHeat 统一供热）。
 - **G3 压力模型**：釜级 `getPressure()`（kPa 表压）——闭口线性模型 `P_abs = 1atm × 气相体积分数 × T/T_amb`（充气升压、加热升压、满液恒 0、开口/未成型恒 0，下限 0 不做真空）。**派生读值不入 NBT**（与 getFillState 同信任模型：内容物/结构态本就同步，存副本反而会漂移）；釜 HUD 加压力行（开口显示常压）。密封本单元保持开/闭二值，材质分级耐压留 U11。
-- **温度窗口速率系数**：`rateCoefficient(recipe) = (1 + 窗口内过温/400) × stirringCoefficient`——高于配方门槛最多加速 2×，**门槛处恒 1.0**（配得上温度=满速，既有节奏永不放慢）；搅拌系数占位 1.0（MixDegree 删除时保留的钩子，接 Create 搅拌在 U5/U12）。
+- **温度窗口速率系数**：`rateCoefficient(recipe) = (1 + 窗口内过温/400) × stirringCoefficient`——高于配方门槛最多加速 2×，**门槛处恒 1.0**（配得上温度=满速，既有节奏永不放慢）；搅拌系数占位 1.0（MixDegree 删除时保留的钩子，接 Create 搅拌在 U5/U12）。（B1 已落地：无头 1.0 基线不变，带效旋转搅拌头最高 2.0，见施工包 B1 节。）
 - **S03 压力表（双形态）**：照 S02 范本——墙块形态（入 `vessel_walls` 标签，可填壁位、绑定控制器、代理能力）+ 薄板形态（贴面读身后壳块）。新增通用基类 `AbstractVesselGaugeBlockEntity`（阈值 ScrollValueBehaviour 粗粒度单位、服务端求解读值同步、报警红石 15、比较器按满量程映射、护目镜 HUD），S02 温度计改为其薄子类（公开 API 不变、温度计方块零改动），S04 浓度计/S11 液位计后续照抄。压力表满量程 1500 kPa（阈值 25 kPa/格、默认 250 kPa），为 U11 高压线留头寸。
 - **datagen 修复（G7 旧账）**：`runData` 自 D18.5 起一直跑不通（decant_hose 贴图缺失→方块状态生成即炸）——本次修通并固化：gen_species.py 补 `decant_hose` 程序化线圈贴图 + 拨盘纹理参数化（`make_dial_texture`，温度计红针/压力表蓝针同源）+ BLOCKS 表收录压力表两形态 + 压力语言键；mixture 自动桶补 `.bucket().model(空)` 抑制与 `forge:fluid_container` 模型；温度调试棒补模型抑制；薄板 FACING 变体与 Create 软管模型引用改由注册处显式 provider 生成（`plateVariants` 北锚定 yaw；Create 是 `:slim` 无 assets，须 `UncheckedModelFile`）。顺带清掉 M0 时代过期溶液 blockstate（v2 后溶液不再是流体）。
 - **GameTest +7（71/71）**：`reactorHeatsAndReadsAllPhases`（水+油两相都松弛 + 加权读数 600）、`exothermicDeltaHeatsAllPhases`（SO₂ 吸收放热到达油旁观相）、`sealedVesselBuildsPressure`（满充气常压 0 → 900°C 约 303 kPa）、`liquidFullVesselStaysAtZeroPressure`、`openVesselKeepsAmbientPressure`、`pressureGaugePanelReadsAndAlarms`（读数/阈值 250/报警 15/比较器映射）、`wallPressureGaugeReadsOwnReactor`（成型绑定/读自身釜/代理能力）。
@@ -405,9 +406,35 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 
 - **A1 窄接口**：新增 `StructureAccess`、`LiquidProcessAccess`、`ProcessReadings`；`VesselBlockEntity` 提供结构/液相访问，`ReactorControllerBlockEntity` 提供过程读数。温度/压力仪表迁至 `ProcessReadings`，分液口迁至 `LiquidProcessAccess`，旧公开 API 与 NBT 格式保持不变。
 - **A2 结构能力快照**：新增 `ProcessCapability` 与不可变 `StructureCapabilities`。已成型容器发布 `MIXED_VOLUME` 和 `OPEN_TOP` 或 `SEALED`，并携带容量、边长、环高与控制器环层；派生自活结构、零新 NBT；尚不改变既有工艺行为。
-- **A3 配方可选结构要求（按审计 §12 设计的部分范围）**：`ChemicalReactionRecipe` 已解析、JSON 写回和网络同步 `requiredCapabilities`、`requiredParts`、温度/压力/搅拌条件；`ReactionLogic` 经窄接口强制校验能力、温度和压力。`requiredParts` 与搅拌只保留数据、不参与匹配——等 B1 搅拌头/B2 气体分布器提供真实部件快照与搅拌读数后启用；现有资源配方尚未迁移这些字段。
+- **A3 配方可选结构要求（按审计 §12 设计的部分范围）**：`ChemicalReactionRecipe` 已解析、JSON 写回和网络同步 `requiredCapabilities`、`requiredParts`、温度/压力/搅拌条件；`ReactionLogic` 经窄接口强制校验能力、温度和压力。`requiredParts` 与搅拌只保留数据、不参与匹配——等 B1 搅拌头/B2 气体分布器提供真实部件快照与搅拌读数后启用；现有资源配方尚未迁移这些字段。（B1 已启用部件/搅拌校验，见施工包 B1 节。）
 - **验收（2026-08 本轮实跑）**：`gradlew build` 2m47s 通过；JUnit 364 用例 0 失败（12 skip 全为 HydrolysisSurvey 带理由禁用）；`runGameTestServer` 125/125 必测全过（= 基线 118 + A 包新增 7；测试段 34s，批次 100+25 串行）；两类 GameTest 文件 holder 注解齐全、127 个 `@GameTest` 字面计数 = 125 方法 + 2 个 `@GameTestHolder`，无静默排除（P6 假绿陷阱核对）。
 - **混沌哨兵暂时禁用（2026-08）**：ChaosRound2「一锅炖」21.7s / ChaosRound3「终极杂烩」49.6s，实测为单核满载的真实计算（7 档步长 KINETICS 积分 × 每子步全量 speciation 求解，~5000 次求解/测试），因嫌慢注释禁用（注释内写明耗时与原因），**最后一次运行本身通过**；JUnit 计数 366→364。恢复 = 解注三行注解。
+
+### 施工包 B1 · 搅拌头（Create 动能顶盖部件，2026-08）
+
+**第一个真实组合件**（审计 §12 B1）：`stirring_head` 顶盖穿透壳块，从上方竖轴取转（Create `KineticBlock`/`KineticBlockEntity` 模式，Y 轴、`hasShaftTowards(UP)`、混合器同款应力 4.0@1RPM），有效 |RPM| 归一化为有上限的搅拌系数，贯通反应速率与物理拍。**只安装在真实顶盖平面**（壁/地放置 = 有绑定与代理的装饰壳块，非部件）。GameTest 128/128（连跑 2 次）+ JUnit 364 全绿。
+
+- **壳块语义**：入 `vessel_walls` 标签（顶盖用它仍是密封顶）；BE 实现 `IMasterBound`——放置重成型/扩展（ChemicalBrickBlock 同款半径 7 扫描）、破坏通知 master（去盖降级开口釜而非拆解）、能力代理（侧面流体/物品代理到 master，UP 面照旧不接受管道）。**不使用全局 INTERIOR_OVERRIDES**。
+- **结构层部件簿记**（`vessel/VesselBlockEntity`）：装配绑壳时顺带记录部件（`IShellPartEntity`：partId/requiresRoofPlane/isPartEffective/effectiveAgitation），重载后首次查询懒重扫——**永不逐拍全结构扫描**；查询只读已记录部件位置。**放置规则（B1 验收补齐）**：`requiresRoofPlane()` 部件只在顶盖平面被记录（壳单元携带 roofPlane 标记；FORBIDDEN 顶形状永不达该平面），且头 BE 的 `isPartEffective()` 自行对照 master 的 `getRoofRelY()`——壁位/地位供电头两头都不是部件；未来部件（B2 分布器）默认任意壳单元。
+- **快照扩展**（`vessel/StructureCapabilities`）：不可变快照新增已装部件 ResourceLocation 集合 + 活搅拌值（`DoubleSupplier`，离散结构状态构时捕获、连续物理读数保持活）；旧 5 参 `of(...)` 工厂保留。已成型反应釜快照仅在存在**绑定且有效旋转（非过载）**的搅拌头时发布 `AGITATED` 与部件 `chemicaladdon:stirring_head`（Create `getSpeed()` 对过载网络读 0，天然满足）。
+- **搅拌数学**（`vessel/Agitation`）：归一化 agitation = |RPM|/256（截到 [0,1]，256 = Create 轴满速）；搅拌系数 = 1 + 归一化，**硬上限 2.0（文档化）**；无头恒 1.0（B1 前基线兼容，现有节奏永不放慢）。
+- **接线**：`ReactorControllerBlockEntity.stirringCoefficient()` 从固定字段改为活读（同源供 `ReactionLogic.rateCoefficient` 与 `PhysicalSteps.apply`）；`ChemicalReactionRecipe.matchesStructureRequirements` 启用 `requiredParts` 与 `conditions.agitation` 窗口校验（快照源），温度/压力仍走 ProcessReadings；网络字段序不变（`ReactionRecipeNetworkData` 未动）。
+- **测试钩子**：`StirringHeadBlockEntity.setPinnedSpeed`（调试/测试转速钉——GameTest 无法确定性引导完整动能网络，Create 周期性校验会清无源转速；生产路径仍读 Create `getSpeed()`，过载语义不变）。A3 旧断言「部件/搅拌仅数据化不参与匹配」改为验证强制拒绝/满足。
+- **新增 GameTest**：`vesselB1StirringHeadBindsAndAgitates`（装配绑定/静止无贡献/128RPM→agitation 0.5/能力代理/过载归零/拆头降级开口釜）；`vesselB1WallPositionHeadIsNotInstalled`（同功率壁位头：仍绑定仍代理，但不发布部件/AGITATED/agitation；对照顶位头全发布）；`reactorB1StirringDoublesRecipeProgress`（同料同温双釜：256RPM 搅拌釜 2× 速率完成硫磺燃烧批次，未搅拌釜仍在中途）。
+- **顺手修真 bug（B1 测试重排暴露）**：`EngineReadings` 全局单槽快照无发布者归属——多釜并发时 pH 表计可能读到**别的釜**的内核 pH（生产同病）。快照带发布者坐标，`peek(reader)` 仅在发布者是读者自己的釜时采用，否则回退 legacy；诊断/测试直驱 `refresh`（无发布者）保持全局可读。修后连跑 3 次全绿（放置规则补齐后再验 2 次 128/128）。
+- **资源**：注册/纹理（gen_species.py 新增 stirring_head 三面：轴联轴器/叶轮交叉/法兰机壳）/zh_cn + datagen（blockstate/item model/en_us）/战利品表自动生成；静态模型手写于主资源（cube_bottom_top），无专用渲染器。
+
+#### 施工包 B1 · 视觉层（动态轴 + 放大叶轮，2026-08）
+
+**纯客户端视觉，零玩法语义改动**：碰撞/结构仍是单个顶盖壳块；釜内液位渲染与配方节奏测试不受影响（服务端 master/动能路径未动，已验证 130/130 全绿）。设计基调 = 顶盖基座保持 Create 常规尺度固定不动，只有**下悬轴 + 放大叶轮**是 BE 渲染的动态件。
+
+- **`StirringHeadRenderer`**（新 BER，`ChemicalAddonClient` 注册 + clinit 强制 partial 烘焙，VesselGaugeRenderer 同款）：模式 = Create `MechanicalMixerRenderer`（杆 + 头）× 软管分段绳。轴 = 自有 partial `stirring_shaft`（4px 钢柱，明暗对边让旋转可读）逐格分段 + 余量拉伸段，每段独立取光；叶轮 = 自有 partial `stirring_impeller`（十字桨 + 轮毂，棋型整块宽）按直径缩放。旋转读生产 Create 动能（`effectiveRotation()`，含 partial tick、方向、过载归零与测试钉同步；逐段相位偏移使整轴读成连续扭转；过载染色走 Create `kineticRotationTransform`）。无 flywheel 早退（本 partial 无 flywheel 可视化，BER 是唯一几何生产者，DecantHose 同款）。
+- **深度数学 `StirShaftMath`**（纯 Java 无 MC 类型，JUnit 直接测）：叶轮中心骑在**液柱 30% 高度**（低位搅拌）；双硬夹——叶永不入底板（`h−half−1/16`）、顶永不出顶盖（`half+1/16`，冲突时顶优先）；空釜（≤1/16 液位）**回收到顶盖下**；液位读与分液软管同源（`getLiquidSurfaceY`，气相排除）。客户端 `LerpedFloat` 缓动追目标（EXP 0.35，软管同款；瞬态不落盘，首帧从真值起不弹跳）。液位变化 → 目标变化 → 缓动，空↔有液的大摆动表现为有意的下放/回收动画。
+- **叶轮直径**：`0.65×内宽`（连续推导，绝对上限 3.25），再被**头列到最近内壁面距离**与内高夹住——偏心头自动缩小到轴与墙之间（`wallClearance` 从 master 控制器帧反推内腔列边界，与 `cell()` 同帧）；下限 0.5 不消失。W=3→0.65、W=5→1.95、W=7 居中→3.25。
+- **坐标锚定（实测踩坑后定型）**：partial 均**悬在原点下方**建模（轴段 y∈[−1,0]、叶轮中心在 (0.5,0,0.5)）——`translate(0,−k,0)` 即第 k 段落位 [−(k+1),−k]（第 0 段贴顶盖底面，绝不进入头自身格）；余量段 `scale(1,f,1)` 锚顶收缩向下，与上一段无缝且恰达 −depth；叶轮中心恰在轴端 −depth。锚定约定入 `StirShaftMath.segmentTop/segmentBottom/impellerCentreY` 并由 JUnit 锁死（首版错误：模型在格内建模 → 段 0 藏进基座、余量段向上收缩留缝、叶轮中心高半格——已修）。
+- **资源**：轴/叶轮纹理由 gen_species.py 程序化生成（`make_stir_shaft_texture` 明暗条 + 端面盖、`make_stir_impeller_texture` 轮毂刷纹/桨面亮刃）；底面纹理去叶桨假面（改为轴孔 + 座圈，桨不再是脸贴图）；模型手写于主资源。均 addon 自有，不拷贝 Create 资产。
+- **剔除/边界**：`createRenderBoundingBox` 扩到头下 8 格 + 水平 ±2（mixer/pulley 同款），`shouldRenderOffScreen` true；卸载/重载后 masterPos 由 NBT 恢复，无/失效 master、壁位头 → 渲染零几何（静态壳块仍正常），均安全。
+- **测试**：新增 JUnit `StirShaftMathTest` 10 例（空/痕量/浅液夹底/半满/满釜抬升/最小釜双板不穿/直径三重上限/退化输入/段锚定/叶轮中心，总 374 全绿）+ GameTest 2 例：`vesselB1ShaftFollowsLiquidLevel`（5×5×5：空回收 0.43/半满 2.55/满 2.1/排空复位/壁位头零几何/直径 1.95）、`vesselB1ShaftWorksWithHighControllerAndTallVessel`（3×3×7 控制器在 2 环：深度从头顶面计量不受环层影响，浅液夹底 4.82/满 3.5/直径 0.65）——几何断言无像素断言。`./gradlew build`/`test`(374)/`runGameTestServer`(130/130)/`runData`（仅 B1 产物，无无关翻动）全过。**客户端实机验收完成**：首次实测发现独立搅拌头 BER 提交的液下叶轮被釜液体深度遮挡；只把叶轮迁到控制器渲染仍会使轴的液下部分消失。最终将**整根动态轴与叶轮**统一由 `ReactorControllerRenderer` 在容器 solid 阶段提交，再进入液体 translucent 阶段；保留正常深度测试，不会穿墙显示。用户复验确认空气段、液下轴和叶轮均正确可见。
 
 ## 修复记录（近期）
 
@@ -437,6 +464,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 | 破坏/放回液面以上的墙砖时液面抽搐（总量明明不变） | `renderedLevel` 追的是**填充比例**，渲染高度=比例×内腔高：拆上方环砖釜缩层（高度/容量**瞬间**变）而总量不变 → 比例目标跳变，LerpedFloat 过渡帧渲染「旧比例×新高度」≠真实表面，液面先跌/先冲再回弹（Create FluidTank 追比例无此问题，因其几何永不变） | 改追**绝对液面高度**（fill×内腔高）：环数变化时目标恒为 `总量/(1000·(w−2)²)` 与高度无关，目标不动即零动画，只有真实进出料才缓动；渲染器/`getLiquidSurfaceY` 直接用绝对值；并按 FluidTank 模式首帧 `startWithValue` 定位真表面，消除区块加载从 0 升起的假动画 |
 | 控制器装在非底层环时：液面/漂浮物偏高 `ringLayer` 格、软管悬在真实液面之上、控制器以下内腔层倒入的水不被吸收 | 渲染/液面数学/吸收轮询三处都以控制器自身层为 y=0 基准，而内腔底在控制器下方 `ringLayer` 格（Tinkers 式任意环层装配） | 新增统一基准 `getInteriorBottomRelY()=-ringLayer`：渲染两 pass `translate` 下移到内腔底（光照采样同步）、`getLiquidSurfaceY` 内腔底起算世界 Y、`absorbFromWorld` 轮询范围改 `[内腔底, 顶沿+1]` |
 | 控制器抬高到非底层环后分液软管彻底不下垂（找不到釜） | `bindBricks` 绑定 y 范围写死 `-1..rings`（控制器在底层环的假设）：控制器在第 k 环时底砖在 `-k-1` 不被绑定，`findReactorBelow` 沿开口内腔柱下扫穿过未绑定底砖扫到釜底之下，永远找不到釜；上端还越过真实顶盖一层、错绑顶盖上方的游离砖 | y 范围改 `-ringLayer-1 .. rings-ringLayer`（与 k 无关）；`clearShellMasters` 半径改 `max(底宽, 环数)+1`（高瘦釜重绑/失效够得到旧底旧盖） |
+| pH 表计读到别的釜的 pH（B1 新测试重排后 GameTest 偶发：phGaugeReadsTitrationEndpoint 读 10 而非 ≥13） | `EngineReadings` 全局单槽快照无发布者归属：并发 tick 的另一釜刚发布的 pH 快照会被任何釜的 pH 表/试纸/控制器读走（生产多釜工厂同病，只是被时序掩盖） | 快照带发布者坐标：`publish(step, worldPosition)`，`peek(reader)` 仅发布者=读者自己的釜时采用，否则回退 legacy；诊断/测试直驱 `refresh`（无发布者）保持全局可读 |
 
 ## 待办 / 下一步
 

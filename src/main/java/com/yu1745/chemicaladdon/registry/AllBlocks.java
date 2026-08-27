@@ -21,6 +21,7 @@ import com.yu1745.chemicaladdon.reactor.PressureGaugeBlock;
 import com.yu1745.chemicaladdon.reactor.PressureGaugePanelBlock;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlock;
 import com.yu1745.chemicaladdon.reactor.SettlingBasinBlockEntity.SettlingBasinBlock;
+import com.yu1745.chemicaladdon.reactor.StirringHeadBlock;
 import com.yu1745.chemicaladdon.reactor.ThermometerBlock;
 import com.yu1745.chemicaladdon.reactor.ThermometerPanelBlock;
 import com.yu1745.chemicaladdon.reactor.TurbidityGaugeBlock;
@@ -313,6 +314,22 @@ public class AllBlocks {
 				.lang("Crystallizer Controller")
 				.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
 					.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
+				.simpleItem()
+				.register();
+
+	/** B1 stirring head (搅拌头): a roof shell block taking rotation from a vertical
+	 *  shaft above (Create KineticBlock, Y axis, shaft towards UP) and mapping its
+	 *  effective |RPM| onto the vessel's stirring coefficient. In the vessel_walls
+	 *  tag, so it seals a roof like a brick; the hand-authored static model is the
+	 *  fixed Create-scale roof base (shaft coupling on top, stub bore below) — the
+	 *  dynamic shaft + vessel-sized impeller are BE-rendered partials
+	 *  (StirringHeadRenderer). Datagen only links to the static model. */
+	public static final BlockEntry<StirringHeadBlock> STIRRING_HEAD =
+			REGISTRATE.block("stirring_head", StirringHeadBlock::new)
+				.properties(p -> p.mapColor(MapColor.METAL).strength(3.0f, 6.0f))
+				.lang("Stirring Head")
+				.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(),
+					prov.models().getExistingFile(prov.modLoc("block/" + ctx.getName()))))
 				.simpleItem()
 				.register();
 

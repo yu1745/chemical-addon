@@ -16,6 +16,7 @@ import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.fluid.Temperature;
 import com.yu1745.chemicaladdon.recipe.ChemicalReactionRecipe;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
+import com.yu1745.chemicaladdon.vessel.Agitation;
 import com.yu1745.chemicaladdon.vessel.VesselBlockEntity;
 import com.yu1745.chemicaladdon.vessel.ProcessReadings;
 
@@ -80,12 +81,6 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity
 	private ResourceLocation activeRecipe = null;
 	/** Debug temperature pin (-1 = unpinned; when ≥0 the vessel is held at this °C regardless of the burner). */
 	private int pinnedTemperature = -1;
-	/**
-	 * Stirring (mass-transfer) rate coefficient — the hook kept when MixDegree
-	 * was deleted: a kinetic whisk will map its RPM onto 0.3–1.0. Placeholder
-	 * 1.0 in U1 (plans/11 §2.1) so batch rhythm tuning lands in U5.
-	 */
-	private float stirringCoefficient = 1.0f;
 	/** Last solve's speciation report (per-solid saturation indices) — goggles diagnostics. */
 	private List<Solution.Speciation> speciation = List.of();
 
@@ -322,9 +317,17 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity
 	// (matching + completion live in ReactionLogic; this is the progress/status
 	// orchestration)
 
-	/** The vessel's stirring coefficient — also the M08 subclass's solve parameter. */
+	/**
+	 * The vessel's live stirring coefficient (B1): {@code 1.0} without an
+	 * effective stirring head (the pre-B1 compatibility baseline every existing
+	 * tune targets); an installed, effectively rotating head maps its |RPM| onto
+	 * {@code 1 + normalized agitation}, capped at {@link Agitation#MAX_COEFFICIENT}
+	 * (= 2.0, reached at 256 RPM). Feeds the recipe progress rate
+	 * ({@code ReactionLogic.rateCoefficient}) and the physical steps
+	 * (crystallisation / dissolution stirring, {@code PhysicalSteps}).
+	 */
 	protected float stirringCoefficient() {
-		return stirringCoefficient;
+		return Agitation.coefficient(effectiveAgitation());
 	}
 
 	protected void tickReaction() {
@@ -351,7 +354,7 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity
 		}
 		setStatus(ReactorStatus.REACTING);
 		float next = progress + (float) REACTION_TICK / recipe.getProcessingDuration()
-			* ReactionLogic.rateCoefficient(recipe, getTemperature(), stirringCoefficient);
+			* ReactionLogic.rateCoefficient(recipe, getTemperature(), stirringCoefficient());
 		if (next >= 1.0f) {
 			ReactionLogic.completeRecipe(this, recipe);
 			setProgress(0, recipe.getId());
@@ -387,7 +390,7 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity
 				getTemperature());
 		if (step.valid) {
 			com.yu1745.chemicaladdon.composition.parity.WriteBack.firstOf(tank.getFluids(), step);
-			com.yu1745.chemicaladdon.composition.parity.EngineReadings.publish(step);
+			com.yu1745.chemicaladdon.composition.parity.EngineReadings.publish(step, worldPosition);
 			recordSpeciation(speciationOf(step)); // P7.4：内核 SI/相增量 → 护目镜化验行
 		} else {
 			com.yu1745.chemicaladdon.composition.parity.EngineReadings.invalidate();
@@ -493,7 +496,7 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity
 	/** Published aqueous pH reading for the narrow instrument contract. */
 	@Override
 	public int getPh() {
-		return AbstractPhGaugeBlockEntity.phOf(tank);
+		return AbstractPhGaugeBlockEntity.phOf(tank, worldPosition);
 	}
 
 	/** Published four-bin suspended-solids reading for the narrow instrument contract. */

@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import com.simibubi.create.foundation.blockEntity.renderer.SmartBlockEntityRenderer;
 import com.yu1745.chemicaladdon.fluid.Mixture;
@@ -15,6 +16,7 @@ import net.createmod.catnip.platform.ForgeCatnipServices;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -24,6 +26,7 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.fluids.FluidStack;
@@ -88,6 +91,11 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 			reactor.getInteriorBottomRelY() + height / 2, (int) cz);
 		light = LightTexture.pack(reactor.getLevel().getBrightness(LightLayer.BLOCK, centerPos),
 			reactor.getLevel().getBrightness(LightLayer.SKY, centerPos));
+
+		// Emit the complete B1 shaft and impeller from this controller BER. Both the
+		// air-exposed and submerged shaft sections must precede the coordinated fluid
+		// translucent pass; normal depth testing still prevents visibility through walls.
+		renderStirringAssemblies(reactor, partialTicks, ms, buffer, inward, side, half);
 
 		// Everything below (floating items + the fluid body) renders relative to
 		// the interior FLOOR, which sits ringLayer below the controller's own
@@ -254,6 +262,41 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 			renderFluid(reactor, x1, z1, x2, z2, levelHeight, ms, buffer, light);
 		}
 		ms.popPose();
+	}
+
+	/**
+	 * Render all roof-plane stirring heads through the controller's solid pass.
+	 * The head BER remains responsible for the shaft, but the impeller is emitted
+	 * here so its depth relationship with this vessel's translucent body is fixed
+	 * by the vanilla BER pass order rather than by the iteration order of two BEs.
+	 */
+	private void renderStirringAssemblies(ReactorControllerBlockEntity reactor, float partialTicks, PoseStack ms,
+		MultiBufferSource buffer, Direction inward, Direction side, int half) {
+		if (!reactor.isAssembled() || reactor.getLevel() == null) {
+			return;
+		}
+
+		BlockPos origin = reactor.getBlockPos();
+		int roofY = reactor.getRoofRelY();
+		VertexConsumer vb = null;
+		for (int s = -half; s <= half; s++) {
+			for (int d = 0; d < reactor.getSize(); d++) {
+				BlockPos headPos = origin.offset(side.getStepX() * s + inward.getStepX() * d,
+					roofY, side.getStepZ() * s + inward.getStepZ() * d);
+				BlockEntity entity = reactor.getLevel().getBlockEntity(headPos);
+				if (!(entity instanceof StirringHeadBlockEntity head) || !head.isOnRoofPlane()) {
+					continue;
+				}
+				if (vb == null) {
+					vb = buffer.getBuffer(RenderType.solid());
+				}
+				ms.pushPose();
+				ms.translate(headPos.getX() - origin.getX(), headPos.getY() - origin.getY(),
+					headPos.getZ() - origin.getZ());
+				StirringHeadRenderer.renderAssembly(head, partialTicks, ms, vb);
+				ms.popPose();
+			}
+		}
 	}
 
 	/**

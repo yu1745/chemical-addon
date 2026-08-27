@@ -1,0 +1,48 @@
+{
+  "__comment": "B1 stirring head impeller (partial model, renderer-only): hub + crossed blade pair authored exactly one block across with its GEOMETRIC CENTRE at local y=0 ((0.5, 0, 0.5)) — the renderer's translate(0,-depth,0) then parks the centre exactly at the shaft's lower end, with the pivot-scale about (0.5, 0, 0.5). Blades span y in [-3/16, 3/16] (6px pair height, see StirShaftMath.BLADE_HEIGHT_PX).",
+  "textures": {
+    "impeller": "chemicaladdon:block/stirring_impeller",
+    "particle": "chemicaladdon:block/stirring_impeller"
+  },
+  "elements": [
+    {
+      "name": "hub",
+      "from": [7, -5, 7],
+      "to": [9, 5, 9],
+      "faces": {
+        "north": {"uv": [0, 0, 2, 10], "texture": "#impeller"},
+        "south": {"uv": [0, 0, 2, 10], "texture": "#impeller"},
+        "east":  {"uv": [0, 0, 2, 10], "texture": "#impeller"},
+        "west":  {"uv": [0, 0, 2, 10], "texture": "#impeller"},
+        "up":    {"uv": [4, 0, 6, 2], "texture": "#impeller"},
+        "down":  {"uv": [4, 0, 6, 2], "texture": "#impeller"}
+      }
+    },
+    {
+      "name": "blade_x",
+      "from": [0, -3, 7.5],
+      "to": [16, 3, 8.5],
+      "faces": {
+        "north": {"uv": [0, 10, 16, 16], "texture": "#impeller"},
+        "south": {"uv": [0, 10, 16, 16], "texture": "#impeller"},
+        "up":    {"uv": [0, 10, 16, 11], "texture": "#impeller"},
+        "down":  {"uv": [0, 10, 16, 11], "texture": "#impeller"},
+        "east":  {"uv": [2, 6, 3, 12], "texture": "#impeller"},
+        "west":  {"uv": [2, 6, 3, 12], "texture": "#impeller"}
+      }
+    },
+    {
+      "name": "blade_z",
+      "from": [7.5, -3, 0],
+      "to": [8.5, 3, 16],
+      "faces": {
+        "east":  {"uv": [0, 10, 16, 16], "texture": "#impeller"},
+        "west":  {"uv": [0, 10, 16, 16], "texture": "#impeller"},
+        "up":    {"uv": [0, 10, 16, 11], "texture": "#impeller"},
+        "down":  {"uv": [0, 10, 16, 11], "texture": "#impeller"},
+        "north": {"uv": [2, 6, 3, 12], "texture": "#impeller"},
+        "south": {"uv": [2, 6, 3, 12], "texture": "#impeller"}
+      }
+    }
+  ]
+}

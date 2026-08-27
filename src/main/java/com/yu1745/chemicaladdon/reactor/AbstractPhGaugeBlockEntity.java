@@ -80,7 +80,7 @@ public abstract class AbstractPhGaugeBlockEntity extends AbstractVesselGaugeBloc
 
 	@Override
 	protected int readValue(ReactorControllerBlockEntity reactor) {
-		return phOf(reactor.getTank());
+		return phOf(reactor.getTank(), reactor.getBlockPos());
 	}
 
 	@Override
@@ -161,9 +161,9 @@ public abstract class AbstractPhGaugeBlockEntity extends AbstractVesselGaugeBloc
 	 * <p>读数源（2026-08 全量切换后）：内核侧 IPhreeqc 步进快照（EngineReadings）
 	 * 优先——引擎是化学权威；无快照/求解失败回退 legacy 路径。
 	 */
-	public static int phOf(ReactorTank tank) {
+	public static int phOf(ReactorTank tank, @javax.annotation.Nullable net.minecraft.core.BlockPos vesselPos) {
 		com.yu1745.chemicaladdon.composition.parity.EngineReadings.Snapshot s =
-				com.yu1745.chemicaladdon.composition.parity.EngineReadings.peek();
+				com.yu1745.chemicaladdon.composition.parity.EngineReadings.peek(vesselPos);
 		if (s.valid) {
 			return com.yu1745.chemicaladdon.composition.parity.EngineReadings.phSteps(s);
 		}

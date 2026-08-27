@@ -1,0 +1,20 @@
+{
+  "__comment": "B1 stirring head dynamic shaft segment (partial model, renderer-only): 4px metal column matching Create's shaft cross-section, authored to HANG BELOW the origin (y in [-1, 0]) so segment k = translate(0,-k,0) spans local [-(k+1), -k] — segment 0 sits flush under the head's bottom face (never inside the head cell), and a partial segment scale(1,f,1) shrinks toward its top anchor, meeting the preceding segment without gaps. Faces split light/dark so the kinetic rotation reads (classic Create shaft flats).",
+  "textures": {
+    "shaft": "chemicaladdon:block/stirring_shaft",
+    "particle": "chemicaladdon:block/stirring_shaft"
+  },
+  "elements": [
+    {
+      "from": [6, -16, 6],
+      "to": [10, 0, 10],
+      "faces": {
+        "north": {"uv": [0, 0, 4, 16], "texture": "#shaft"},
+        "south": {"uv": [0, 0, 4, 16], "texture": "#shaft"},
+        "east":  {"uv": [4, 0, 8, 16], "texture": "#shaft"},
+        "west":  {"uv": [4, 0, 8, 16], "texture": "#shaft"},
+        "down":  {"uv": [8, 0, 12, 4], "texture": "#shaft"}
+      }
+    }
+  ]
+}

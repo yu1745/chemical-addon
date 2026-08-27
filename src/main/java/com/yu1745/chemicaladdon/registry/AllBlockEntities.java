@@ -16,6 +16,7 @@ import com.yu1745.chemicaladdon.reactor.PressureGaugeBlockEntity;
 import com.yu1745.chemicaladdon.reactor.PressureGaugePanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.SettlingBasinBlockEntity;
+import com.yu1745.chemicaladdon.reactor.StirringHeadBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ThermometerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ThermometerPanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.TurbidityGaugeBlockEntity;
@@ -129,6 +130,11 @@ public class AllBlockEntities {
 			() -> BlockEntityType.Builder.of(CrystallizerControllerBlockEntity::new,
 				AllBlocks.CRYSTALLIZER_CONTROLLER.get())
 				.build(null));
+
+	public static final RegistryObject<BlockEntityType<StirringHeadBlockEntity>> STIRRING_HEAD =
+			REGISTER.register("stirring_head",
+				() -> BlockEntityType.Builder.of(StirringHeadBlockEntity::new, AllBlocks.STIRRING_HEAD.get())
+					.build(null));
 
 	public static void register(IEventBus modEventBus) {
 		REGISTER.register(modEventBus);

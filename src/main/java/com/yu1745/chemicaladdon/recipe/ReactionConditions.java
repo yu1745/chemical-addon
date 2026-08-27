@@ -9,9 +9,9 @@ import net.minecraft.util.GsonHelper;
  * Optional operating window attached to a chemical reaction recipe.
  *
  * <p>Temperature is in °C and pressure is in the same gauge kPa scale exposed
- * by {@code ProcessReadings}. Agitation is deliberately data-only for now:
- * there is no reliable agitation reading in the current vessel, so its bounds
- * round-trip but are not used to accept or reject a recipe.</p>
+ * by {@code ProcessReadings}. Agitation is the structure snapshot's live
+ * normalized [0,1] reading ({@code StructureCapabilities#agitation()}, B1):
+ * 0 for an unstirred vessel, 1.0 at the reference RPM of a stirring head.</p>
  */
 public final class ReactionConditions {
 	private final Double temperatureMin;
@@ -109,7 +109,7 @@ public final class ReactionConditions {
 		return pressureKpaMin != null || pressureKpaMax != null;
 	}
 
-	/** True when the recipe carries agitation metadata; it is not enforced yet. */
+	/** True when the recipe carries agitation bounds. */
 	public boolean hasAgitation() {
 		return agitationMin != null || agitationMax != null;
 	}
@@ -122,6 +122,12 @@ public final class ReactionConditions {
 	public boolean matchesPressureKpa(double value) {
 		return (pressureKpaMin == null || value >= pressureKpaMin)
 			&& (pressureKpaMax == null || value <= pressureKpaMax);
+	}
+
+	/** Enforced (since B1) against the snapshot's live normalized agitation. */
+	public boolean matchesAgitation(double value) {
+		return (agitationMin == null || value >= agitationMin)
+			&& (agitationMax == null || value <= agitationMax);
 	}
 
 	/** Serialize only fields that were specified; an empty object is valid. */

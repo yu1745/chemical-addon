@@ -3,6 +3,7 @@ package com.yu1745.chemicaladdon;
 import com.yu1745.chemicaladdon.client.connected.ConnectedModel;
 import com.yu1745.chemicaladdon.reactor.DecantHoseRenderer;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerRenderer;
+import com.yu1745.chemicaladdon.reactor.StirringHeadRenderer;
 import com.yu1745.chemicaladdon.reactor.VesselGaugeRenderer;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
 import com.yu1745.chemicaladdon.registry.AllContainers;
@@ -30,6 +31,12 @@ public class ChemicalAddonClient {
 		BlockEntityRenderers.register(AllBlockEntities.REACTOR_CONTROLLER.get(), ReactorControllerRenderer::new);
 		// render the decant hose's coil + hanging rope (Create hose-pulley look, surface-tracking)
 		BlockEntityRenderers.register(AllBlockEntities.DECANT_HOSE.get(), DecantHoseRenderer::new);
+		// B1 stirring head visuals: dynamic shaft + enlarged impeller hanging from the
+		// roof base into the vessel (kinetic rotation, liquid-tracking depth) — must
+		// init before ModelEvent.RegisterAdditional so the shaft/impeller partials
+		// bake (same clinit-forcing pattern as VesselGaugeRenderer.init)
+		StirringHeadRenderer.init();
+		BlockEntityRenderers.register(AllBlockEntities.STIRRING_HEAD.get(), StirringHeadRenderer::new);
 		// render the S02/S03 gauge dial needles (both forms: full-cube wall block + thin panel),
 		// chasing the synced reading — one renderer for all four block entities
 		// (must run before ModelEvent.RegisterAdditional so the gauge_needle partial

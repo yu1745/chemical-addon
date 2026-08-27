@@ -3,8 +3,11 @@ package com.yu1745.chemicaladdon.vessel;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 
 import javax.annotation.Nullable;
 
@@ -19,6 +22,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -83,6 +87,16 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 	protected final ItemStackHandler items;
 	private final LazyOptional<IFluidHandler> fluidCap;
 	private final LazyOptional<IItemHandler> itemCap;
+
+	/**
+	 * Installed shell parts (B1): part id → bound block positions. Recorded
+	 * while the shell is bound (assembly events only — never scanned per tick)
+	 * and re-derived lazily once after a reload, because a reloaded save holds
+	 * the assembled geometry but no part bookkeeping.
+	 */
+	private final Map<ResourceLocation, List<BlockPos>> shellParts = new LinkedHashMap<>();
+	/** True until the part bookkeeping has been (re-)recorded for the current assembly. */
+	private boolean shellPartsDirty = true;
 
 	protected boolean assembled = false;
 	protected boolean open = false; // open-topped (interior visible) vs sealed
@@ -582,23 +596,44 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 
 	/**
 	 * Binds every structural shell block (any block in the vessel_walls tag —
-	 * brick, glass, ...) to this controller so it proxies capabilities and can
-	 * report breakage. The y range is controller-RELATIVE and must follow the
-	 * controller's ring layer k: floor at -k-1, ceiling at rings-k. A hard-coded
-	 * -1..rings (k=0 assumption) leaves the floor unbound when the controller is
-	 * mounted higher — the decant hose scans down the interior column and falls
-	 * through the unbound floor, never finding the vessel. Roofless shapes
-	 * (FORBIDDEN) stop at the top of the wall ring: blocks above the rim are not
-	 * part of the structure.
+	 * brick, glass, gauges, the B1 stirring head, ...) to this controller so it
+	 * proxies capabilities and can report breakage, and records the shell parts
+	 * installed in the structure (B1). The y range is controller-RELATIVE and
+	 * must follow the controller's ring layer k: floor at -k-1, ceiling at
+	 * rings-k. A hard-coded -1..rings (k=0 assumption) leaves the floor unbound
+	 * when the controller is mounted higher — the decant hose scans down the
+	 * interior column and falls through the unbound floor, never finding the
+	 * vessel. Roofless shapes (FORBIDDEN) stop at the top of the wall ring:
+	 * blocks above the rim are not part of the structure.
 	 */
 	private void bindBricks(BlockPos masterPos, Direction inward, Direction side, int w, int rings) {
 		if (level == null) {
 			return;
 		}
+		shellParts.clear(); // re-adoption replaces the recorded parts wholesale
+		forEachShellCell(side, inward, w, rings, shellCell -> {
+			bindBrick(shellCell.pos(), masterPos);
+			recordShellPart(shellCell);
+		});
+		shellPartsDirty = false;
+	}
+
+	/** A structural shell cell offered to binding / part bookkeeping. */
+	private record ShellCell(BlockPos pos, boolean roofPlane) {
+	}
+
+	/**
+	 * Walk every structural cell of the shell (floor, rings, roof plane). The
+	 * cell carries whether it lies on the roof plane (the ceiling layer —
+	 * FORBIDDEN-roof shapes never iterate it, so no cell of a roofless shape is
+	 * ever a roof cell).
+	 */
+	private void forEachShellCell(Direction side, Direction inward, int w, int rings, Consumer<ShellCell> action) {
 		int half = (w - 1) / 2;
 		int sStart = -half;
 		int sEnd = sStart + w - 1;
 		int yTop = roofMode() == RoofMode.FORBIDDEN ? rings - 1 - ringLayer : rings - ringLayer;
+		int roofRelY = rings - ringLayer;
 		for (int s = sStart; s <= sEnd; s++) {
 			for (int d = 0; d <= w - 1; d++) {
 				for (int y = -ringLayer - 1; y <= yTop; y++) {
@@ -608,7 +643,7 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 					if (s == 0 && d == 0 && y == 0) {
 						continue;
 					}
-					bindBrick(cell(s, d, y, side, inward), masterPos);
+					action.accept(new ShellCell(cell(s, d, y, side, inward), y == roofRelY));
 				}
 			}
 		}
@@ -665,6 +700,8 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 		if (assembled) {
 			assembled = false;
 			int oldSize = size;
+			shellParts.clear(); // B1: parts leave with the structure
+			shellPartsDirty = true;
 			// §C: keep size/height/inward as lastGeometry — the remaining lower shell
 			// still stands and the residual fluid surface must keep rendering while
 			// the vessel is de-assembled (see the renderer guard). All logical paths
@@ -736,15 +773,83 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 	 * Derive the A2 capability snapshot from the already-authoritative geometry
 	 * fields.  Keeping this derived avoids another persisted representation that
 	 * could drift from the legacy structure/NBT state.
+	 *
+	 * <p>B1: the snapshot additionally carries the installed shell parts and a
+	 * live agitation reading. Both are conditioned on the part being
+	 * <i>effective</i> (bound to this assembled vessel and actually running — a
+	 * stationary or overstressed stirring head contributes nothing), so a recipe
+	 * gating on {@code AGITATED} or {@code requiredParts: stirring_head}
+	 * demands a working head, not a decorative block.</p>
 	 */
 	@Override
 	public StructureCapabilities getStructureCapabilities() {
 		if (!assembled) {
 			return StructureCapabilities.unassembled();
 		}
+		ensureShellPartsScanned();
 		Set<ProcessCapability> capabilities = EnumSet.of(ProcessCapability.MIXED_VOLUME,
 			open ? ProcessCapability.OPEN_TOP : ProcessCapability.SEALED);
-		return StructureCapabilities.of(capabilities, tank.getTankCapacity(0), size, height, ringLayer);
+		Set<ResourceLocation> activeParts = new java.util.LinkedHashSet<>();
+		for (List<BlockPos> positions : shellParts.values()) {
+			for (BlockPos pos : positions) {
+				if (level != null && level.getBlockEntity(pos) instanceof IShellPartEntity part
+					&& part.isPartEffective()) {
+					activeParts.add(part.partId());
+				}
+			}
+		}
+		if (effectiveAgitation() > 0f) {
+			capabilities.add(ProcessCapability.AGITATED);
+		}
+		return StructureCapabilities.of(capabilities, tank.getTankCapacity(0), size, height, ringLayer,
+			activeParts, this::effectiveAgitation);
+	}
+
+	/**
+	 * Live normalized effective agitation (0..1) delivered by the installed shell
+	 * parts (B1 stirring head; the strongest contribution wins). Reads the bound
+	 * part BEs at their recorded positions — no whole-structure scan.
+	 */
+	public float effectiveAgitation() {
+		ensureShellPartsScanned();
+		float best = 0f;
+		for (List<BlockPos> positions : shellParts.values()) {
+			for (BlockPos pos : positions) {
+				if (level != null && level.getBlockEntity(pos) instanceof IShellPartEntity part
+					&& part.isPartEffective()) {
+					best = Math.max(best, part.effectiveAgitation());
+				}
+			}
+		}
+		return best;
+	}
+
+	/**
+	 * Re-record the part bookkeeping once after a reload (a reloaded save holds
+	 * the assembled geometry but no in-memory part map). No-op once recorded;
+	 * assembly re-records directly via {@link #bindBricks}.
+	 */
+	private void ensureShellPartsScanned() {
+		if (!shellPartsDirty || level == null || level.isClientSide || !assembled || inward == null) {
+			return;
+		}
+		Direction side = inward.getAxis() == Direction.Axis.X ? Direction.NORTH : Direction.EAST;
+		shellParts.clear();
+		forEachShellCell(side, inward, size, height, this::recordShellPart);
+		shellPartsDirty = false;
+	}
+
+	private void recordShellPart(ShellCell shellCell) {
+		if (level == null || !(level.getBlockEntity(shellCell.pos()) instanceof IShellPartEntity part)) {
+			return;
+		}
+		if (part.requiresRoofPlane() && !shellCell.roofPlane()) {
+			// B1 placement rule: a roof-penetrating part (the stirring head) placed
+			// in a wall/floor cell stays a bound shell block but is NOT an installed
+			// part — it never publishes its part id, AGITATED or agitation
+			return;
+		}
+		shellParts.computeIfAbsent(part.partId(), id -> new ArrayList<>()).add(shellCell.pos());
 	}
 
 	/** mB still queued to pour out of the breach (server-side spill state; tests/debug). */

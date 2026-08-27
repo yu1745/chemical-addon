@@ -69,7 +69,7 @@ public class ChemicalReactionRecipe extends ProcessingRecipe<Container> {
 		return Collections.unmodifiableSet(requiredCapabilities);
 	}
 
-	/** Required internal parts. Parsed and synchronized, but not enforced until a part snapshot exists. */
+	/** Required internal parts. Matched against the structure snapshot's installed parts (enforced since B1). */
 	public Set<ResourceLocation> getRequiredParts() {
 		return Collections.unmodifiableSet(requiredParts);
 	}
@@ -79,10 +79,12 @@ public class ChemicalReactionRecipe extends ProcessingRecipe<Container> {
 	}
 
 	/**
-	 * Check the currently executable subset of structure requirements. Parts are
-	 * intentionally excluded: the current structure snapshot cannot identify
-	 * internal parts reliably. Agitation bounds are likewise data-only because
-	 * ProcessReadings has no agitation measurement yet.
+	 * Check the structure requirements against a controller's live snapshot:
+	 * required capabilities, required parts and the temperature / pressure /
+	 * agitation condition windows (parts and agitation bounds are enforced
+	 * since B1 — the stirring head provides both a part id and a live agitation
+	 * reading; {@code readings} stays the source for the instrument-facing
+	 * temperature and pressure values).
 	 */
 	public boolean matchesStructureRequirements(@javax.annotation.Nullable StructureAccess structure,
 		@javax.annotation.Nullable ProcessReadings readings) {
@@ -95,12 +97,20 @@ public class ChemicalReactionRecipe extends ProcessingRecipe<Container> {
 				return false;
 			}
 		}
+		for (ResourceLocation part : requiredParts) {
+			if (!snapshot.hasPart(part)) {
+				return false;
+			}
+		}
 		if (conditions.hasTemperature()
 			&& (readings == null || !conditions.matchesTemperature(readings.getTemperature()))) {
 			return false;
 		}
 		if (conditions.hasPressureKpa()
 			&& (readings == null || !conditions.matchesPressureKpa(readings.getPressure()))) {
+			return false;
+		}
+		if (conditions.hasAgitation() && !conditions.matchesAgitation(snapshot.agitation())) {
 			return false;
 		}
 		return true;

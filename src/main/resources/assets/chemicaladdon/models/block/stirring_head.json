@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/cube_bottom_top",
+  "textures": {
+    "top": "chemicaladdon:block/stirring_head_top",
+    "bottom": "chemicaladdon:block/stirring_head_bottom",
+    "side": "chemicaladdon:block/stirring_head_side"
+  }
+}

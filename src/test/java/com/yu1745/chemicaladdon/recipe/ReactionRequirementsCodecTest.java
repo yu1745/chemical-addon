@@ -20,7 +20,7 @@ class ReactionRequirementsCodecTest {
 	}
 
 	@Test
-	void conditionsRoundTripAndPreserveDataOnlyAgitation() {
+	void conditionsRoundTripAndEnforceAgitationBounds() {
 		JsonObject input = new JsonObject();
 		JsonObject temperature = new JsonObject();
 		temperature.addProperty("min", 303);
@@ -39,6 +39,11 @@ class ReactionRequirementsCodecTest {
 		assertTrue(conditions.matchesPressureKpa(0));
 		assertTrue(!conditions.matchesPressureKpa(301));
 		assertTrue(conditions.hasAgitation(), "agitation metadata must be retained");
+		// B1: agitation bounds are enforced against the snapshot's live normalized reading
+		assertTrue(conditions.matchesAgitation(0.5));
+		assertTrue(conditions.matchesAgitation(1.0));
+		assertTrue(!conditions.matchesAgitation(0.49));
+		assertTrue(!conditions.matchesAgitation(0.0), "an unstirred vessel fails a positive lower bound");
 		assertEquals(input, conditions.toJson());
 	}
 

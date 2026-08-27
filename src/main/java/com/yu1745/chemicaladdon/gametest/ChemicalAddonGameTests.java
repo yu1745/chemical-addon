@@ -34,6 +34,8 @@ import com.yu1745.chemicaladdon.reactor.ReactorTank;
 import com.yu1745.chemicaladdon.reactor.RulesEngine;
 import com.yu1745.chemicaladdon.reactor.SettlingBasinBlockEntity;
 import com.yu1745.chemicaladdon.reactor.SpillLogic;
+import com.yu1745.chemicaladdon.reactor.StirShaftMath;
+import com.yu1745.chemicaladdon.reactor.StirringHeadBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ThermometerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ThermometerPanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.TurbidityGaugeBlockEntity;
@@ -181,22 +183,41 @@ public class ChemicalAddonGameTests {
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void recipeA3SealedCapabilityAndConditionRejection(GameTestHelper helper) {
 		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
+		// B1: required parts are enforced against the structure snapshot — a recipe
+		// whose part is not installed no longer matches (pre-B1 it was data-only)
 		JsonObject json = new JsonObject();
 		json.add("requiredCapabilities", jsonArray("sealed"));
 		json.add("requiredParts", jsonArray("chemicaladdon:catalyst_bed"));
-		JsonObject agitationOnly = new JsonObject();
-		JsonObject agitation = new JsonObject();
-		agitation.addProperty("min", 99.0);
-		agitationOnly.add("agitation", agitation);
-		json.add("conditions", agitationOnly);
 		ChemicalReactionRecipe sealedRecipe = recipeFromA3Json(json);
 		helper.assertTrue(sealedRecipe.getRequiredParts().contains(
 			new ResourceLocation(ChemicalAddon.MODID, "catalyst_bed")),
 			"required part must be parsed and retained");
-		helper.assertTrue(sealedRecipe.getConditions().hasAgitation()
-			&& sealedRecipe.matchesStructureRequirements((StructureAccess) be, (ProcessReadings) be),
-			"agitation metadata must not be enforced before an agitation reading exists");
+		helper.assertTrue(!sealedRecipe.matchesStructureRequirements((StructureAccess) be, (ProcessReadings) be),
+			"a recipe whose required part is not installed must be rejected (B1 enforcement)");
 
+		// B1: agitation bounds are enforced against the snapshot's live reading —
+		// an unstirred vessel (agitation 0) fails a positive lower bound, a fully
+		// rotating stirring head (normalized 1.0) satisfies it
+		json = new JsonObject();
+		json.add("requiredCapabilities", jsonArray("sealed"));
+		JsonObject agitationOnly = new JsonObject();
+		JsonObject agitation = new JsonObject();
+		agitation.addProperty("min", 0.5);
+		agitationOnly.add("agitation", agitation);
+		json.add("conditions", agitationOnly);
+		ChemicalReactionRecipe needsStirring = recipeFromA3Json(json);
+		helper.assertTrue(needsStirring.getConditions().hasAgitation()
+				&& !needsStirring.matchesStructureRequirements((StructureAccess) be, (ProcessReadings) be),
+			"an unstirred vessel must fail an agitation lower bound (B1 enforcement)");
+		ReactorControllerBlockEntity stirred = buildReactor5x5x5(helper, 10, 0, true);
+		BlockEntity stirredHeadBe = helper.getBlockEntity(new BlockPos(12, 5, 2));
+		helper.assertTrue(stirredHeadBe instanceof StirringHeadBlockEntity,
+			"the stirred test vessel must carry a stirring head");
+		((StirringHeadBlockEntity) stirredHeadBe).setPinnedSpeed(256f);
+		helper.assertTrue(needsStirring.matchesStructureRequirements((StructureAccess) stirred, (ProcessReadings) stirred),
+			"a fully rotating head (normalized agitation 1.0) must satisfy the 0.5 lower bound");
+
+		// temperature conditions behave as before
 		json = new JsonObject();
 		json.add("requiredCapabilities", jsonArray("sealed"));
 		JsonObject conditions = new JsonObject();
@@ -241,6 +262,241 @@ public class ChemicalAddonGameTests {
 			buffer.release();
 		}
 		helper.succeed();
+	}
+
+	// -------------------------------------------------- construction package B1
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselB1StirringHeadBindsAndAgitates(GameTestHelper helper) {
+		// 5×5×5 sealed reactor whose centre roof block is the stirring head: the
+		// head is a vessel_walls block, so the roof stays sealed with it in place
+		ReactorControllerBlockEntity be = buildReactor5x5x5(helper, 0, 0, true);
+		BlockPos headPos = new BlockPos(2, 5, 2);
+		BlockEntity headBe = helper.getBlockEntity(headPos);
+		helper.assertTrue(headBe instanceof StirringHeadBlockEntity,
+			"the roof centre must hold the stirring head BE");
+		StirringHeadBlockEntity head = (StirringHeadBlockEntity) headBe;
+		helper.assertTrue(head.getMasterPos() != null && head.getMasterPos().equals(be.getBlockPos()),
+			"assembly must bind the head to the controller");
+		helper.assertTrue(!head.isPartEffective() && head.effectiveAgitation() == 0f,
+			"a stationary head must not be effective");
+		StructureCapabilities still = ((StructureAccess) be).getStructureCapabilities();
+		helper.assertTrue(still.has(ProcessCapability.SEALED) && !still.has(ProcessCapability.AGITATED)
+			&& !still.hasPart(StirringHeadBlockEntity.PART_ID) && still.agitation() == 0f,
+			"a stationary head must not publish AGITATED, its part id or agitation");
+
+		// half speed → normalized 0.5 (REFERENCE_RPM 256)
+		head.setPinnedSpeed(128f);
+		StructureCapabilities stirred = ((StructureAccess) be).getStructureCapabilities();
+		helper.assertTrue(stirred.has(ProcessCapability.AGITATED) && stirred.hasPart(StirringHeadBlockEntity.PART_ID),
+			"a rotating head must publish AGITATED and its part id");
+		helper.assertTrue(Math.abs(stirred.agitation() - 0.5f) < 1.0e-3f,
+			"128 RPM must normalize to agitation 0.5 (got " + stirred.agitation() + ")");
+
+		// capability proxy parity with a structural brick (the head IS a shell block)
+		helper.assertTrue(head.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH).isPresent(),
+			"the bound head must proxy the vessel's fluid handler on its sides");
+		helper.assertTrue(!head.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.UP).isPresent(),
+			"the head's top face must not accept pipes (vessel-top parity)");
+
+		// an overstressed network reads as zero: the head stops agitating
+		head.updateFromNetwork(0f, 100f, 1);
+		StructureCapabilities halted = ((StructureAccess) be).getStructureCapabilities();
+		helper.assertTrue(!halted.has(ProcessCapability.AGITATED) && !halted.hasPart(StirringHeadBlockEntity.PART_ID)
+			&& halted.agitation() == 0f,
+			"an overstressed head must stop counting as installed/effective");
+		head.updateFromNetwork(1000f, 0f, 1); // recover for the break test below
+
+		// breaking the head degrades the vessel to open-topped (ceiling-brick
+		// removal path), the part disappears, the vessel survives
+		helper.setBlock(headPos, Blocks.AIR.defaultBlockState());
+		helper.assertTrue(be.isAssembled() && be.isOpen(),
+			"removing the roof head must leave an assembled open-topped vessel");
+		StructureCapabilities opened = ((StructureAccess) be).getStructureCapabilities();
+		helper.assertTrue(opened.has(ProcessCapability.OPEN_TOP) && !opened.hasPart(StirringHeadBlockEntity.PART_ID),
+			"an opened vessel must no longer expose the head part");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselB1WallPositionHeadIsNotInstalled(GameTestHelper helper) {
+		// B1 placement rule: the stirring head is a roof-penetration drive — the
+		// same powered head in a WALL cell must stay a bound, proxying shell block
+		// yet never publish its part id, AGITATED or agitation
+		ReactorControllerBlockEntity wallVessel = buildReactor5x5x5WithHeadAt(helper, 0, 0, 0, 3, 2);
+		BlockPos wallHeadPos = new BlockPos(0, 3, 2); // west wall, middle ring layer
+		BlockEntity wallHeadBe = helper.getBlockEntity(wallHeadPos);
+		helper.assertTrue(wallHeadBe instanceof StirringHeadBlockEntity,
+			"the wall cell must hold the stirring head BE");
+		StirringHeadBlockEntity wallHead = (StirringHeadBlockEntity) wallHeadBe;
+		helper.assertTrue(wallHead.getMasterPos() != null && wallHead.getMasterPos().equals(wallVessel.getBlockPos()),
+			"a wall-position head still binds to the controller (shell block semantics)");
+		wallHead.setPinnedSpeed(256f); // fully powered
+		helper.assertTrue(!wallHead.isPartEffective() && wallHead.effectiveAgitation() == 0f,
+			"a powered wall-position head must not be an effective part (roof-only rule)");
+		helper.assertTrue(wallVessel.effectiveAgitation() == 0f,
+			"the vessel must not read agitation from a wall-position head");
+		StructureCapabilities snapshot = ((StructureAccess) wallVessel).getStructureCapabilities();
+		helper.assertTrue(!snapshot.has(ProcessCapability.AGITATED) && !snapshot.hasPart(StirringHeadBlockEntity.PART_ID)
+				&& snapshot.agitation() == 0f,
+			"a powered wall-position head must not publish AGITATED, its part id or agitation");
+		// still a shell block: the capability proxy keeps working
+		helper.assertTrue(wallHead.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH).isPresent(),
+			"a wall-position head still proxies the vessel's fluid handler");
+
+		// control: the same powered head on the roof plane DOES publish
+		ReactorControllerBlockEntity roofVessel = buildReactor5x5x5(helper, 10, 0, true);
+		BlockEntity roofHeadBe = helper.getBlockEntity(new BlockPos(12, 5, 2));
+		helper.assertTrue(roofHeadBe instanceof StirringHeadBlockEntity,
+			"the roof centre must hold the stirring head BE");
+		((StirringHeadBlockEntity) roofHeadBe).setPinnedSpeed(256f);
+		StructureCapabilities roofSnapshot = ((StructureAccess) roofVessel).getStructureCapabilities();
+		helper.assertTrue(roofSnapshot.has(ProcessCapability.AGITATED)
+				&& roofSnapshot.hasPart(StirringHeadBlockEntity.PART_ID)
+				&& Math.abs(roofSnapshot.agitation() - 1.0f) < 1.0e-3f,
+			"the same powered head on the roof plane must publish AGITATED, its part id and agitation 1.0");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselB1ShaftFollowsLiquidLevel(GameTestHelper helper) {
+		// B1 visual layer, geometry level (no pixel assertions): the shaft target
+		// depth follows the vessel's liquid level — lower portion of the liquor,
+		// clamped off the floor/roof plates, retracted near the roof when empty.
+		// 5×5×5 sealed reactor (interior 3×3×3, 27 buckets), centred roof head.
+		ReactorControllerBlockEntity be = buildReactor5x5x5(helper, 0, 0, true);
+		StirringHeadBlockEntity head = (StirringHeadBlockEntity) helper.getBlockEntity(new BlockPos(2, 5, 2));
+
+		// impeller diameter: 0.65 × interior width 3, wall/height caps slack
+		float diameter = head.getImpellerDiameter();
+		helper.assertTrue(diameter > 1.8f && diameter < 2.1f,
+			"a centred head in a 3-wide interior must size ~1.95 blocks (got " + diameter + ")");
+		float half = StirShaftMath.impellerHalfHeight(diameter);
+
+		// empty: retracted just under the roof (never inside the head cell, never deep)
+		float empty = head.getShaftTargetDepth();
+		helper.assertTrue(empty > 0f && empty < 0.75f,
+			"an empty vessel must park the impeller near the roof (got " + empty + ")");
+
+		// half full (13500 mB of 27000): centre rides 30% up the 1.5-block column
+		be.getTank().fill(new FluidStack(Fluids.WATER, 13500), FluidAction.EXECUTE);
+		float halfFull = head.getShaftTargetDepth();
+		helper.assertTrue(halfFull > 2.3f && halfFull < 2.8f,
+			"a half-full vessel must run the impeller low in the liquor (got " + halfFull + ")");
+		helper.assertTrue(halfFull + half < 3f,
+			"the blades must never cross the floor plate");
+
+		// full (27000): the centre rises with the surface, blades stay submerged
+		be.getTank().fill(new FluidStack(Fluids.WATER, 13500), FluidAction.EXECUTE);
+		float full = head.getShaftTargetDepth();
+		helper.assertTrue(full > 1.8f && full < 2.3f,
+			"a full vessel must raise the impeller centre to 30% up the column (got " + full + ")");
+		helper.assertTrue(full < halfFull, "filling further must raise the impeller, not lower it");
+
+		// drained dry again: back to the roof parking position
+		be.getTank().drain(27000, FluidAction.EXECUTE);
+		float drained = head.getShaftTargetDepth();
+		helper.assertTrue(Math.abs(drained - empty) < 1.0e-3f,
+			"a drained vessel must retract the impeller to the same roof parking depth");
+
+		// a wall-position head never draws a shaft at all (decorative shell block)
+		ReactorControllerBlockEntity wallVessel = buildReactor5x5x5WithHeadAt(helper, 10, 0, 0, 3, 2);
+		StirringHeadBlockEntity wallHead = (StirringHeadBlockEntity) helper.getBlockEntity(new BlockPos(10, 3, 2));
+		wallHead.setPinnedSpeed(256f);
+		helper.assertTrue(wallHead.getShaftTargetDepth() == 0f && wallHead.getImpellerDiameter() == 0f,
+			"a wall-position head must not render a shaft or impeller");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselB1ShaftWorksWithHighControllerAndTallVessel(GameTestHelper helper) {
+		// the depth is measured from the HEAD's bottom face to the interior floor —
+		// the controller may sit on ANY ring layer, so a high-mounted controller
+		// must not shift the geometry. Open-topped 3×3 shell, 5 rings (interior
+		// 1×1×5), controller on ring 2, head in the roof centre.
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		BlockState headState = AllBlocks.STIRRING_HEAD.get().defaultBlockState();
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				helper.setBlock(new BlockPos(x, 1, z), brick); // floor
+				helper.setBlock(new BlockPos(x, 7, z), x == 2 && z == 2 ? headState : brick); // roof with the head centred
+			}
+		}
+		for (int y = 2; y <= 6; y++) {
+			for (int x = 1; x <= 3; x++) {
+				for (int z = 1; z <= 3; z++) {
+					if (x == 2 && z == 2) {
+						continue; // interior column
+					}
+					helper.setBlock(new BlockPos(x, y, z), x == 2 && z == 1 && y == 4 ? controller : brick);
+				}
+			}
+		}
+		ReactorControllerBlockEntity be =
+			(ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 4, 1));
+		helper.assertTrue(be.tryAssemble().ok(), "sealed 3x3x7 with the controller on ring 2 should assemble");
+		StirringHeadBlockEntity head = (StirringHeadBlockEntity) helper.getBlockEntity(new BlockPos(2, 7, 2));
+		helper.assertTrue(head.getMasterPos() != null && head.getMasterPos().equals(be.getBlockPos()),
+			"the roof head must bind to the high controller");
+
+		// interior 1 wide → impeller 0.65 blocks, still visible but wall-safe
+		float diameter = head.getImpellerDiameter();
+		helper.assertTrue(diameter > 0.5f && diameter < 0.8f,
+			"a 1-wide interior must size the impeller ~0.65 blocks (got " + diameter + ")");
+
+		// empty → roof parking (depth is measured from the head, not the controller)
+		float empty = head.getShaftTargetDepth();
+		helper.assertTrue(empty > 0f && empty < 0.75f,
+			"an empty tall vessel must park the impeller near the roof (got " + empty + ")");
+
+		// shallow (500 mB = 0.5 blocks): the 30% target overshoots, the floor clamp wins
+		be.getTank().fill(new FluidStack(Fluids.WATER, 500), FluidAction.EXECUTE);
+		float shallow = head.getShaftTargetDepth();
+		helper.assertTrue(shallow > 4.7f && shallow < 4.9f,
+			"a shallow tall vessel must clamp the impeller just above the floor (got " + shallow + ")");
+
+		// full (5000 mB): centre at 30% up the 5-block column
+		be.getTank().fill(new FluidStack(Fluids.WATER, 4500), FluidAction.EXECUTE);
+		float full = head.getShaftTargetDepth();
+		helper.assertTrue(full > 3.3f && full < 3.7f,
+			"a full tall vessel must ride the impeller 30% up the column (got " + full + ")");
+		helper.assertTrue(full < shallow, "filling must raise the impeller centre");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 40)
+	public static void reactorB1StirringDoublesRecipeProgress(GameTestHelper helper) {
+		// two identical 5×5×5 reactors: plain vs fully stirred (256 RPM →
+		// coefficient 2.0 vs baseline 1.0). Same charge, same pinned 500 °C
+		// (deterministic HEATED rate window), same batch (sulfur burning, 100 t):
+		// the stirred vessel finishes the batch the plain one has not.
+		ReactorControllerBlockEntity plain = buildReactor5x5x5(helper);
+		ReactorControllerBlockEntity stirred = buildReactor5x5x5(helper, 10, 0, true);
+		BlockEntity headBe = helper.getBlockEntity(new BlockPos(12, 5, 2));
+		helper.assertTrue(headBe instanceof StirringHeadBlockEntity,
+			"the stirred vessel must carry a stirring head in its roof");
+		StirringHeadBlockEntity head = (StirringHeadBlockEntity) headBe;
+		head.setPinnedSpeed(256f);
+		for (ReactorControllerBlockEntity reactor : List.of(plain, stirred)) {
+			reactor.setPinnedTemperature(500);
+			reactor.getItems().setStackInSlot(0, new ItemStack(AllItems.SULFUR.get()));
+			reactor.getTank().fill(new FluidStack(AllFluids.OXYGEN.get().getSource(), 1000), FluidAction.EXECUTE);
+		}
+		// reaction steps run every 10 ticks: plain rate 1.25 → 0.125/step (needs 8
+		// steps = 80 t); stirred rate 2.5 → 0.25/step (completes at 40 t). 74 t is
+		// past the stirred completion and before the plain one.
+		helper.startSequence()
+			.thenIdle(74)
+			.thenExecute(() -> {
+				helper.assertTrue(hasFluid(stirred, AllFluids.SULFUR_DIOXIDE.get().getSource(), 900),
+					"the stirred reactor must have completed its batch (2× rate)");
+				helper.assertTrue(!hasFluid(plain, AllFluids.SULFUR_DIOXIDE.get().getSource(), 1),
+					"the unstirred reactor must still be mid-batch");
+				helper.assertTrue(plain.getProgress() > 0.5f && plain.getProgress() < 1.0f,
+					"the unstirred reactor must be visibly mid-batch (got " + plain.getProgress() + ")");
+			})
+			.thenSucceed();
 	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
@@ -3472,25 +3728,46 @@ public class ChemicalAddonGameTests {
 	 *  the controller at (2,2,0) and assembles it. Used by tests that need more
 	 *  capacity than the minimal 3×3×3 (which holds only 1 bucket). */
 	private static ReactorControllerBlockEntity buildReactor5x5x5(GameTestHelper helper) {
+		return buildReactor5x5x5(helper, 0, 0, false);
+	}
+
+	/** Builds a 5×5×5 sealed reactor at the given corner offset; when
+	 *  {@code stirringHead} the centre roof block (x0+2, 5, z0+2) is the B1
+	 *  stirring head instead of a brick. Assembles it and returns the controller
+	 *  at (x0+2, 2, z0). */
+	private static ReactorControllerBlockEntity buildReactor5x5x5(GameTestHelper helper, int x0, int z0,
+			boolean stirringHead) {
+		return buildReactor5x5x5WithHeadAt(helper, x0, z0,
+			stirringHead ? 2 : -1, stirringHead ? 5 : -1, stirringHead ? 2 : -1);
+	}
+
+	/** Builds a 5×5×5 sealed reactor with the stirring head replacing the brick at
+	 *  the structure-relative cell (hx, hy, hz) — any cell of floor, walls or roof
+	 *  (-1 = plain brick shell). Assembles it and returns the controller at
+	 *  (x0+2, 2, z0). Used to prove the B1 placement rule (roof-only part). */
+	private static ReactorControllerBlockEntity buildReactor5x5x5WithHeadAt(GameTestHelper helper, int x0, int z0,
+			int hx, int hy, int hz) {
 		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
 		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		BlockState head = AllBlocks.STIRRING_HEAD.get().defaultBlockState();
 		for (int x = 0; x <= 4; x++) {
 			for (int z = 0; z <= 4; z++) {
-				helper.setBlock(new BlockPos(x, 1, z), brick); // floor
-				helper.setBlock(new BlockPos(x, 5, z), brick); // sealed ceiling
+				helper.setBlock(new BlockPos(x0 + x, 1, z0 + z), x == hx && 1 == hy && z == hz ? head : brick); // floor
+				helper.setBlock(new BlockPos(x0 + x, 5, z0 + z), x == hx && 5 == hy && z == hz ? head : brick); // sealed ceiling
 			}
 		}
 		for (int y = 2; y <= 4; y++) {
 			for (int x = 0; x <= 4; x++) {
 				for (int z = 0; z <= 4; z++) {
 					if ((x == 0 || x == 4 || z == 0 || z == 4) && !(y == 2 && x == 2 && z == 0)) {
-						helper.setBlock(new BlockPos(x, y, z), brick); // ring walls
+						helper.setBlock(new BlockPos(x0 + x, y, z0 + z),
+							x == hx && y == hy && z == hz ? head : brick); // ring walls
 					}
 				}
 			}
 		}
-		helper.setBlock(new BlockPos(2, 2, 0), controller);
-		ReactorControllerBlockEntity be = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 0));
+		helper.setBlock(new BlockPos(x0 + 2, 2, z0), controller);
+		ReactorControllerBlockEntity be = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(x0 + 2, 2, z0));
 		helper.assertTrue(be.tryAssemble().ok(), "5x5x5 reactor should assemble");
 		return be;
 	}

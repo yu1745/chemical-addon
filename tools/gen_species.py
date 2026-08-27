@@ -118,6 +118,7 @@ BLOCKS = [
     ("turbidity_gauge",        "浊度计",  "Turbidity Gauge",    0x62685A),
     ("turbidity_gauge_panel",  "浊度计面板", "Turbidity Gauge Panel", 0x72786A),
     ("crystallizer_controller", "终点结晶器", "Crystallizer Controller", 0x6E7A6E),
+    ("stirring_head",      "搅拌头", "Stirring Head",      0x707880),
 ]
 
 # Consumable test papers / qualitative reagents (U17, plans/12 §2.2): one-time
@@ -679,6 +680,117 @@ def make_coil_texture(rgb):
     return rows
 
 
+def make_stirring_head_textures(rgb):
+    """B1 stirring head (搅拌头): a roof shell block with a shaft coupling on
+    the UP face (dark bore + flange, so a vertical shaft visually docks), a
+    plain underside plate with the shaft stub on the DOWN face (the dynamic
+    shaft + enlarged impeller below it are BE-rendered partials — the static
+    face no longer pretends to be the paddle), and a flanged metal casing on
+    the sides (bolt band + panel)."""
+    r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
+    top = []
+    bottom = []
+    side = []
+    for y in range(16):
+        top_row = []
+        bottom_row = []
+        side_row = []
+        for x in range(16):
+            dx = x - 7.5
+            dy = y - 7.5
+            d2 = dx * dx + dy * dy
+            # UP: shaft coupling
+            if d2 <= 4.0:
+                top_row += [28, 30, 34, 255]        # shaft bore
+            elif d2 <= 14.0:
+                top_row += [122, 128, 138, 255]     # coupling collar
+            elif d2 <= 22.0:
+                top_row += [82, 88, 96, 255]        # collar seam
+            else:
+                top_row += [r, g, b, 255]           # casing plate
+            # DOWN: underside plate with the shaft stub collar (the spinning
+            # shaft itself hangs out of this bore as a rendered partial)
+            if d2 <= 4.0:
+                bottom_row += [40, 42, 48, 255]     # shaft stub bore (4px, the shaft cross-section)
+            elif d2 <= 13.0:
+                bottom_row += [118, 124, 134, 255]  # stub collar
+            elif d2 <= 22.0:
+                bottom_row += [84, 90, 98, 255]     # collar seam ring
+            else:
+                bottom_row += [int(r * 0.72), int(g * 0.72), int(b * 0.72), 255]  # ceiling underside
+            # SIDES: flanged casing with a bolt band
+            if y in (0, 15):
+                side_row += [int(r * 1.15), int(g * 1.15), int(b * 1.15), 255]  # top/bottom edge
+            elif y == 7 or y == 8:
+                side_row += [int(r * 0.55), int(g * 0.55), int(b * 0.55), 255]  # bolt band
+            elif (y == 5 or y == 10) and x % 4 == 2:
+                side_row += [168, 174, 184, 255]    # bolt heads
+            else:
+                side_row += [r, g, b, 255]
+        top.append(top_row)
+        bottom.append(bottom_row)
+        side.append(side_row)
+    return top, bottom, side
+
+
+def make_stir_shaft_texture():
+    """B1 dynamic stirring shaft (BE-rendered partial, 4px column): alternating
+    light/dark uv bands (the classic Create shaft flats) so the kinetic rotation
+    reads, plus a small darker cap region for the segment's lower end face."""
+    rows = []
+    base = 0x8A9099  # polished steel
+    for y in range(16):
+        # subtle vertical machining streaks (rows of the uv band)
+        streak = 1.0 + 0.05 * (((y % 4) - 1.5) / 1.5)
+        row = []
+        for x in range(16):
+            if x < 4:
+                f = 1.08 if x % 4 < 3 else 0.98      # light flat with a soft edge
+            elif x < 8:
+                f = 0.72                              # dark flat
+            else:
+                f = 0.88                              # spare / mid
+            rgb = tuple(max(0, min(255, int(c * f * streak))) for c in
+                        (base >> 16 & 255, base >> 8 & 255, base & 255))
+            row += [rgb[0], rgb[1], rgb[2], 255]
+        rows.append(row)
+    # cap region (uv x 8..11, y 0..3): plate with a darker centre bore
+    for y in range(4):
+        for x in range(8, 12):
+            inner = 9 <= x <= 10 and 1 <= y <= 2
+            c = 0x4E545C if inner else 0x7E848D
+            rows[y][x * 4:x * 4 + 4] = [c >> 16 & 255, c >> 8 & 255, c & 255, 255]
+    return rows
+
+
+def make_stir_impeller_texture():
+    """B1 enlarged impeller (BE-rendered partial): hub column (uv x 0..1,
+    y 0..9), hub caps (uv x 4..5, y 0..1), blade plate with a bright leading
+    edge (uv y 10..15), blade end faces (uv x 2, y 6..11) — uniform along the
+    blade length so the spin does not strobe."""
+    rows = []
+    base = 0x767E88  # brushed steel
+    for y in range(16):
+        row = []
+        for x in range(16):
+            if y < 10 and x < 2:
+                f = 1.0 + 0.04 * ((y % 3) - 1)        # hub: vertical brushing
+            elif y < 2 and 4 <= x < 6:
+                f = 0.62                              # hub cap bore
+            elif x == 2 and 6 <= y < 12:
+                f = 0.66                              # blade end faces
+            elif y >= 10:
+                edge = y - 10                         # blade plate strip
+                f = 1.12 if edge == 0 else 0.92 if edge == 5 else 0.78 if edge == 1 else 1.0
+            else:
+                f = 0.85                              # spare fill
+            rgb = tuple(max(0, min(255, int(c * f))) for c in
+                        (base >> 16 & 255, base >> 8 & 255, base & 255))
+            row += [rgb[0], rgb[1], rgb[2], 255]
+        rows.append(row)
+    return rows
+
+
 def gen_block_textures():
     d = os.path.join(ASSETS, "textures/block")
     os.makedirs(d, exist_ok=True)
@@ -707,6 +819,14 @@ def gen_block_textures():
     # decant_hose was missing from here since D18.5 — runData's blockstate
     # provider for it failed on the absent texture (U1 fix)
     write_png(os.path.join(d, "decant_hose.png"), make_coil_texture(0xB87333))
+    # B1 stirring head: coupling / underside stub / casing face set
+    head_top, head_bottom, head_side = make_stirring_head_textures(0x707880)
+    write_png(os.path.join(d, "stirring_head_top.png"), head_top)
+    write_png(os.path.join(d, "stirring_head_bottom.png"), head_bottom)
+    write_png(os.path.join(d, "stirring_head_side.png"), head_side)
+    # B1 stirring head dynamic partials: rotating shaft flats + enlarged impeller
+    write_png(os.path.join(d, "stirring_shaft.png"), make_stir_shaft_texture())
+    write_png(os.path.join(d, "stirring_impeller.png"), make_stir_impeller_texture())
 
 
 # Extra lang keys added by hand (GUIs, goggles, diagnostics, assemble messages).

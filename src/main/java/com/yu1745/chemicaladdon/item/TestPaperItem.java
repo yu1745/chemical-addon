@@ -116,7 +116,7 @@ public class TestPaperItem extends Item {
 		ReactorTank tank = reactor.getTank();
 		switch (kind) {
 			case LITMUS: {
-				int ph = AbstractPhGaugeBlockEntity.phOf(tank);
+				int ph = AbstractPhGaugeBlockEntity.phOf(tank, reactor.getBlockPos());
 				if (ph < 5) {
 					return "paper.chemicaladdon.litmus_red";
 				}
@@ -126,7 +126,7 @@ public class TestPaperItem extends Item {
 				return "paper.chemicaladdon.litmus_purple";
 			}
 			case PHENOLPHTHALEIN: {
-				return AbstractPhGaugeBlockEntity.phOf(tank) >= 8
+				return AbstractPhGaugeBlockEntity.phOf(tank, reactor.getBlockPos()) >= 8
 					? "paper.chemicaladdon.phenolphthalein_pink"
 					: "paper.chemicaladdon.phenolphthalein_clear";
 			}
@@ -158,7 +158,8 @@ public class TestPaperItem extends Item {
 
 	/** Wide-range paper carries the reading: "pH ≈ N" needs the number inline. */
 	private static Component sampleWidePh(ReactorControllerBlockEntity reactor) {
-		return Component.translatable("paper.chemicaladdon.wide_ph", AbstractPhGaugeBlockEntity.phOf(reactor.getTank()))
+		return Component.translatable("paper.chemicaladdon.wide_ph",
+				AbstractPhGaugeBlockEntity.phOf(reactor.getTank(), reactor.getBlockPos()))
 			.withStyle(ChatFormatting.AQUA);
 	}
 

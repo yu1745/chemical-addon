@@ -76,9 +76,9 @@ final class ReactionLogic {
 	}
 
 	private static boolean matches(ReactorControllerBlockEntity reactor, ChemicalReactionRecipe recipe) {
-		// Structure requirements are deliberately checked through the narrow
-		// contracts. Required parts and agitation metadata are retained by the
-		// recipe but are not enforced until reliable snapshots/readings exist.
+		// Structure requirements are checked through the narrow contracts:
+		// capabilities, temperature and pressure via ProcessReadings, installed
+		// parts and the live agitation window via the structure snapshot (B1).
 		StructureAccess structure = reactor;
 		ProcessReadings readings = reactor;
 		if (!recipe.matchesStructureRequirements(structure, readings)) {
