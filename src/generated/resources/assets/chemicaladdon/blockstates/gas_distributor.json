@@ -1,0 +1,27 @@
+{
+  "variants": {
+    "facing=down": {
+      "model": "chemicaladdon:block/gas_distributor",
+      "x": 90
+    },
+    "facing=east": {
+      "model": "chemicaladdon:block/gas_distributor",
+      "y": 270
+    },
+    "facing=north": {
+      "model": "chemicaladdon:block/gas_distributor",
+      "y": 180
+    },
+    "facing=south": {
+      "model": "chemicaladdon:block/gas_distributor"
+    },
+    "facing=up": {
+      "model": "chemicaladdon:block/gas_distributor",
+      "x": 270
+    },
+    "facing=west": {
+      "model": "chemicaladdon:block/gas_distributor",
+      "y": 90
+    }
+  }
+}

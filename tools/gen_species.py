@@ -119,6 +119,7 @@ BLOCKS = [
     ("turbidity_gauge_panel",  "浊度计面板", "Turbidity Gauge Panel", 0x72786A),
     ("crystallizer_controller", "终点结晶器", "Crystallizer Controller", 0x6E7A6E),
     ("stirring_head",      "搅拌头", "Stirring Head",      0x707880),
+    ("gas_distributor",    "气体分布器", "Gas Distributor",  0x68747A),
 ]
 
 # Consumable test papers / qualitative reagents (U17, plans/12 §2.2): one-time
@@ -656,6 +657,54 @@ def make_dial_texture(rgb, needle=(196, 44, 44), dial=(236, 238, 242)):
     return rows
 
 
+def make_gas_distributor_textures(rgb):
+    """B2 directional gas distributor face set.
+
+    The block's FACING points into the vessel.  Its front face is therefore a
+    porous diffuser plate, while the opposite back face is the external pipe
+    inlet.  The four remaining faces are plain ribbed casing.  Keeping these
+    as separate baked sprites makes the block's process direction legible even
+    before a player checks its blockstate or goggles.
+    """
+    r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
+    side = make_panel_texture(rgb)
+    front = []
+    back = []
+    for y in range(16):
+        front_row = []
+        back_row = []
+        for x in range(16):
+            dx, dy = x - 7.5, y - 7.5
+            d2 = dx * dx + dy * dy
+            # Internal face: bright flange around a dark porous diffuser plate.
+            if d2 <= 49:
+                if d2 <= 36:
+                    if (x in (5, 7, 9, 11) and y in (5, 7, 9, 11)):
+                        front_row += [18, 22, 25, 255]  # diffuser holes
+                    elif d2 <= 30:
+                        front_row += [68, 92, 102, 255]  # perforated plate
+                    else:
+                        front_row += [42, 55, 62, 255]    # plate recess
+                else:
+                    front_row += [156, 166, 174, 255]      # nozzle flange
+            else:
+                front_row += [r, g, b, 255]
+
+            # External face: a pipe coupling with a clearly open central bore.
+            if d2 <= 42:
+                if d2 <= 16:
+                    back_row += [20, 23, 27, 255]         # inlet bore
+                elif d2 <= 28:
+                    back_row += [174, 181, 188, 255]       # coupling ring
+                else:
+                    back_row += [82, 90, 98, 255]          # outer seam
+            else:
+                back_row += [r, g, b, 255]
+        front.append(front_row)
+        back.append(back_row)
+    return front, back, side
+
+
 def make_coil_texture(rgb):
     """Decant hose block placeholder: concentric coil rings of hose on a dark
     mounting plate (the visible block is mostly the BE renderer's 3D coil;
@@ -827,6 +876,13 @@ def gen_block_textures():
     # B1 stirring head dynamic partials: rotating shaft flats + enlarged impeller
     write_png(os.path.join(d, "stirring_shaft.png"), make_stir_shaft_texture())
     write_png(os.path.join(d, "stirring_impeller.png"), make_stir_impeller_texture())
+    # B2 gas distributor: FACING points inward.  The inward face is a porous
+    # diffuser, the opposite face is the sole external pipe inlet, and the
+    # other four faces are ordinary metal casing.
+    gas_front, gas_back, gas_side = make_gas_distributor_textures(0x68747A)
+    write_png(os.path.join(d, "gas_distributor_front.png"), gas_front)
+    write_png(os.path.join(d, "gas_distributor_back.png"), gas_back)
+    write_png(os.path.join(d, "gas_distributor_side.png"), gas_side)
 
 
 # Extra lang keys added by hand (GUIs, goggles, diagnostics, assemble messages).
@@ -926,6 +982,15 @@ EXTRA_LANG_ZH = {
     "assemble.chemicaladdon.east_side": "东侧",
     "assemble.chemicaladdon.west_side": "西侧",
     "gui.chemicaladdon.hint": "状态请戴工程师护目镜查看",
+    "goggles.chemicaladdon.gas_distributor": "气体分布器",
+    "goggles.chemicaladdon.gas_distributor.rate": "窗口流量：%s/%s mB",
+    "gas_distributor.chemicaladdon.status.unbound": "未绑定反应釜",
+    "gas_distributor.chemicaladdon.status.wrong_position_or_facing": "位置或朝向错误",
+    "gas_distributor.chemicaladdon.status.not_submerged": "出口未浸没（至少需要 0.25 格）",
+    "gas_distributor.chemicaladdon.status.non_gas": "仅接受气体流体",
+    "gas_distributor.chemicaladdon.status.no_capacity": "反应釜无容量",
+    "gas_distributor.chemicaladdon.status.rate_limited": "达到 250 mB/10 tick 限流",
+    "gas_distributor.chemicaladdon.status.accepting": "可接受气体",
 }
 
 EXTRA_LANG_EN = {
@@ -1018,6 +1083,15 @@ EXTRA_LANG_EN = {
     "assemble.chemicaladdon.interior_blocked": "interior is blocked",
     "assemble.chemicaladdon.too_short": "need at least 1 wall layer (height 3)",
     "gui.chemicaladdon.hint": "Wear engineer goggles to see reactor state",
+    "goggles.chemicaladdon.gas_distributor": "Gas Distributor",
+    "goggles.chemicaladdon.gas_distributor.rate": "Window flow: %s/%s mB",
+    "gas_distributor.chemicaladdon.status.unbound": "Not bound to a vessel",
+    "gas_distributor.chemicaladdon.status.wrong_position_or_facing": "Wrong position or facing",
+    "gas_distributor.chemicaladdon.status.not_submerged": "Outlet not submerged (0.25 block required)",
+    "gas_distributor.chemicaladdon.status.non_gas": "Gas fluids only",
+    "gas_distributor.chemicaladdon.status.no_capacity": "Vessel has no capacity",
+    "gas_distributor.chemicaladdon.status.rate_limited": "Rate limit reached: 250 mB/10 ticks",
+    "gas_distributor.chemicaladdon.status.accepting": "Accepting gas",
 }
 
 

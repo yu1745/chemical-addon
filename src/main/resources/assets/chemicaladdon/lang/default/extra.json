@@ -83,5 +83,14 @@
   "assemble.chemicaladdon.ring_gap": "brick missing in the wall",
   "assemble.chemicaladdon.interior_blocked": "interior is blocked",
   "assemble.chemicaladdon.too_short": "need at least 1 wall layer (height 3)",
-  "gui.chemicaladdon.hint": "Wear engineer goggles to see reactor state"
+  "gui.chemicaladdon.hint": "Wear engineer goggles to see reactor state",
+  "goggles.chemicaladdon.gas_distributor": "Gas Distributor",
+  "goggles.chemicaladdon.gas_distributor.rate": "Window flow: %s/%s mB",
+  "gas_distributor.chemicaladdon.status.unbound": "Not bound to a vessel",
+  "gas_distributor.chemicaladdon.status.wrong_position_or_facing": "Wrong position or facing",
+  "gas_distributor.chemicaladdon.status.not_submerged": "Outlet not submerged (0.25 block required)",
+  "gas_distributor.chemicaladdon.status.non_gas": "Gas fluids only",
+  "gas_distributor.chemicaladdon.status.no_capacity": "Vessel has no capacity",
+  "gas_distributor.chemicaladdon.status.rate_limited": "Rate limit reached: 250 mB/10 ticks",
+  "gas_distributor.chemicaladdon.status.accepting": "Accepting gas"
 }

@@ -1,5 +1,7 @@
 package com.yu1745.chemicaladdon.vessel;
 
+import java.util.Set;
+
 import net.minecraft.resources.ResourceLocation;
 
 /**
@@ -44,4 +46,9 @@ public interface IShellPartEntity {
 	 * report 0). Normalization and cap policy live in {@link Agitation}.
 	 */
 	float effectiveAgitation();
+
+	/** Process capabilities contributed while this part is effective. */
+	default Set<ProcessCapability> effectiveCapabilities() {
+		return Set.of();
+	}
 }

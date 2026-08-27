@@ -10,6 +10,7 @@ import com.yu1745.chemicaladdon.reactor.CrystallizerControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.DecantHoseBlockEntity;
 import com.yu1745.chemicaladdon.reactor.DecantPortBlockEntity;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlockEntity;
+import com.yu1745.chemicaladdon.reactor.GasDistributorBlockEntity;
 import com.yu1745.chemicaladdon.reactor.PhGaugeBlockEntity;
 import com.yu1745.chemicaladdon.reactor.PhGaugePanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.PressureGaugeBlockEntity;
@@ -130,6 +131,11 @@ public class AllBlockEntities {
 			() -> BlockEntityType.Builder.of(CrystallizerControllerBlockEntity::new,
 				AllBlocks.CRYSTALLIZER_CONTROLLER.get())
 				.build(null));
+
+	public static final RegistryObject<BlockEntityType<GasDistributorBlockEntity>> GAS_DISTRIBUTOR =
+			REGISTER.register("gas_distributor",
+				() -> BlockEntityType.Builder.of(GasDistributorBlockEntity::new, AllBlocks.GAS_DISTRIBUTOR.get())
+					.build(null));
 
 	public static final RegistryObject<BlockEntityType<StirringHeadBlockEntity>> STIRRING_HEAD =
 			REGISTER.register("stirring_head",

@@ -1,4 +1,4 @@
-// 1.20.1	2026-08-27T21:18:21.6933202	Registrate Provider for chemicaladdon [Recipes, Advancements, Loot Tables, Tags (blocks), Tags (items), Tags (fluids), Tags (entity_types), Blockstates, Item models, Lang (en_us/en_ud)]
+// 1.20.1	2026-08-28T00:23:56.9235117	Registrate Provider for chemicaladdon [Recipes, Advancements, Loot Tables, Tags (blocks), Tags (items), Tags (fluids), Tags (entity_types), Blockstates, Item models, Lang (en_us/en_ud)]
 404f8d84274018255af4e6938f419a71dbabebf5 assets/chemicaladdon/blockstates/air.json
 5398f4a42a9384736e88ebf696b792477ed35819 assets/chemicaladdon/blockstates/ammonia.json
 60b9015792fb318c83af85b54214b2eae520cb3d assets/chemicaladdon/blockstates/baume_gauge.json
@@ -14,6 +14,7 @@ ec518c4120ce358361867bd02bfa26e543ba714a assets/chemicaladdon/blockstates/crysta
 9714b6467e5ebad0e04879624c0b5078abe5d3ed assets/chemicaladdon/blockstates/decant_hose.json
 bed4d17271699daa73a6bf03ceb051c1792d4b2e assets/chemicaladdon/blockstates/decant_port.json
 f9aa0a067e1f93fb034850b418d658e11cd313fd assets/chemicaladdon/blockstates/filter_press.json
+627c70b4e076755ed7ebd4c1b560449938e34240 assets/chemicaladdon/blockstates/gas_distributor.json
 1c78f44cce2bcd9fa1b6d962dd1edf66a846cbbb assets/chemicaladdon/blockstates/hydrogen.json
 94a7314daed727fd249b4b8b39b2db300ea2803f assets/chemicaladdon/blockstates/hydrogen_chloride.json
 c1d2710de0789f30bc2938210f8cb32904024e79 assets/chemicaladdon/blockstates/mixture.json
@@ -35,8 +36,8 @@ cca96f8d0570837890fc1952992b68ec43577a3a assets/chemicaladdon/blockstates/therma
 a33d1c8ee8ca36ddd5c5deb034e10f9069825ad8 assets/chemicaladdon/blockstates/thermometer_panel.json
 52aa60a58573877557bc02aaf20c15b6b87136ed assets/chemicaladdon/blockstates/turbidity_gauge.json
 6ccb990219a38242195f4b3dff3359fd0e5f3abd assets/chemicaladdon/blockstates/turbidity_gauge_panel.json
-5c97ee1fa562f36cd0b1a285c8e9d380a5b0b55d assets/chemicaladdon/lang/en_ud.json
-d477b9962b1178f742ba907b1283cc7ed723fbc0 assets/chemicaladdon/lang/en_us.json
+9ff49d6ab6164bf7954c44d285b58ac9f81e9617 assets/chemicaladdon/lang/en_ud.json
+24da162fb4f45553892bff6820eb5d267e1d0a37 assets/chemicaladdon/lang/en_us.json
 736302a02c48b95eab2dc5fc031636ef7f903874 assets/chemicaladdon/models/block/air.json
 87e1eda6ed5b3bcf841040ce4a18402e9e9ca9e8 assets/chemicaladdon/models/block/ammonia.json
 9c9e5951960ccfa0ea6fbac27b287b6e0a5c284d assets/chemicaladdon/models/block/baume_gauge.json
@@ -49,6 +50,7 @@ fcc5a6bf85300659c3a186341530d0fd38b4e0dc assets/chemicaladdon/models/block/chlor
 2da5e86ac6656aeb371e57d9c9eb82ec0155de3c assets/chemicaladdon/models/block/crystallizer_controller.json
 fa28945f4dbf2edb90f23cd7ec83650a63394b77 assets/chemicaladdon/models/block/decant_port.json
 891236f35d4dbb35ccc9a4a93e54f0236ed97177 assets/chemicaladdon/models/block/filter_press.json
+bf3bf696b0bc5a43b58055ab10e5ff3b7524517c assets/chemicaladdon/models/block/gas_distributor.json
 1b5bbc546102e830eb0189cd91f5346e5b1c5c29 assets/chemicaladdon/models/block/hydrogen.json
 58ceaa565c0ab479b89a7521437da7a19cd27f76 assets/chemicaladdon/models/block/hydrogen_chloride.json
 b8cae35c776679c89f3bc84968e8016636664840 assets/chemicaladdon/models/block/mixture.json
@@ -90,6 +92,7 @@ bf67834846b5f1fd13cc3178c8ebf2ab8884b85b assets/chemicaladdon/models/item/copper
 391878232626f993cd51429896258213cf8de991 assets/chemicaladdon/models/item/decant_port.json
 5212a8b3043fd280e6d359c5a73fc969ce033af8 assets/chemicaladdon/models/item/filter_cake.json
 e61342bf921951f48b870fe83ada05eaac429526 assets/chemicaladdon/models/item/filter_press.json
+061b97cf530a35a0d48becd1464acd70e5ce8817 assets/chemicaladdon/models/item/gas_distributor.json
 df3c5446f9104828ecc3c5639aaca1c8f5244a5a assets/chemicaladdon/models/item/gypsum.json
 e683ed9bd65e1dd82f33c83c625e5607cbdf771b assets/chemicaladdon/models/item/limestone.json
 39cafc2c5335e99145bd2721a64dc121b575618a assets/chemicaladdon/models/item/litmus_paper.json
@@ -137,6 +140,7 @@ ef66c1ce81bfaca5663397f6e03633721a636cc7 data/chemicaladdon/loot_tables/blocks/c
 402b66814b5bc46cc7580d2c5a8cff83f4ffe806 data/chemicaladdon/loot_tables/blocks/decant_hose.json
 1d6ba71308648ecbae30acf40ce4084d04e4f2d7 data/chemicaladdon/loot_tables/blocks/decant_port.json
 f0f702905e43071389cbc327b1a1fe4729e7a9b2 data/chemicaladdon/loot_tables/blocks/filter_press.json
+68b39a1408b9912034ead43fc6096bfab028f75b data/chemicaladdon/loot_tables/blocks/gas_distributor.json
 39a26e79029f161293dc2d5572741510575620b7 data/chemicaladdon/loot_tables/blocks/ph_gauge.json
 12d6c4d96d49b9919ea6c0b1a953eeb33e9043fa data/chemicaladdon/loot_tables/blocks/ph_gauge_panel.json
 ef194a0b843654755b34c51f2671bceb447ca6b9 data/chemicaladdon/loot_tables/blocks/pressure_gauge.json

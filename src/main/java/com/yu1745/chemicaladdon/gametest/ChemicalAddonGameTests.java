@@ -25,6 +25,8 @@ import com.yu1745.chemicaladdon.reactor.CrystallizerControllerBlock;
 import com.yu1745.chemicaladdon.reactor.CrystallizerControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.DecantHoseBlockEntity;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlockEntity;
+import com.yu1745.chemicaladdon.reactor.GasDistributorBlock;
+import com.yu1745.chemicaladdon.reactor.GasDistributorBlockEntity;
 import com.yu1745.chemicaladdon.reactor.PhGaugeBlockEntity;
 import com.yu1745.chemicaladdon.reactor.PressureGaugeBlockEntity;
 import com.yu1745.chemicaladdon.reactor.PressureGaugePanelBlockEntity;
@@ -53,6 +55,7 @@ import com.yu1745.chemicaladdon.vessel.LiquidProcessAccess;
 import com.yu1745.chemicaladdon.vessel.ProcessReadings;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -63,12 +66,18 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.gametest.framework.GameTestSequence;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraftforge.event.RegisterGameTestsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -315,6 +324,293 @@ public class ChemicalAddonGameTests {
 		StructureCapabilities opened = ((StructureAccess) be).getStructureCapabilities();
 		helper.assertTrue(opened.has(ProcessCapability.OPEN_TOP) && !opened.hasPart(StirringHeadBlockEntity.PART_ID),
 			"an opened vessel must no longer expose the head part");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselB2SideDistributorAcceptsGasThroughExternalFace(GameTestHelper helper) {
+		ReactorControllerBlockEntity vessel = buildReactor5x5x5WithGasAt(helper, 0, 0, 1, 2, 0, Direction.SOUTH);
+		GasDistributorBlockEntity distributor = (GasDistributorBlockEntity) helper.getBlockEntity(new BlockPos(1, 2, 0));
+		vessel.getTank().fill(new FluidStack(Fluids.WATER, 10000), FluidAction.EXECUTE);
+		distributor.refreshDiagnostic();
+		helper.assertTrue(distributor.getStatus() == GasDistributorBlockEntity.Status.ACCEPTING,
+			"a submerged side distributor should be ready");
+		helper.assertTrue(distributor.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH).isPresent(),
+			"only the outside face should expose the inlet capability");
+		helper.assertFalse(distributor.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.SOUTH).isPresent(),
+			"the vessel-facing nozzle side must not expose a pipe endpoint");
+
+		FluidStack oxygen = new FluidStack(AllFluids.OXYGEN.get().getSource(), 100);
+		int before = vessel.getTank().getTotalAmount();
+		helper.assertTrue(distributor.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH).orElseThrow(() -> new IllegalStateException())
+			.fill(oxygen, FluidAction.SIMULATE) == 100, "SIMULATE should report the available gas flow");
+		helper.assertTrue(vessel.getTank().getTotalAmount() == before && distributor.getAcceptedInWindow() == 0,
+			"SIMULATE must not change tank contents or the safety window");
+		helper.assertTrue(distributor.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH).orElseThrow(() -> new IllegalStateException())
+			.fill(oxygen, FluidAction.EXECUTE) == 100, "the submerged inlet should accept gas");
+		helper.assertTrue(vessel.getTank().getTotalAmount() == before + 100 && distributor.getStatus() == GasDistributorBlockEntity.Status.ACCEPTING,
+			"accepted gas must enter the existing ReactorTank");
+		helper.assertTrue(distributor.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH).orElseThrow(() -> new IllegalStateException())
+			.drain(100, FluidAction.EXECUTE).isEmpty(), "the distributor must never drain");
+		vessel.getTank().fill(new FluidStack(Fluids.WATER,
+			vessel.getTank().getTankCapacity(0) - vessel.getTank().getTotalAmount()), FluidAction.EXECUTE);
+		helper.assertTrue(distributor.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH).orElseThrow(() -> new IllegalStateException())
+			.fill(oxygen, FluidAction.EXECUTE) == 0
+			&& distributor.getStatus() == GasDistributorBlockEntity.Status.NO_CAPACITY,
+			"a full ReactorTank must report NO_CAPACITY");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 30)
+	public static void vesselB2DistributorUsesPressureFeedAndRateWindow(GameTestHelper helper) {
+		ReactorControllerBlockEntity vessel = buildReactor5x5x5WithGasAt(helper, 0, 0, 1, 2, 0, Direction.SOUTH);
+		GasDistributorBlockEntity distributor = (GasDistributorBlockEntity) helper.getBlockEntity(new BlockPos(1, 2, 0));
+		vessel.getTank().fill(new FluidStack(Fluids.WATER, 10000), FluidAction.EXECUTE);
+		FluidStack gas = new FluidStack(AllFluids.SULFUR_DIOXIDE.get().getSource(), 500);
+		IFluidHandler inlet = distributor.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH).orElseThrow(() -> new IllegalStateException());
+		helper.assertTrue(inlet.fill(gas, FluidAction.EXECUTE) == 250, "one distributor is capped at 250 mB per window");
+		helper.assertTrue(inlet.fill(gas, FluidAction.EXECUTE) == 0
+			&& distributor.getStatus() == GasDistributorBlockEntity.Status.RATE_LIMITED,
+			"a second fill in the same window must be rate limited");
+		helper.assertTrue(com.yu1745.chemicaladdon.composition.parity.PressureFeed.of(
+			vessel.getTank().getFluids(), vessel.getTank().getTankCapacity(0), vessel.getTemperature()).containsKey("SulAbsorb"),
+			"gas accepted through the distributor must be visible to the existing PressureFeed path");
+		helper.startSequence().thenIdle(10).thenExecute(() -> {
+			helper.assertTrue(inlet.fill(new FluidStack(AllFluids.SULFUR_DIOXIDE.get().getSource(), 100), FluidAction.EXECUTE) == 100,
+				"the window must reset at exactly 10 ticks");
+		}).thenSucceed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselB2RejectsInvalidGasDistributorStates(GameTestHelper helper) {
+		ReactorControllerBlockEntity wrongFacing = buildReactor5x5x5WithGasAt(helper, 0, 0, 1, 2, 0, Direction.NORTH);
+		GasDistributorBlockEntity outward = (GasDistributorBlockEntity) helper.getBlockEntity(new BlockPos(1, 2, 0));
+		wrongFacing.getTank().fill(new FluidStack(Fluids.WATER, 10000), FluidAction.EXECUTE);
+		helper.assertFalse(outward.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.SOUTH).isPresent(),
+			"an outward-facing side nozzle must not publish an input endpoint");
+		outward.refreshDiagnostic();
+		helper.assertTrue(outward.getStatus() == GasDistributorBlockEntity.Status.WRONG_POSITION_OR_FACING,
+			"an outward-facing side nozzle must report the placement diagnostic");
+
+		ReactorControllerBlockEntity dry = buildReactor5x5x5WithGasAt(helper, 5, 0, 6, 2, 0, Direction.SOUTH);
+		GasDistributorBlockEntity dryDistributor = (GasDistributorBlockEntity) helper.getBlockEntity(new BlockPos(6, 2, 0));
+		helper.assertTrue(dryDistributor.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH).orElseThrow(() -> new IllegalStateException())
+			.fill(new FluidStack(AllFluids.OXYGEN.get().getSource(), 50), FluidAction.EXECUTE) == 0
+			&& dryDistributor.getStatus() == GasDistributorBlockEntity.Status.NOT_SUBMERGED,
+			"a dry outlet must reject gas instead of feeding the headspace");
+		// water is a real liquid, not a gas whitelist miss
+		wrongFacing = buildReactor5x5x5WithGasAt(helper, 10, 0, 11, 2, 0, Direction.SOUTH);
+		GasDistributorBlockEntity nonGas = (GasDistributorBlockEntity) helper.getBlockEntity(new BlockPos(11, 2, 0));
+		wrongFacing.getTank().fill(new FluidStack(Fluids.WATER, 10000), FluidAction.EXECUTE);
+		helper.assertTrue(nonGas.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH).orElseThrow(() -> new IllegalStateException())
+			.fill(new FluidStack(Fluids.WATER, 50), FluidAction.EXECUTE) == 0
+			&& nonGas.getStatus() == GasDistributorBlockEntity.Status.NON_GAS,
+			"non-gas fluids must be rejected without an id whitelist");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselB2BottomAndRoofGatesPublishCapabilities(GameTestHelper helper) {
+		ReactorControllerBlockEntity bottom = buildReactor5x5x5WithGasAt(helper, 0, 0, 2, 1, 2, Direction.UP);
+		GasDistributorBlockEntity bottomDistributor = (GasDistributorBlockEntity) helper.getBlockEntity(new BlockPos(2, 1, 2));
+		bottom.getTank().fill(new FluidStack(Fluids.WATER, 2300), FluidAction.EXECUTE);
+		helper.assertTrue(bottomDistributor.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.DOWN).isPresent(),
+			"the bottom outlet must expose its downward external face");
+		helper.assertTrue(bottomDistributor.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.DOWN).orElseThrow(() -> new IllegalStateException())
+			.fill(new FluidStack(AllFluids.OXYGEN.get().getSource(), 50), FluidAction.EXECUTE) == 50,
+			"an UP-facing bottom distributor should accept submerged gas");
+		StructureCapabilities bottomSnapshot = ((StructureAccess) bottom).getStructureCapabilities();
+		helper.assertTrue(bottomSnapshot.has(ProcessCapability.GAS_DISPERSED)
+			&& bottomSnapshot.hasPart(GasDistributorBlockEntity.PART_ID),
+			"a submerged side or bottom distributor must publish GAS_DISPERSED and its part id");
+
+		ReactorControllerBlockEntity roof = buildReactor5x5x5WithGasAt(helper, 10, 0, 12, 5, 2, Direction.DOWN);
+		GasDistributorBlockEntity roofDistributor = (GasDistributorBlockEntity) helper.getBlockEntity(new BlockPos(12, 5, 2));
+		StructureCapabilities roofSnapshot = ((StructureAccess) roof).getStructureCapabilities();
+		helper.assertTrue(roofSnapshot.hasBoundPart(GasDistributorBlockEntity.PART_ID)
+			&& !roofSnapshot.hasPart(GasDistributorBlockEntity.PART_ID)
+			&& !roofSnapshot.has(ProcessCapability.GAS_DISPERSED),
+			"a roof distributor remains diagnostically bound but is not an effective part");
+		helper.assertFalse(roofDistributor.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.UP).isPresent(),
+			"an invalid roof distributor must not publish a fluid endpoint");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselB2WindowPersistsAndRemovalUnbinds(GameTestHelper helper) {
+		ReactorControllerBlockEntity vessel = buildReactor5x5x5WithGasAt(helper, 0, 0, 1, 2, 0, Direction.SOUTH);
+		GasDistributorBlockEntity distributor = (GasDistributorBlockEntity) helper.getBlockEntity(new BlockPos(1, 2, 0));
+		vessel.getTank().fill(new FluidStack(Fluids.WATER, 10000), FluidAction.EXECUTE);
+		IFluidHandler inlet = distributor.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH).orElseThrow(() -> new IllegalStateException());
+		inlet.fill(new FluidStack(AllFluids.OXYGEN.get().getSource(), 250), FluidAction.EXECUTE);
+		CompoundTag saved = distributor.saveWithoutMetadata();
+		distributor.load(saved);
+		helper.assertTrue(distributor.getAcceptedInWindow() == 250 && distributor.getWindowStart() == saved.getLong("gasWindowStart"),
+			"the rate window must survive a block-entity reload");
+		helper.setBlock(new BlockPos(1, 2, 0), Blocks.AIR.defaultBlockState());
+		helper.assertFalse(distributor.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH).isPresent(),
+			"removing the distributor must revoke its external capability");
+		helper.assertFalse(((StructureAccess) vessel).getStructureCapabilities().has(ProcessCapability.GAS_DISPERSED),
+			"removal must revoke GAS_DISPERSED");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselB2ReplacingWallRebindsDistributor(GameTestHelper helper) {
+		ReactorControllerBlockEntity vessel = buildReactor5x5x5(helper);
+		BlockPos distributorPos = new BlockPos(1, 2, 0);
+		BlockState distributorState = AllBlocks.GAS_DISTRIBUTOR.get().defaultBlockState()
+			.setValue(BlockStateProperties.FACING, Direction.SOUTH);
+
+		// This is the real Level.setBlock replacement path. The old brick's
+		// onRemove runs before the new block's onPlace, and both callbacks run
+		// before LevelChunk creates the replacement BE.
+		helper.setBlock(distributorPos, distributorState);
+		BlockEntity replacement = helper.getBlockEntity(distributorPos);
+		helper.assertTrue(replacement instanceof GasDistributorBlockEntity,
+			"replacing a shell brick must create the distributor BE, not reuse the brick BE");
+		GasDistributorBlockEntity distributor = (GasDistributorBlockEntity) replacement;
+		helper.assertTrue(vessel.isAssembled(),
+			"replacing one legal shell block must keep the vessel assembled");
+		helper.assertTrue(vessel.getBlockPos().equals(distributor.getMasterPos()),
+			"same-size shell replacement must bind the new distributor after its BE is created");
+		vessel.getTank().fill(new FluidStack(Fluids.WATER, 10000), FluidAction.EXECUTE);
+		distributor.refreshDiagnostic();
+		helper.assertTrue(distributor.getStatus() == GasDistributorBlockEntity.Status.ACCEPTING,
+			"a correctly oriented replacement must not remain UNBOUND");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselB2DistributorParticipatesInFirstAssembly(GameTestHelper helper) {
+		// The distributor is already a shell block before the controller performs
+		// the real assembly; no setMaster shortcut is used.
+		ReactorControllerBlockEntity vessel = buildReactor5x5x5WithGasAt(helper, 0, 0, 1, 2, 0, Direction.SOUTH);
+		GasDistributorBlockEntity distributor = (GasDistributorBlockEntity) helper.getBlockEntity(new BlockPos(1, 2, 0));
+		helper.assertTrue(vessel.isAssembled() && vessel.getBlockPos().equals(distributor.getMasterPos()),
+			"a preinstalled distributor must bind during first assembly");
+		StructureCapabilities snapshot = ((StructureAccess) vessel).getStructureCapabilities();
+		helper.assertTrue(snapshot.hasBoundPart(GasDistributorBlockEntity.PART_ID),
+			"first assembly must record the distributor as a bound shell part");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselB2WrongFacingStaysBoundAndDiagnosable(GameTestHelper helper) {
+		ReactorControllerBlockEntity vessel = buildReactor5x5x5WithGasAt(helper, 0, 0, 1, 2, 0, Direction.NORTH);
+		GasDistributorBlockEntity distributor = (GasDistributorBlockEntity) helper.getBlockEntity(new BlockPos(1, 2, 0));
+		helper.assertTrue(vessel.getBlockPos().equals(distributor.getMasterPos()),
+			"an incorrectly oriented distributor is still a legal bound shell cell");
+		distributor.refreshDiagnostic();
+		helper.assertTrue(distributor.getStatus() == GasDistributorBlockEntity.Status.WRONG_POSITION_OR_FACING,
+			"wrong orientation must be diagnosed separately from UNBOUND");
+		StructureCapabilities snapshot = ((StructureAccess) vessel).getStructureCapabilities();
+		helper.assertTrue(snapshot.hasBoundPart(GasDistributorBlockEntity.PART_ID)
+			&& !snapshot.hasPart(GasDistributorBlockEntity.PART_ID),
+			"wrong orientation must remain bound but ineffective");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselB2RemovingDistributorRunsStructuralRemoval(GameTestHelper helper) {
+		ReactorControllerBlockEntity vessel = buildReactor5x5x5WithGasAt(helper, 0, 0, 1, 2, 0, Direction.SOUTH);
+		BlockPos distributorPos = new BlockPos(1, 2, 0);
+		GasDistributorBlockEntity distributor = (GasDistributorBlockEntity) helper.getBlockEntity(distributorPos);
+		helper.assertTrue(vessel.getBlockPos().equals(distributor.getMasterPos()),
+			"precondition: distributor is bound before removal");
+
+		// Real onRemove path: the vessel must lose its structure rather than keep
+		// a stale capability snapshot after the legal shell cell is removed.
+		helper.setBlock(distributorPos, Blocks.AIR.defaultBlockState());
+		helper.assertTrue(helper.getBlockEntity(distributorPos) == null && !vessel.isAssembled(),
+			"removing the distributor must remove its BE and invalidate the vessel");
+		helper.assertTrue(!((StructureAccess) vessel).getStructureCapabilities()
+			.has(ProcessCapability.GAS_DISPERSED),
+			"an invalidated vessel must not retain GAS_DISPERSED");
+
+		// Repair through the real placement path as well, proving the old removal
+		// did not leave the controller's shell bookkeeping wedged.
+		helper.setBlock(distributorPos, AllBlocks.CHEMICAL_BRICK.get().defaultBlockState());
+		helper.assertTrue(vessel.isAssembled(), "replacing the removed cell must re-form the vessel");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselB2PlacementFollowsPlayerView(GameTestHelper helper) {
+		GasDistributorBlock block = AllBlocks.GAS_DISTRIBUTOR.get();
+		BlockPos target = new BlockPos(7, 7, 7);
+		ItemStack item = new ItemStack(AllBlocks.GAS_DISTRIBUTOR.get());
+		EnumSet<Direction> horizontalResults = EnumSet.noneOf(Direction.class);
+		for (float yaw : new float[] { 0f, 90f, 180f, 270f }) {
+			final float viewYaw = yaw;
+			Player player = new Player(helper.getLevel(), BlockPos.ZERO, 0f,
+				new com.mojang.authlib.GameProfile(java.util.UUID.randomUUID(), "placement-test")) {
+				@Override
+				public float getViewYRot(float partialTicks) {
+					return viewYaw;
+				}
+
+				@Override
+				public boolean isSpectator() {
+					return false;
+				}
+
+				@Override
+				public boolean isCreative() {
+					return true;
+				}
+			};
+			// A player outside a wall looks toward the vessel, so the horizontal
+			// nearest-looking direction is also the inward nozzle direction.
+			BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(target), Direction.NORTH, target, true);
+			BlockPlaceContext context = new BlockPlaceContext(helper.getLevel(), player, InteractionHand.MAIN_HAND,
+				item, hit);
+			BlockState state = block.getStateForPlacement(context);
+			Direction expected = context.getNearestLookingDirection();
+			helper.assertTrue(state != null && state.getValue(BlockStateProperties.FACING) == expected,
+				"horizontal player view must point the nozzle into the wall (yaw=" + yaw
+					+ ", nearest=" + context.getNearestLookingDirection() + ", got "
+					+ (state == null ? "null" : state.getValue(BlockStateProperties.FACING)) + ")");
+			horizontalResults.add(expected);
+		}
+		helper.assertTrue(horizontalResults.equals(EnumSet.of(Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST)),
+			"four horizontal player views must produce four horizontal nozzle directions (got "
+				+ horizontalResults + ")");
+
+		Player above = new Player(helper.getLevel(), BlockPos.ZERO, 0f,
+			new com.mojang.authlib.GameProfile(java.util.UUID.randomUUID(), "placement-test-bottom")) {
+			@Override
+			public float getViewXRot(float partialTicks) {
+				return 90f;
+			}
+
+			@Override
+			public float getViewYRot(float partialTicks) {
+				return 0f;
+			}
+
+			@Override
+			public boolean isSpectator() {
+				return false;
+			}
+
+			@Override
+			public boolean isCreative() {
+				return true;
+			}
+		};
+		// Place on the floor from inside/above while looking down; unlike a wall
+		// mount, the vertical view is inverted so the nozzle points upward.
+		BlockHitResult bottomHit = new BlockHitResult(Vec3.atCenterOf(target), Direction.DOWN, target, true);
+		BlockPlaceContext bottomContext = new BlockPlaceContext(helper.getLevel(), above, InteractionHand.MAIN_HAND,
+			item, bottomHit);
+		BlockState bottom = block.getStateForPlacement(bottomContext);
+		Direction bottomLooking = bottomContext.getNearestLookingDirection();
+		Direction bottomExpected = bottomLooking.getAxis().isVertical() ? bottomLooking.getOpposite() : bottomLooking;
+		helper.assertTrue(bottom != null && bottom.getValue(BlockStateProperties.FACING) == Direction.UP
+			&& bottom.getValue(BlockStateProperties.FACING) == bottomExpected,
+			"looking down at a bottom shell cell must produce FACING=UP (nearest="
+				+ bottomContext.getNearestLookingDirection() + ")");
 		helper.succeed();
 	}
 
@@ -3721,6 +4017,43 @@ public class ChemicalAddonGameTests {
 		}
 		SettlingBasinBlockEntity be = (SettlingBasinBlockEntity) helper.getBlockEntity(new BlockPos(2, 2, 1));
 		helper.assertTrue(be.tryAssemble().ok(), "pool should assemble");
+		return be;
+	}
+
+	/** Builds a sealed 5×5×5 reactor with one directional B2 distributor replacing
+	 * a shell block. Relative coordinates are measured from the south-west corner. */
+	private static ReactorControllerBlockEntity buildReactor5x5x5WithGasAt(GameTestHelper helper, int x0, int z0,
+		int gx, int gy, int gz, Direction facing) {
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		BlockState distributor = AllBlocks.GAS_DISTRIBUTOR.get().defaultBlockState()
+			.setValue(BlockStateProperties.FACING, facing);
+		int localGx = gx - x0;
+		int localGz = gz - z0;
+		for (int x = 0; x <= 4; x++) {
+			for (int z = 0; z <= 4; z++) {
+				BlockPos floor = new BlockPos(x0 + x, 1, z0 + z);
+				BlockPos roof = new BlockPos(x0 + x, 5, z0 + z);
+				helper.setBlock(floor, x == localGx && 1 == gy && z == localGz ? distributor : brick);
+				helper.setBlock(roof, x == localGx && 5 == gy && z == localGz ? distributor : brick);
+			}
+		}
+		for (int y = 2; y <= 4; y++) {
+			for (int x = 0; x <= 4; x++) {
+				for (int z = 0; z <= 4; z++) {
+					if (x == 2 && z == 2) {
+						continue;
+					}
+					if (x == 0 || x == 4 || z == 0 || z == 4) {
+						BlockState wall = x == 2 && z == 0 && y == 2 ? controller
+							: (x == localGx && y == gy && z == localGz ? distributor : brick);
+						helper.setBlock(new BlockPos(x0 + x, y, z0 + z), wall);
+					}
+				}
+			}
+		}
+		ReactorControllerBlockEntity be = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(x0 + 2, 2, z0));
+		helper.assertTrue(be.tryAssemble().ok(), "5x5x5 B2 reactor should assemble");
 		return be;
 	}
 

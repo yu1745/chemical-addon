@@ -1,0 +1,11 @@
+{
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "down": "chemicaladdon:block/gas_distributor_side",
+    "east": "chemicaladdon:block/gas_distributor_side",
+    "north": "chemicaladdon:block/gas_distributor_back",
+    "south": "chemicaladdon:block/gas_distributor_front",
+    "up": "chemicaladdon:block/gas_distributor_side",
+    "west": "chemicaladdon:block/gas_distributor_side"
+  }
+}

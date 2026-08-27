@@ -95,6 +95,8 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 	 * the assembled geometry but no part bookkeeping.
 	 */
 	private final Map<ResourceLocation, List<BlockPos>> shellParts = new LinkedHashMap<>();
+	/** All bound shell parts, including parts that are misplaced or not submerged. */
+	private final Set<ResourceLocation> boundParts = new java.util.LinkedHashSet<>();
 	/** True until the part bookkeeping has been (re-)recorded for the current assembly. */
 	private boolean shellPartsDirty = true;
 
@@ -407,7 +409,11 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 							int newVol = w * w * rings;
 							int curVol = size * size * height;
 							if (assembled && newVol == curVol && topOpen == open) {
-								return AssembleResult.success(); // tie: keep current assembly
+								// A same-size shell replacement is still a structural event.
+								// Rebind the live BEs instead of letting the geometry tie
+								// suppress the replacement part's binding.
+								rebindCurrentShell();
+								return AssembleResult.success();
 							}
 							if (assembled && newVol < curVol && !allowShrink) {
 								return AssembleResult.success(); // placement must never shrink
@@ -594,6 +600,15 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 		}
 	}
 
+	/** Rebind the current geometry after a shell BE was replaced in-place. */
+	private void rebindCurrentShell() {
+		if (!assembled || inward == null || level == null) {
+			return;
+		}
+		Direction side = inward.getAxis() == Direction.Axis.X ? Direction.NORTH : Direction.EAST;
+		bindBricks(worldPosition, inward, side, size, height);
+	}
+
 	/**
 	 * Binds every structural shell block (any block in the vessel_walls tag —
 	 * brick, glass, gauges, the B1 stirring head, ...) to this controller so it
@@ -611,8 +626,12 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 			return;
 		}
 		shellParts.clear(); // re-adoption replaces the recorded parts wholesale
+		boundParts.clear();
 		forEachShellCell(side, inward, w, rings, shellCell -> {
 			bindBrick(shellCell.pos(), masterPos);
+			if (level.getBlockEntity(shellCell.pos()) instanceof IShellPartEntity part) {
+				boundParts.add(part.partId());
+			}
 			recordShellPart(shellCell);
 		});
 		shellPartsDirty = false;
@@ -700,7 +719,8 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 		if (assembled) {
 			assembled = false;
 			int oldSize = size;
-			shellParts.clear(); // B1: parts leave with the structure
+			shellParts.clear(); // B1/B2: parts leave with the structure
+			boundParts.clear();
 			shellPartsDirty = true;
 			// §C: keep size/height/inward as lastGeometry — the remaining lower shell
 			// still stands and the residual fluid surface must keep rendering while
@@ -790,19 +810,22 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 		Set<ProcessCapability> capabilities = EnumSet.of(ProcessCapability.MIXED_VOLUME,
 			open ? ProcessCapability.OPEN_TOP : ProcessCapability.SEALED);
 		Set<ResourceLocation> activeParts = new java.util.LinkedHashSet<>();
+		Set<ProcessCapability> partCapabilities = EnumSet.noneOf(ProcessCapability.class);
 		for (List<BlockPos> positions : shellParts.values()) {
 			for (BlockPos pos : positions) {
 				if (level != null && level.getBlockEntity(pos) instanceof IShellPartEntity part
 					&& part.isPartEffective()) {
 					activeParts.add(part.partId());
+					partCapabilities.addAll(part.effectiveCapabilities());
 				}
 			}
 		}
+		capabilities.addAll(partCapabilities);
 		if (effectiveAgitation() > 0f) {
 			capabilities.add(ProcessCapability.AGITATED);
 		}
 		return StructureCapabilities.of(capabilities, tank.getTankCapacity(0), size, height, ringLayer,
-			activeParts, this::effectiveAgitation);
+			activeParts, boundParts, this::effectiveAgitation);
 	}
 
 	/**
@@ -835,7 +858,13 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 		}
 		Direction side = inward.getAxis() == Direction.Axis.X ? Direction.NORTH : Direction.EAST;
 		shellParts.clear();
-		forEachShellCell(side, inward, size, height, this::recordShellPart);
+		boundParts.clear();
+		forEachShellCell(side, inward, size, height, shellCell -> {
+			if (level.getBlockEntity(shellCell.pos()) instanceof IShellPartEntity part) {
+				boundParts.add(part.partId());
+			}
+			recordShellPart(shellCell);
+		});
 		shellPartsDirty = false;
 	}
 
@@ -952,6 +981,48 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 	/** Y of the roof layer relative to the controller (positive). */
 	public int getRoofRelY() {
 		return height - ringLayer;
+	}
+
+	/**
+	 * B2 placement gate: a gas distributor may occupy a side-wall cell (with its
+	 * nozzle pointing into the hollow) or any bottom-shell cell (pointing UP).
+	 * Roof cells and outward-facing nozzles intentionally fail this test.
+	 */
+	public boolean isGasDistributorPosition(BlockPos pos, Direction facing) {
+		if (!assembled || inward == null || pos == null || facing == null || pos.equals(worldPosition)) {
+			return false;
+		}
+		Direction side = inward.getAxis() == Direction.Axis.X ? Direction.NORTH : Direction.EAST;
+		int dx = pos.getX() - worldPosition.getX();
+		int dz = pos.getZ() - worldPosition.getZ();
+		int s = dx * side.getStepX() + dz * side.getStepZ();
+		int d = dx * inward.getStepX() + dz * inward.getStepZ();
+		int half = (size - 1) / 2;
+		int sStart = -half;
+		int sEnd = sStart + size - 1;
+		if (s < sStart || s > sEnd || d < 0 || d >= size) {
+			return false;
+		}
+		int y = pos.getY() - worldPosition.getY();
+		if (y == getFloorRelY()) {
+			return facing == Direction.UP;
+		}
+		if (y < -ringLayer || y > height - 1 - ringLayer) {
+			return false; // includes the roof plane
+		}
+		if (s == sStart && facing == side) {
+			return true;
+		}
+		if (s == sEnd && facing == side.getOpposite()) {
+			return true;
+		}
+		if (d == 0 && facing == inward) {
+			return true;
+		}
+		if (d == size - 1 && facing == inward.getOpposite()) {
+			return true;
+		}
+		return false;
 	}
 
 	public ReactorTank getTank() {

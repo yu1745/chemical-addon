@@ -1,6 +1,6 @@
 # 开发进度
 
-> 最后更新：2026-08（M0–M2.5 + U1/U3 + U13–U19 + P6–P7.4；施工包 A 统一能力地基完成验收；**施工包 B1 搅拌头完成验收（含顶盖位畄件规则）：GameTest 128/128（连跑 2 次）+ JUnit 364 全绿；随后 B1 视觉层（动态轴+放大叶轮）落地并完成客户端实机验收；液体跨 BER 深度遮挡修复后，整根轴与叶轮在液下均正确可见：GameTest 130/130 + JUnit 374**；两条内核混沌哨兵测试因耗时暂时禁用，见施工包 A 节）
+> 最后更新：2026-08（M0–M2.5 + U1/U3 + U13–U19 + P6–P7.4；施工包 A 统一能力地基完成验收；**施工包 B1 搅拌头与 B2 气体分布器已完成：GameTest 140/140 + JUnit 379（12 skip）**；B1 视觉层与 B2 放置/绑定/方向贴图均已完成客户端实机验收；两条内核混沌哨兵测试因耗时暂时禁用，见施工包 A 节）
 > 本文件只记录代码完成态与历史单元；未来设计与新开发路线见 `plans/README.md` 和 `plans/10-development.md`。旧计划编号不再定义未来里程碑。
 
 ## 状态总览
@@ -22,11 +22,12 @@
 | U18 定点分数 | 量子网格 10⁷/mB + Mixture long 通道 + 引擎量子往返 | ✅ 完成（插队） |
 | **U19 引擎切换（parity）** | IPhreeqc 内核接管运行时化学（EngineBridge/TickDriver/WriteBack 主循环）+ RulesEngine 退役 | ✅ 完成（插队；内核 vendor commit c988ea9） |
 | 施工包 A1/A2 | 窄过程接口 + 结构能力快照 | ✅ 完成 |
-| 施工包 A3 | 配方可选结构要求 | ✅ 完成（能力/温度/压力/部件/搅拌全部校验；部件与搅拌门禁由 B1 搅拌头快照启用，B2 分布器待做） |
+| 施工包 A3 | 配方可选结构要求 | ✅ 完成（能力/温度/压力/部件/搅拌全部校验；B1 搅拌头与 B2 气体分布器均已接入真实结构快照门禁） |
 | **施工包 B1** | 搅拌头：Create 动能顶盖部件 + 结构快照部件/搅拌 + 配方强制 + 反应速率接线（顶盖位放置规则）+ 视觉层（动态轴/放大叶轮/液位跟随，纯客户端） | ✅ 完成（130/130） |
+| **施工包 B2** | 气体分布器：侧壁/底部壳格、浸没门禁、单侧 Forge 输入、气体限流、GAS_DISPERSED 快照与诊断 | ✅ 完成（140/140） |
 | M3+ 其余 | FE 接线 / 竖窑 / 索尔维 / 连续流 / 高压 / 零排放 | ⏳ 未开始（顺序见 `plans/10-development.md`） |
 
-**自动化测试**：`./gradlew runGameTestServer` → **130/130 必测通过**（2026-08 B1 验收实测连跑 2 次 128/128 全绿，0 optional；B1 视觉层后 = 125 基线 + B1 逻辑 3 + B1 视觉 2，实测 130/130）；`./gradlew test` → JUnit 374 用例全绿（12 skip 带理由；= 原 364 + `StirShaftMathTest` 10；两条混沌哨兵测试因耗时暂时禁用，见施工包 A 节）。
+**自动化测试**：`./gradlew runGameTestServer` → **140/140 必测通过**（0 optional；基线 130 + B2 10）；`./gradlew test` → **JUnit 379 用例，0 失败，12 skip**（新增 `GasDistributorMathTest` 4；两条混沌哨兵测试因耗时暂时禁用，见施工包 A 节）。
 
 ## P6 · 化学权威全量切换（2026-08-20，用户决策：旧引擎从未正常工作，直接切新引擎）
 
@@ -406,7 +407,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 
 - **A1 窄接口**：新增 `StructureAccess`、`LiquidProcessAccess`、`ProcessReadings`；`VesselBlockEntity` 提供结构/液相访问，`ReactorControllerBlockEntity` 提供过程读数。温度/压力仪表迁至 `ProcessReadings`，分液口迁至 `LiquidProcessAccess`，旧公开 API 与 NBT 格式保持不变。
 - **A2 结构能力快照**：新增 `ProcessCapability` 与不可变 `StructureCapabilities`。已成型容器发布 `MIXED_VOLUME` 和 `OPEN_TOP` 或 `SEALED`，并携带容量、边长、环高与控制器环层；派生自活结构、零新 NBT；尚不改变既有工艺行为。
-- **A3 配方可选结构要求（按审计 §12 设计的部分范围）**：`ChemicalReactionRecipe` 已解析、JSON 写回和网络同步 `requiredCapabilities`、`requiredParts`、温度/压力/搅拌条件；`ReactionLogic` 经窄接口强制校验能力、温度和压力。`requiredParts` 与搅拌只保留数据、不参与匹配——等 B1 搅拌头/B2 气体分布器提供真实部件快照与搅拌读数后启用；现有资源配方尚未迁移这些字段。（B1 已启用部件/搅拌校验，见施工包 B1 节。）
+- **A3 配方可选结构要求（按审计 §12 设计的部分范围）**：`ChemicalReactionRecipe` 已解析、JSON 写回和网络同步 `requiredCapabilities`、`requiredParts`、温度/压力/搅拌条件；`ReactionLogic` 经窄接口强制校验能力、温度和压力。`requiredParts`、搅拌与过程能力均由真实部件快照参与匹配；B1 搅拌头已启用部件/搅拌校验，B2 气体分布器已启用部件/`GAS_DISPERSED` 校验。现有资源配方尚未全面迁移这些字段。
 - **验收（2026-08 本轮实跑）**：`gradlew build` 2m47s 通过；JUnit 364 用例 0 失败（12 skip 全为 HydrolysisSurvey 带理由禁用）；`runGameTestServer` 125/125 必测全过（= 基线 118 + A 包新增 7；测试段 34s，批次 100+25 串行）；两类 GameTest 文件 holder 注解齐全、127 个 `@GameTest` 字面计数 = 125 方法 + 2 个 `@GameTestHolder`，无静默排除（P6 假绿陷阱核对）。
 - **混沌哨兵暂时禁用（2026-08）**：ChaosRound2「一锅炖」21.7s / ChaosRound3「终极杂烩」49.6s，实测为单核满载的真实计算（7 档步长 KINETICS 积分 × 每子步全量 speciation 求解，~5000 次求解/测试），因嫌慢注释禁用（注释内写明耗时与原因），**最后一次运行本身通过**；JUnit 计数 366→364。恢复 = 解注三行注解。
 
@@ -435,6 +436,18 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 - **资源**：轴/叶轮纹理由 gen_species.py 程序化生成（`make_stir_shaft_texture` 明暗条 + 端面盖、`make_stir_impeller_texture` 轮毂刷纹/桨面亮刃）；底面纹理去叶桨假面（改为轴孔 + 座圈，桨不再是脸贴图）；模型手写于主资源。均 addon 自有，不拷贝 Create 资产。
 - **剔除/边界**：`createRenderBoundingBox` 扩到头下 8 格 + 水平 ±2（mixer/pulley 同款），`shouldRenderOffScreen` true；卸载/重载后 masterPos 由 NBT 恢复，无/失效 master、壁位头 → 渲染零几何（静态壳块仍正常），均安全。
 - **测试**：新增 JUnit `StirShaftMathTest` 10 例（空/痕量/浅液夹底/半满/满釜抬升/最小釜双板不穿/直径三重上限/退化输入/段锚定/叶轮中心，总 374 全绿）+ GameTest 2 例：`vesselB1ShaftFollowsLiquidLevel`（5×5×5：空回收 0.43/半满 2.55/满 2.1/排空复位/壁位头零几何/直径 1.95）、`vesselB1ShaftWorksWithHighControllerAndTallVessel`（3×3×7 控制器在 2 环：深度从头顶面计量不受环层影响，浅液夹底 4.82/满 3.5/直径 0.65）——几何断言无像素断言。`./gradlew build`/`test`(374)/`runGameTestServer`(130/130)/`runData`（仅 B1 产物，无无关翻动）全过。**客户端实机验收完成**：首次实测发现独立搅拌头 BER 提交的液下叶轮被釜液体深度遮挡；只把叶轮迁到控制器渲染仍会使轴的液下部分消失。最终将**整根动态轴与叶轮**统一由 `ReactorControllerRenderer` 在容器 solid 阶段提交，再进入液体 translucent 阶段；保留正常深度测试，不会穿墙显示。用户复验确认空气段、液下轴和叶轮均正确可见。
+
+### 施工包 B2 · 气体分布器（2026-08）
+
+`gas_distributor` 是带方向的釜壳块：`FACING` 指向釜内，侧壁和底部壳格可安装，顶盖及错误朝向仅保留壳块绑定生命周期，不成为有效部件。有效分布器只在其唯一外侧面发布 Forge `FLUID_HANDLER`，实现单向 `fill`、无 `drain`，直接把真实气体 `FluidStack` 写入现有 `ReactorTank`；气体判定沿用项目 `FluidType.isLighterThanAir()`，不维护流体 ID 白名单。
+
+- **过程门禁**：侧壁出口按 outlet 中心高度计算液面覆盖，至少 `0.25` 格才接受；底部出口从底板上表面计算。未浸没、顶盖或错误朝向不会把气体送入顶空气相，也不会发布 `GAS_DISPERSED`。
+- **限流与同步**：每个分布器服务端独立维护持久化的 `250 mB / 10 tick` 窗口；多个分布器自然叠加。`SIMULATE` 只调用底层 tank 的模拟路径，不修改液量、窗口或诊断状态；窗口数据按低频/状态变化同步。
+- **结构快照**：`IShellPartEntity` 增加有效过程能力钩子；B2 有效时发布 `chemicaladdon:gas_distributor` 与 `ProcessCapability.GAS_DISPERSED`。`StructureCapabilities` 增加 `boundParts`，因此未浸没/错误安装仍可诊断为已绑定，而不冒充有效部件。簿记仍复用 Vessel 的装配事件/重载懒重扫，不逐 tick 扫描整釜。
+- **诊断**：护目镜和右键消息覆盖 `UNBOUND`、`WRONG_POSITION_OR_FACING`、`NOT_SUBMERGED`、`NON_GAS`、`NO_CAPACITY`、`RATE_LIMITED`、`ACCEPTING`。
+- **本次回归根因与修复**：原 `getStateForPlacement` 直接采用 `clickedFace`，不能表达玩家从釜外看向釜内的自然安装方向；现在按玩家 `getNearestLookingDirection()` 放置：水平视线本身就是朝釜内的喷口方向，垂直视线取反，使从上方向下放置的釜底分布器得到 `FACING=UP`。另外 `LevelChunk` 的真实顺序是旧块 `onRemove` → 新块 `onPlace` → 创建/注册新 BE；同尺寸重验证原先只返回 success、不重新绑定，导致新分布器 BE 的 `masterPos` 留空。Vessel 仅保留事件式同尺寸 shell rebind；只给 `GasDistributorBlockEntity.onLoad` 增加新 BE 注册后的补偿重组，未给普通墙砖或控制器增加加载邻域扫描，正常 tick 不扫结构。合法壳格始终绑定，位置/朝向和浸没只影响有效性与诊断。
+- **资源/注册**：`AllBlocks`、`AllBlockEntities`、`vessel_walls` 标签、生成器 BLOCKS/纹理/语言、Registrate blockstate/item model/loot 已接入。外观使用独立的 `front/back/side` 纹理：FACING 面是多孔布气喷口，FACING.opposite 面是管道接头，其余四面是金属壳体；六向状态按 SOUTH 基准正确旋转，UP/DOWN 分别使用 X=270°/90°。
+- **测试/实机**：新增 `GasDistributorMathTest` 4 例；新增 10 个带 `@GameTestHolder(chemicaladdon)` 的 B2 GameTest，覆盖侧壁/底部有效安装、外侧 capability、SIMULATE、非气体、未浸没、气相守恒、PressureFeed 可见性、能力门禁、墙砖替换后绑定、首次成型、错误朝向绑定诊断、拆除重组和真实 `BlockPlaceContext` 四向/底部 `UP`。实测 `./gradlew runGameTestServer` 为 **140/140 必测通过，0 optional**；`./gradlew test` 为 **379 用例，0 失败，12 skip**。客户端复验确认方向贴图可辨、侧壁放置朝向、结构绑定与诊断均正常。
 
 ## 修复记录（近期）
 
