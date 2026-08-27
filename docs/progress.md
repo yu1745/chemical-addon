@@ -29,8 +29,21 @@
 | M3+ 其余 | FE 接线 / 竖窑 / 索尔维 / 连续流 / 高压 / 零排放 | ⏳ 未开始（顺序见 `plans/10-development.md`） |
 | **B 状态口（墙体）** | 固定功能状态口：vessel_walls 壳块、IMasterBound 绑定、仅经 ProcessReadings 读 master、右键状态播报、护目镜状态+进度、固定红石编码（未绑定沉默；REACTING 强 0/比较器 4；非运行强 15 + NOT_ASSEMBLED=0/TEMPERATURE=8/OUTPUT_FULL=12/NO_RECIPE=15）、仅编码态变化才更新邻居 | ✅ 代码完成（见下节） |
 | **B4 计量投料口** | 朝内侧壁液体入口、外侧唯一 FLUID_HANDLER、世界滚轮剂量 100–16000mB、实收截断、空手重置、DONE 红石/比较器 | ✅ 完成（合并总回归 159/159） |
+| **施工包 C1/C2 池式工程化** | 池几何 3×3~15×15×深 1~4 真实化、面积通量沉降、底泥床容量、溢流/底泥双口、超抽夹带+扰动回悬反馈环、底泥再浆化联过滤机 | ✅ 完成（GameTest 164/164） |
 
-**自动化测试**：合并后总回归：`./gradlew test` → **JUnit 389 用例，0 失败，12 skip**；`./gradlew runGameTestServer` → **159/159 必测通过**（148 基线 + S11 2 + 状态口 3 + 计量投料口 6；`phGaugeReadsTitrationEndpoint` 保持注释禁用）。
+**自动化测试**：施工包 C 后：`./gradlew runGameTestServer` → **164/164 必测通过**（148 基线 + S11 2 + 状态口 3 + 计量投料口 6 + 池式 5；`phGaugeReadsTitrationEndpoint` 保持注释禁用）；JUnit 分组见「JUnit 测试分组」节。
+
+## 施工包 C1/C2 · 池式工程化（2026-08）
+
+**沉淀池从「慢速过滤机」升格为真实重力浓缩池**（plans/05 §2/§3/§5/§7 步 1+2）：面积决定澄清能力、深度决定底泥容量，超流量产生夹带与回悬，降泵速可恢复；池不再直接吐干饼，底泥经底口再浆化后联过滤机。
+
+- **几何真实化**：底面 3×3~15×15、深 1~4 环（原固定 3×3×1/8 桶）；容量 = 内腔块数×1000 mB（与反应釜同规则，旧档 NBT 容量自然兼容）；`capacityFor` 重写。
+- **沉降模型**（每 10 tick 一步）：扰动（超抽量×2.0 的床回悬，S17 可见浊度上升）→ 重力沉降（通量 = 内腔面积×200 mB/步，Suspended→Sediment 域迁移，受床容量 = 面积×环数×500 mB 封顶——床满则沉降停滞）→ 清液层额度累积并夹紧到可抽清液。
+- **双口分工**（按管道面）：侧面（或无面向）= 溢流口——额度内 `decantClear` 取清液（晶隙保护同分液口）；超额抽取走「浆料区抽样」（`drainSlurryZone`：液体+悬浮按比例、床不动），输出携带悬浮物 = 夹带；底面 = 底流口——`drainThickenedUnderflow` 以 ~50% 固含再浆化抽底泥（Sediment→Suspended，可直接进过滤机）。
+- **ReactorTank 新原语**：`suspendedUnits`/`sedimentUnits`/`settleSuspended`/`resuspendSediment`（域间迁移，逐 stack 比例最大余数法，修复了首版“扣减预算后目标域加零”的质量丢失 bug）/`drainSlurryZone`/`drainThickenedUnderflow`/`shareOf`/`subtractSharesAndRebuild`。
+- **测试 +5（164/164）**：`basinScalesWithAreaAndDepth`（5×5×2 容量 18000、单步澄清 1800）、`basinSludgeBedStallsAtCapacity`（床满 4500 停滞、余 500 悬浮）、`basinOverflowSkimsAndEntrains`（稳定态夹具：预算内清液/超额夹带 ≥400 mB）、`basinOverdrawChurnsBedAndRecovers`（持续超抽→床回悬浊度升→停抽→重力恢复全部归床）、`basinUnderflowFeedsFilterPress`（底流 50% 固含×两批 4000 mB → 过滤机 4 块滤饼+滤液）。既有 `basinAssemblesAndProxiesFluid`/`basinSettlesSlurry` 改写（容量 1000、沉降入床不吐 item）。
+- **测试工程教训**：GameTest 批次相位与 BE tick 存在数 tick 偏移，「中间窗口态」轮询（如沉降到某步）可能被整体跳过——夹具必须停在**稳定终态**（床满停滞/全清）再断言或抽液。
+- **待做（C 剩余）**：刮泥/曝气/导流内部件、自动排泥、赤泥洗涤/晶种分解垂直切片（plans/05 §7 步 3+4）。
 
 ## JUnit 测试分组（2026-08）
 
@@ -555,7 +568,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 ./gradlew modTest            # 方块/资源/玩法改动的快速 JUnit（93 项）
 ./gradlew engineTest         # 引擎分组 JUnit（296 项；仅纯 Java 分组最多双 JVM fork）
 ./gradlew test               # 完整、串行 release-equivalent JUnit（389 项）
-./gradlew runGameTestServer  # 服务端 GameTest（当前 159/159 必测；2026-08-28 起部分用例的固定等待改为逐 tick 轮询（首个有效状态即续行），测试窗口总 tick 数 ~2080→~1480，详见 GameTests 内 waitFor 助手）
+./gradlew runGameTestServer  # 服务端 GameTest（当前 164/164 必测；2026-08-28 起部分用例的固定等待改为逐 tick 轮询（首个有效状态即续行），测试窗口总 tick 数 ~2080→~1480，详见 GameTests 内 waitFor 助手）
 ./run-server.sh              # 服务端冒烟（自动关闭）
 ./gradlew runClient          # 客户端（自动进 "New World"，-PquickPlayWorld= 覆盖）
 python3 tools/gen_species.py # 改物种后重新生成资源/注册代码

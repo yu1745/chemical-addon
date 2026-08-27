@@ -1162,6 +1162,328 @@ public class ReactorTank implements IFluidHandler {
 		}
 	}
 
+	// ------------------------------------------------- basin domain transfers (C)
+
+	/** Total unit-grid mass of the suspended (slurry) domain across all mixtures. */
+	public long suspendedUnits() {
+		long total = 0;
+		for (FluidStack stack : fluids) {
+			if (!Mixture.isMixture(stack)) {
+				continue;
+			}
+			for (int v : Mixture.deriveUnitSuspendedAmounts(stack).values()) {
+				total += v;
+			}
+		}
+		return total;
+	}
+
+	/** Total unit-grid mass of the settled bed (Sediment domain) across all mixtures. */
+	public long sedimentUnits() {
+		long total = 0;
+		for (FluidStack stack : fluids) {
+			if (!Mixture.isMixture(stack)) {
+				continue;
+			}
+			for (int v : Mixture.deriveUnitSedimentAmounts(stack).values()) {
+				total += v;
+			}
+		}
+		return total;
+	}
+
+	/**
+	 * 施工包 C gravity settling: move up to {@code maxUnits} of suspended solids
+	 * into the settled bed (Suspended → Sediment, per-species proportional). The
+	 * liquid stays put and nothing leaves the tank — the settling basin's
+	 * slow-flux separation primitive. Returns the units actually moved.
+	 */
+	public long settleSuspended(long maxUnits, FluidAction action) {
+		return transferDomain(true, maxUnits, action);
+	}
+
+	/**
+	 * 施工包 C churn: kick up to {@code maxUnits} of the settled bed back into
+	 * suspension (Sediment → Suspended, proportional) — the physical answer to an
+	 * overdrawn surface lift. Returns the units actually resuspended.
+	 */
+	public long resuspendSediment(long maxUnits, FluidAction action) {
+		return transferDomain(false, maxUnits, action);
+	}
+
+	/** Shared Suspended↔Sediment transfer (per-stack proportional largest-remainder). */
+	private long transferDomain(boolean suspendedToSediment, long maxUnits, FluidAction action) {
+		if (maxUnits <= 0) {
+			return 0;
+		}
+		// aggregate the SOURCE domain across mixtures (one physical pot)
+		Map<ResourceLocation, Long> source = new LinkedHashMap<>();
+		long total = 0;
+		for (FluidStack stack : fluids) {
+			if (!Mixture.isMixture(stack)) {
+				continue;
+			}
+			Map<ResourceLocation, Integer> domain = suspendedToSediment
+				? Mixture.deriveUnitSuspendedAmounts(stack)
+				: Mixture.deriveUnitSedimentAmounts(stack);
+			for (Map.Entry<ResourceLocation, Integer> e : domain.entrySet()) {
+				source.merge(e.getKey(), (long) e.getValue(), Long::sum);
+				total += e.getValue();
+			}
+		}
+		long take = Math.min(maxUnits, total);
+		if (take <= 0) {
+			return 0;
+		}
+		Map<ResourceLocation, Long> shares = shareOf(source, take);
+		if (action.simulate()) {
+			return take;
+		}
+		// per-stack: subtract this stack's share from the source domain and add it
+		// to the target domain (the unit mass simply changes register in place)
+		List<FluidStack> rebuilt = new ArrayList<>();
+		boolean changed = false;
+		for (FluidStack stack : fluids) {
+			if (!Mixture.isMixture(stack)) {
+				rebuilt.add(stack);
+				continue;
+			}
+			Map<ResourceLocation, Integer> from = new LinkedHashMap<>(suspendedToSediment
+				? Mixture.deriveUnitSuspendedAmounts(stack)
+				: Mixture.deriveUnitSedimentAmounts(stack));
+			// the stack's ACTUAL removal — captured before the shared budget is
+			// consumed: subtracting mutates the shares map, so re-reading it after
+			// the loop would add nothing to the target domain (mass would vanish)
+			Map<ResourceLocation, Long> removed = new LinkedHashMap<>();
+			for (Map.Entry<ResourceLocation, Long> e : shares.entrySet()) {
+				long remove = Math.min(e.getValue(), from.getOrDefault(e.getKey(), 0));
+				if (remove <= 0) {
+					continue;
+				}
+				e.setValue(e.getValue() - remove);
+				from.put(e.getKey(), (int) (from.get(e.getKey()) - remove));
+				removed.merge(e.getKey(), remove, Long::sum);
+			}
+			if (removed.isEmpty()) {
+				rebuilt.add(stack);
+				continue;
+			}
+			Map<ResourceLocation, Integer> suspended = suspendedToSediment
+				? from : addInto(Mixture.deriveUnitSuspendedAmounts(stack), removed);
+			Map<ResourceLocation, Integer> sediment = suspendedToSediment
+				? addInto(Mixture.deriveUnitSedimentAmounts(stack), removed) : from;
+			replaceWith(rebuilt, Mixture.deriveUnitAmounts(stack), Mixture.deriveUnitIonAmounts(stack),
+				suspended, sediment, Temperature.get(stack));
+			changed = true;
+		}
+		if (changed) {
+			fluids.clear();
+			fluids.addAll(rebuilt);
+			removeEmpty();
+			collapseIfNeeded();
+			onChanged.run();
+		}
+		return take;
+	}
+
+	/** Merge a unit share map into an int unit map (mutation-free). */
+	private static Map<ResourceLocation, Integer> addInto(Map<ResourceLocation, Integer> into,
+		Map<ResourceLocation, Long> shares) {
+		Map<ResourceLocation, Integer> out = new LinkedHashMap<>(into);
+		for (Map.Entry<ResourceLocation, Long> e : shares.entrySet()) {
+			if (e.getValue() > 0) {
+				out.merge(e.getKey(), (int) Math.min(e.getValue(), Integer.MAX_VALUE), Integer::sum);
+			}
+		}
+		return out;
+	}
+
+	/** Largest-remainder proportional split of {@code take} over {@code src}. */
+	private static <K> Map<K, Long> shareOf(Map<K, Long> src, long take) {
+		long total = 0;
+		for (long v : src.values()) {
+			total += v;
+		}
+		Map<K, Long> out = new LinkedHashMap<>();
+		if (total <= 0 || take <= 0) {
+			return out;
+		}
+		long assigned = 0;
+		K largest = null;
+		for (Map.Entry<K, Long> e : src.entrySet()) {
+			long s = take * e.getValue() / total;
+			out.put(e.getKey(), s);
+			assigned += s;
+			if (largest == null || s > out.get(largest)) {
+				largest = e.getKey();
+			}
+		}
+		if (largest != null) {
+			out.merge(largest, take - assigned, Long::sum);
+		}
+		out.values().removeIf(v -> v <= 0);
+		return out;
+	}
+
+	/**
+	 * 施工包 C slurry-zone draw: a proportional sample of the liquid (molecules +
+	 * ions) AND the suspended solids — what a surface lift that punches through
+	 * the supernatant actually pulls. The settled bed (Sediment) stays put.
+	 */
+	public FluidStack drainSlurryZone(int maxDrainMb, FluidAction action) {
+		if (maxDrainMb <= 0) {
+			return FluidStack.EMPTY;
+		}
+		Map<ResourceLocation, Long> liquidMol = new LinkedHashMap<>();
+		Map<String, Long> liquidIons = new LinkedHashMap<>();
+		Map<ResourceLocation, Long> suspended = new LinkedHashMap<>();
+		long total = 0;
+		long weightedTemp = 0;
+		int mixtureMb = 0;
+		for (FluidStack stack : fluids) {
+			if (!Mixture.isMixture(stack)) {
+				continue;
+			}
+			mixtureMb += stack.getAmount();
+			weightedTemp += (long) Temperature.get(stack) * stack.getAmount();
+			for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveUnitAmounts(stack).entrySet()) {
+				liquidMol.merge(e.getKey(), (long) e.getValue(), Long::sum);
+				total += e.getValue();
+			}
+			for (Map.Entry<String, Integer> e : Mixture.deriveUnitIonAmounts(stack).entrySet()) {
+				liquidIons.merge(e.getKey(), (long) e.getValue(), Long::sum);
+				total += e.getValue();
+			}
+			for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveUnitSuspendedAmounts(stack).entrySet()) {
+				suspended.merge(e.getKey(), (long) e.getValue(), Long::sum);
+				total += e.getValue();
+			}
+		}
+		if (total <= 0) {
+			return FluidStack.EMPTY;
+		}
+		long take = Math.min((long) maxDrainMb * Chemistry.UNIT_PER_MB, total);
+		Map<ResourceLocation, Long> molTake = shareOf(liquidMol, take);
+		Map<String, Long> ionTake = shareOf(liquidIons, take);
+		Map<ResourceLocation, Long> suspTake = shareOf(suspended, take);
+		FluidStack out = Mixture.createLong(molTake, ionTake, suspTake, Map.of(),
+			Math.max(1, (int) Math.round((double) take / Chemistry.UNIT_PER_MB)));
+		Temperature.set(out, Temperature.fromWeightedSum(weightedTemp, mixtureMb));
+		if (action.simulate()) {
+			return out;
+		}
+		subtractSharesAndRebuild(molTake, ionTake, suspTake, Map.of());
+		return out;
+	}
+
+	/**
+	 * 施工包 C thickener underflow: pull the settled bed back into suspension at
+	 * the target solids fraction — a pumpable concentrated sludge ({@code ~50% v/v})
+	 * that the filter press splits again downstream. No bed → EMPTY (the
+	 * underflow port runs dry until sludge accumulates).
+	 */
+	public FluidStack drainThickenedUnderflow(int maxDrainMb, double solidsFraction, FluidAction action) {
+		if (maxDrainMb <= 0) {
+			return FluidStack.EMPTY;
+		}
+		Map<ResourceLocation, Long> bed = new LinkedHashMap<>();
+		Map<ResourceLocation, Long> liquidMol = new LinkedHashMap<>();
+		Map<String, Long> liquidIons = new LinkedHashMap<>();
+		long bedUnits = 0;
+		long liquidUnits = 0;
+		long weightedTemp = 0;
+		int mixtureMb = 0;
+		for (FluidStack stack : fluids) {
+			if (!Mixture.isMixture(stack)) {
+				continue;
+			}
+			mixtureMb += stack.getAmount();
+			weightedTemp += (long) Temperature.get(stack) * stack.getAmount();
+			for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveUnitSedimentAmounts(stack).entrySet()) {
+				bed.merge(e.getKey(), (long) e.getValue(), Long::sum);
+				bedUnits += e.getValue();
+			}
+			for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveUnitAmounts(stack).entrySet()) {
+				liquidMol.merge(e.getKey(), (long) e.getValue(), Long::sum);
+				liquidUnits += e.getValue();
+			}
+			for (Map.Entry<String, Integer> e : Mixture.deriveUnitIonAmounts(stack).entrySet()) {
+				liquidIons.merge(e.getKey(), (long) e.getValue(), Long::sum);
+				liquidUnits += e.getValue();
+			}
+		}
+		if (bedUnits <= 0) {
+			return FluidStack.EMPTY;
+		}
+		long outUnits = (long) maxDrainMb * Chemistry.UNIT_PER_MB;
+		long solids = Math.min(Math.round(outUnits * solidsFraction), bedUnits);
+		long liquid = Math.min(outUnits - solids, liquidUnits);
+		if (solids <= 0) {
+			return FluidStack.EMPTY;
+		}
+		Map<ResourceLocation, Long> bedTake = shareOf(bed, solids);
+		Map<ResourceLocation, Long> molTake = liquid > 0 ? shareOf(liquidMol, liquid) : Map.of();
+		Map<String, Long> ionTake = liquid > 0 ? shareOf(liquidIons, liquid) : Map.of();
+		// the bed leaves as SUSPENDED solids: pumping the sludge reslurries it
+		FluidStack out = Mixture.createLong(molTake, ionTake, bedTake, Map.of(),
+			Math.max(1, (int) Math.round((double) (solids + liquid) / Chemistry.UNIT_PER_MB)));
+		Temperature.set(out, Temperature.fromWeightedSum(weightedTemp, mixtureMb));
+		if (action.simulate()) {
+			return out;
+		}
+		subtractSharesAndRebuild(molTake, ionTake, Map.of(), bedTake);
+		return out;
+	}
+
+	/** Subtract the given unit shares from every mixture (greedy per stack) and rebuild the tank. */
+	private void subtractSharesAndRebuild(Map<ResourceLocation, Long> molTake, Map<String, Long> ionTake,
+		Map<ResourceLocation, Long> suspTake, Map<ResourceLocation, Long> sedTake) {
+		List<FluidStack> rebuilt = new ArrayList<>();
+		boolean changed = false;
+		for (FluidStack stack : fluids) {
+			if (!Mixture.isMixture(stack)) {
+				rebuilt.add(stack);
+				continue;
+			}
+			Map<ResourceLocation, Integer> molecules = new LinkedHashMap<>(Mixture.deriveUnitAmounts(stack));
+			Map<String, Integer> ions = new LinkedHashMap<>(Mixture.deriveUnitIonAmounts(stack));
+			Map<ResourceLocation, Integer> susp = new LinkedHashMap<>(Mixture.deriveUnitSuspendedAmounts(stack));
+			Map<ResourceLocation, Integer> sed = new LinkedHashMap<>(Mixture.deriveUnitSedimentAmounts(stack));
+			boolean touched = subtractUnits(molecules, molTake);
+			touched |= subtractUnits(ions, ionTake);
+			touched |= subtractUnits(susp, suspTake);
+			touched |= subtractUnits(sed, sedTake);
+			if (!touched) {
+				rebuilt.add(stack);
+				continue;
+			}
+			replaceWith(rebuilt, molecules, ions, susp, sed, Temperature.get(stack));
+			changed = true;
+		}
+		if (changed) {
+			fluids.clear();
+			fluids.addAll(rebuilt);
+			removeEmpty();
+			collapseIfNeeded();
+			onChanged.run();
+		}
+	}
+
+	/** Greedy exact-integer subtraction of a unit share map; mutates {@code from}. */
+	private static <K> boolean subtractUnits(Map<K, Integer> from, Map<K, Long> take) {
+		boolean touched = false;
+		for (Map.Entry<K, Long> e : take.entrySet()) {
+			long remove = Math.min(e.getValue(), from.getOrDefault(e.getKey(), 0));
+			if (remove <= 0) {
+				continue;
+			}
+			e.setValue(e.getValue() - remove);
+			from.put(e.getKey(), (int) (from.get(e.getKey()) - remove));
+			touched = true;
+		}
+		return touched;
+	}
+
 	/**
 	 * Append a mixture rebuilt from unit-domain maps to {@code out} (single pure
 	 * molecular species degrades to a plain stack, mirroring
