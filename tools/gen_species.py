@@ -107,6 +107,8 @@ BLOCKS = [
     ("filter_press",      "过滤机", "Filter Press",      0x7A7A8A),
     ("settling_basin",    "沉淀池控制器", "Settling Basin", 0x5E6E7A),
     ("furnace_controller", "煅烧炉控制器", "Furnace Controller", 0xB05828),
+    ("tower_controller",   "吸收塔控制器", "Tower Controller", 0x3868A8),
+    ("tower_packing",      "塔填料",       "Tower Packing",    0x8A6A48),
     ("electrolyzer",      "电解槽", "Electrolyzer",     0x5E7A8A),
     ("thermometer",       "温度计", "Thermometer",      0x5A5A62),
     ("thermometer_panel",  "温度计面板", "Thermometer Panel", 0x6A6A72),
@@ -940,6 +942,8 @@ def gen_block_textures():
     write_png(os.path.join(d, "filter_press.png"), make_panel_texture(0x7A7A8A))
     write_png(os.path.join(d, "settling_basin.png"), make_panel_texture(0x5E6E7A))
     write_png(os.path.join(d, "furnace_controller.png"), make_panel_texture(0xB05828))
+    write_png(os.path.join(d, "tower_controller.png"), make_panel_texture(0x3868A8))
+    write_png(os.path.join(d, "tower_packing.png"), make_brick_texture(0x8A6A48))
     write_png(os.path.join(d, "electrolyzer.png"), make_panel_texture(0x5E7A8A))
     write_png(os.path.join(d, "thermometer.png"), make_dial_texture(0x5A5A62))
     write_png(os.path.join(d, "thermometer_panel.png"), make_dial_texture(0x6A6A72))
@@ -1094,6 +1098,14 @@ EXTRA_LANG_ZH = {
     "status.chemicaladdon.underheated": "欠烧（温度不足）",
     "status.chemicaladdon.calcining": "煅烧中",
     "status.chemicaladdon.overheated": "过热警告",
+    "status.chemicaladdon.tower_not_assembled": "未成型",
+    "status.chemicaladdon.tower_no_stages": "空塔（无有效段）",
+    "status.chemicaladdon.tower_idle": "待料（需气液同在）",
+    "status.chemicaladdon.tower_absorbing": "吸收中",
+    "status.chemicaladdon.tower_flooded": "液泛",
+    "goggles.chemicaladdon.tower_stages": "有效段数：%s",
+    "goggles.chemicaladdon.tower_liquid": "液体",
+    "goggles.chemicaladdon.tower_gas": "气体",
     "status.chemicaladdon.not_assembled": "未成型",
     "status.chemicaladdon.reacting": "反应中",
     "status.chemicaladdon.temperature": "温度不满足",
@@ -1230,6 +1242,14 @@ EXTRA_LANG_EN = {
     "status.chemicaladdon.underheated": "Underheated (raw charge)",
     "status.chemicaladdon.calcining": "Calcining",
     "status.chemicaladdon.overheated": "Overheated",
+    "status.chemicaladdon.tower_not_assembled": "Not assembled",
+    "status.chemicaladdon.tower_no_stages": "Empty shell (no stages)",
+    "status.chemicaladdon.tower_idle": "Idle (needs gas and liquid)",
+    "status.chemicaladdon.tower_absorbing": "Absorbing",
+    "status.chemicaladdon.tower_flooded": "Flooded",
+    "goggles.chemicaladdon.tower_stages": "Stages: %s",
+    "goggles.chemicaladdon.tower_liquid": "liquid",
+    "goggles.chemicaladdon.tower_gas": "gas",
     "status.chemicaladdon.not_assembled": "Not assembled",
     "status.chemicaladdon.reacting": "Reacting",
     "status.chemicaladdon.temperature": "Temperature not met",

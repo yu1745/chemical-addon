@@ -5,6 +5,7 @@ import com.yu1745.chemicaladdon.reactor.BaumeGaugeBlockEntity;
 import com.yu1745.chemicaladdon.reactor.BaumeGaugePanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlockEntity;
 import com.yu1745.chemicaladdon.reactor.FurnaceControllerBlockEntity;
+import com.yu1745.chemicaladdon.reactor.TowerControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.CatalystTrayBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ConductivityGaugeBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ConductivityGaugePanelBlockEntity;
@@ -74,6 +75,11 @@ public class AllBlockEntities {
 	public static final RegistryObject<BlockEntityType<FurnaceControllerBlockEntity>> FURNACE_CONTROLLER =
 		REGISTER.register("furnace_controller",
 			() -> BlockEntityType.Builder.of(FurnaceControllerBlockEntity::new, AllBlocks.FURNACE_CONTROLLER.get())
+				.build(null));
+
+	public static final RegistryObject<BlockEntityType<TowerControllerBlockEntity>> TOWER_CONTROLLER =
+		REGISTER.register("tower_controller",
+			() -> BlockEntityType.Builder.of(TowerControllerBlockEntity::new, AllBlocks.TOWER_CONTROLLER.get())
 				.build(null));
 
 	public static final RegistryObject<BlockEntityType<ThermometerBlockEntity>> THERMOMETER =

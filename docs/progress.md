@@ -31,8 +31,20 @@
 | **B4 计量投料口** | 朝内侧壁液体入口、外侧唯一 FLUID_HANDLER、世界滚轮剂量 100–16000mB、实收截断、空手重置、DONE 红石/比较器 | ✅ 完成（合并总回归 159/159） |
 | **施工包 C1/C2 池式工程化** | 池几何 3×3~15×15×深 1~4 真实化、面积通量沉降、底泥床容量、溢流/底泥双口、超抽夹带+扰动回悬反馈环、底泥再浆化联过滤机 | ✅ 完成（GameTest 164/164） |
 | **施工包 D1 炉式垂直切片** | furnace_controller 多方块（3×3~7×7×高至 12 环密闭）、料床/产品分口、Blaze Burner 炉底供热、calcination 配方管线（石灰/重碱/氢氧化铝三线+炉气回收）、欠烧/过热诊断 | ✅ 完成（GameTest 168/168） |
+| **施工包 E1 塔式垂直切片** | tower_controller（3×3/5×5×高至 16 环密闭）+ tower_packing 内部件（分层计级，空塔无收益）、顶喷淋/侧气口/底采出三向端口、段数限速气液传质、液泛可测可恢复 | ✅ 完成（GameTest 171/171） |
 
-**自动化测试**：施工包 D1 后：`./gradlew runGameTestServer` → **168/168 必测通过**（148 基线 + S11 2 + 状态口 3 + 计量投料口 6 + 池式 5 + 炉式 4；`phGaugeReadsTitrationEndpoint` 保持注释禁用）；JUnit 分组见「JUnit 测试分组」节。
+**自动化测试**：施工包 E1 后：`./gradlew runGameTestServer` → **171/171 必测通过**（148 基线 + S11 2 + 状态口 3 + 计量投料口 6 + 池式 5 + 炉式 4 + 塔式 3；`phGaugeReadsTitrationEndpoint` 保持注释禁用）；JUnit 分组见「JUnit 测试分组」节。
+
+## 施工包 E1 · 塔式垂直切片（2026-08）
+
+**第三拓扑落地**（plans/04 §2/§4/§7 步 1+2）：`tower_controller` + `tower_packing` 内部件——分段逆流传质塔，内腔按高度缓存为离散段（填料层计段，空壳高度无收益）。
+
+- **结构/分段**：3×3 或 5×5 密闭壳、环高 2~16；`tower_packing` 经 `INTERIOR_OVERRIDES`（Registrate `onRegister` 注册——静态块在注册前取方块会炸 mod 构造）占内腔不破壳；有效段 = 含填料的内腔层数，放/拆填料事件驱重扫（惰性，永不逐拍扫描）。
+- **端口高度语义（按面）**：UP = 喷淋口（只收液体、永不抽出——反接气被拒）；侧面 = 气口（只收气体，液被拒 = 反接可诊断；抽出气相优先）；DOWN = 底采出（最重相优先）。
+- **传质模型**（每 10 tick 一步）：气→液传质 = min(50 mB×段数, 气量)；吸收物种入液相分子域（塔不跑化学引擎——化学归下游反应釜的内核）；**首版真 bug**：聚合时把气相并入分子域整体回写 = 一步吸光全部气体（段数限流失效）——重写为气/液两相分别重建（`ReactorTank.setFluids` 新原语）。
+- **液泛**：气口进料超截面阈值（3×3 400 / 5×5 1200 mB/步）→ FLOODED 停摆一步可测，降负荷自动恢复；气口 fill 记录进料量（直灌 tank 不计）。
+- **GameTest +3（171/171）**：`towerAssemblesCountsStagesAndPorts`（成型/段数/三向端口拒收）、`towerStagesDriveAbsorption`（三塔对照：空塔高 8 环零吸收、2 段/4 段速率差）、`towerFloodingStallsAndRecovers`（洪峰停摆→恢复）。**踩坑**：①旧 U3 测试 `INTERIOR_OVERRIDES.clear()` 把生产注册的塔填料清掉（并发实例交叉污染）→ 改 remove 本测试项；②结构放置与测试启动有几秒滞后，投料必须放进序列内，否则瞬态窗口早过。
+- **待做（E 剩余）**：蒸氨/分馏（再沸+塔板+冷凝）、接触法固定床（催化床+层间换热）、回流/侧线/除雾。
 
 ## 施工包 D1 · 炉式垂直切片（2026-08）
 
@@ -580,7 +592,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 ./gradlew modTest            # 方块/资源/玩法改动的快速 JUnit（93 项）
 ./gradlew engineTest         # 引擎分组 JUnit（296 项；仅纯 Java 分组最多双 JVM fork）
 ./gradlew test               # 完整、串行 release-equivalent JUnit（389 项）
-./gradlew runGameTestServer  # 服务端 GameTest（当前 168/168 必测；2026-08-28 起部分用例的固定等待改为逐 tick 轮询（首个有效状态即续行），详见 GameTests 内 waitFor 助手）
+./gradlew runGameTestServer  # 服务端 GameTest（当前 171/171 必测；2026-08-28 起部分用例的固定等待改为逐 tick 轮询（首个有效状态即续行），详见 GameTests 内 waitFor 助手）
 ./run-server.sh              # 服务端冒烟（自动关闭）
 ./gradlew runClient          # 客户端（自动进 "New World"，-PquickPlayWorld= 覆盖）
 python3 tools/gen_species.py # 改物种后重新生成资源/注册代码

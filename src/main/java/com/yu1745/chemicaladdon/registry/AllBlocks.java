@@ -8,6 +8,7 @@ import com.yu1745.chemicaladdon.item.GaugeBlockItem;
 import com.yu1745.chemicaladdon.reactor.LiquidLevelGaugeBlock;
 import com.yu1745.chemicaladdon.reactor.MeteringInletBlock;
 import com.yu1745.chemicaladdon.reactor.FurnaceControllerBlockEntity;
+import com.yu1745.chemicaladdon.reactor.TowerControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.BaumeGaugeBlock;
 import com.yu1745.chemicaladdon.reactor.BaumeGaugePanelBlock;
 import com.yu1745.chemicaladdon.reactor.LiquidLevelGaugePanelBlock;
@@ -39,6 +40,8 @@ import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.client.model.generators.ModelFile;
 import net.minecraft.world.level.block.state.BlockBehaviour;
+import com.yu1745.chemicaladdon.vessel.VesselBlockEntity;
+
 import net.minecraft.world.level.material.MapColor;
 
 public class AllBlocks {
@@ -140,6 +143,27 @@ public class AllBlocks {
 			.lang("Furnace Controller")
 			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
 				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
+			.simpleItem()
+			.register();
+
+	/** 施工包 E：吸收塔控制器（塔式拓扑）。 */
+	public static final BlockEntry<TowerControllerBlockEntity.TowerControllerBlock> TOWER_CONTROLLER =
+		REGISTRATE.block("tower_controller", TowerControllerBlockEntity.TowerControllerBlock::new)
+			.properties(p -> p.mapColor(MapColor.COLOR_LIGHT_BLUE).strength(4.0f, 8.0f))
+			.lang("Tower Controller")
+			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
+				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
+			.simpleItem()
+			.register();
+
+	/** 施工包 E：塔填料（内部件，填满内腔一层计一段）。 */
+	public static final BlockEntry<TowerControllerBlockEntity.TowerPackingBlock> TOWER_PACKING =
+		REGISTRATE.block("tower_packing", TowerControllerBlockEntity.TowerPackingBlock::new)
+			.properties(p -> p.mapColor(MapColor.COLOR_BROWN).strength(2.0f, 4.0f))
+			.lang("Tower Packing")
+			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
+				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
+			.onRegister(entry -> VesselBlockEntity.INTERIOR_OVERRIDES.add(entry))
 			.simpleItem()
 			.register();
 

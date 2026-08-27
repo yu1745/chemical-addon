@@ -1164,6 +1164,15 @@ public class ReactorTank implements IFluidHandler {
 
 	// ------------------------------------------------- basin domain transfers (C)
 
+	/** Replace the whole fluid list (the tower's two-phase write-back). */
+	public void setFluids(List<FluidStack> stacks) {
+		fluids.clear();
+		fluids.addAll(stacks);
+		removeEmpty();
+		collapseIfNeeded();
+		onChanged.run();
+	}
+
 	/** Total unit-grid mass of the suspended (slurry) domain across all mixtures. */
 	public long suspendedUnits() {
 		long total = 0;
