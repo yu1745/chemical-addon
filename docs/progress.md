@@ -34,8 +34,19 @@
 | **施工包 E1 塔式垂直切片** | tower_controller（3×3/5×5×高至 16 环密闭）+ tower_packing 内部件（分层计级，空塔无收益）、顶喷淋/侧气口/底采出三向端口、段数限速气液传质、液泛可测可恢复 | ✅ 完成（GameTest 171/171） |
 | **施工包 F1 电解槽** | electrolyzer 单方块：chemical_reaction 能力门禁（electrolysis）+ energyFe 字段，FE 驱动氯碱（盐水→烧碱液+H₂+Cl₂）与水电解（H₂+O₂）双线，断电诊断/恢复 | ✅ 完成（GameTest 173/173） |
 | **施工包 F2 换热器** | heat_exchanger 单方块：南北面热流/东西面冷流双罐，只交换能量不交换组成，焦耳守恒+回收计量+ΔT 瓶颈读数 | ✅ 完成（GameTest 175/175） |
+| **施工包 F3 压缩机** | compressor 壁挂壳件（vessel_walls/IShellPartEntity）：FE 400/步保压，有效即发布 pressurized 能力，配方能力门禁；氨合成预演配方 | ✅ 完成（GameTest 176/176） |
 
-**自动化测试**：施工包 F2 后：`./gradlew runGameTestServer` → **175/175 必测通过**（148 基线 + S11 2 + 状态口 3 + 计量投料口 6 + 池式 5 + 炉式 4 + 塔式 3 + 电解槽 2 + 换热器 2；`phGaugeReadsTitrationEndpoint` 保持注释禁用）；JUnit 分组见「JUnit 测试分组」节。
+**自动化测试**：施工包 F3 后：`./gradlew runGameTestServer` → **176/176 必测通过**（148 基线 + S11 2 + 状态口 3 + 计量投料口 6 + 池式 5 + 炉式 4 + 塔式 3 + 电解槽 2 + 换热器 2 + 压缩机 1；`phGaugeReadsTitrationEndpoint` 保持注释禁用）；JUnit 分组见「JUnit 测试分组」节。
+
+## 施工包 F3 · 压缩机（2026-08）
+
+**第三台专用设备**（plans/07 §2.4 / plans/10 F）：壁挂壳件而非独立方块——绑定/记账/能力发布全走 vessel 壳件管线（vessel_walls 标签 + IMasterBound + IShellPartEntity，B1/B2 同范）。
+
+- **`compressor`**：装在密闭釜壁；FE ≥400/步时有效并发布 `pressurized` 能力（U1 数字压力读数模型不动——设备轴与读数轴分离）；断电即能力滑落，依赖它的配方随之停摆（持续能量承诺）。状态 UNBOUND/VESSEL_NOT_SEALED/NO_POWER/PRESSURIZING + 护目镜 FE 行。
+- **复用 B2 教训**：替换壁砖时新 BE 在 onRemove 重绑之后才创建 → onLoad 复用 `GasDistributorBlock.tryReformNearby` 补绑。
+- **配方**：氨合成预演 `N₂+3H₂→2NH₃`（`requiredCapabilities: [pressurized]`，M4 旗舰预演；无催化/温度窗口的正式版待 G 包）。
+- **GameTest +1（176/176）**：`compressorGatesPressureRecipe`（断电无能力不反应→上电能力发布→同批气体完成合成）。
+- **待做（F 剩余）**：温压/流量统一读数表；换热器串联回收接入工艺线；真空泵（同设备反向）。
 
 ## 施工包 F2 · 换热器（2026-08）
 
@@ -612,7 +623,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 ./gradlew modTest            # 方块/资源/玩法改动的快速 JUnit（93 项）
 ./gradlew engineTest         # 引擎分组 JUnit（296 项；仅纯 Java 分组最多双 JVM fork）
 ./gradlew test               # 完整、串行 release-equivalent JUnit（389 项）
-./gradlew runGameTestServer  # 服务端 GameTest（当前 175/175 必测；2026-08-28 起部分用例的固定等待改为逐 tick 轮询（首个有效状态即续行），详见 GameTests 内 waitFor 助手）
+./gradlew runGameTestServer  # 服务端 GameTest（当前 176/176 必测；2026-08-28 起部分用例的固定等待改为逐 tick 轮询（首个有效状态即续行），详见 GameTests 内 waitFor 助手）
 ./run-server.sh              # 服务端冒烟（自动关闭）
 ./gradlew runClient          # 客户端（自动进 "New World"，-PquickPlayWorld= 覆盖）
 python3 tools/gen_species.py # 改物种后重新生成资源/注册代码

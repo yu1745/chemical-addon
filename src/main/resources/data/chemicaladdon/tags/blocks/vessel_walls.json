@@ -15,6 +15,7 @@
     "chemicaladdon:turbidity_gauge",
     "chemicaladdon:liquid_level_gauge",
     "chemicaladdon:status_port",
-    "chemicaladdon:metering_inlet"
+    "chemicaladdon:metering_inlet",
+    "chemicaladdon:compressor"
   ]
 }

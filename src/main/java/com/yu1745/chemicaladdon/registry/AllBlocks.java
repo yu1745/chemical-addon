@@ -10,6 +10,7 @@ import com.yu1745.chemicaladdon.reactor.MeteringInletBlock;
 import com.yu1745.chemicaladdon.reactor.FurnaceControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ElectrolyzerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.HeatExchangerBlockEntity;
+import com.yu1745.chemicaladdon.reactor.CompressorBlock;
 import com.yu1745.chemicaladdon.reactor.TowerControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.BaumeGaugeBlock;
 import com.yu1745.chemicaladdon.reactor.BaumeGaugePanelBlock;
@@ -143,6 +144,16 @@ public class AllBlocks {
 		REGISTRATE.block("furnace_controller", FurnaceControllerBlockEntity.FurnaceControllerBlock::new)
 			.properties(p -> p.mapColor(MapColor.COLOR_ORANGE).strength(4.0f, 8.0f))
 			.lang("Furnace Controller")
+			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
+				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
+			.simpleItem()
+			.register();
+
+	/** 施工包 F：压缩机（壁挂壳件，FE 保压发布 pressurized 能力）。 */
+	public static final BlockEntry<CompressorBlock> COMPRESSOR =
+		REGISTRATE.block("compressor", CompressorBlock::new)
+			.properties(p -> p.mapColor(MapColor.COLOR_LIGHT_GRAY).strength(3.0f, 6.0f))
+			.lang("Compressor")
 			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
 				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
 			.simpleItem()

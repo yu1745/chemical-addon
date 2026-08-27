@@ -1,0 +1,12 @@
+{
+  "type": "chemicaladdon:chemical_reaction",
+  "ingredients": [
+    { "fluid": "chemicaladdon:nitrogen", "amount": 200 },
+    { "fluid": "chemicaladdon:hydrogen", "amount": 600 }
+  ],
+  "results": [
+    { "fluid": "chemicaladdon:ammonia", "amount": 400 }
+  ],
+  "requiredCapabilities": ["pressurized"],
+  "processingTime": 100
+}

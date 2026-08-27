@@ -30,6 +30,7 @@ import com.yu1745.chemicaladdon.reactor.FurnaceControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.TowerControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ElectrolyzerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.HeatExchangerBlockEntity;
+import com.yu1745.chemicaladdon.reactor.CompressorBlockEntity;
 import com.yu1745.chemicaladdon.reactor.MeteringInletBlockEntity;
 import com.yu1745.chemicaladdon.reactor.DecantHoseBlockEntity;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlockEntity;
@@ -4124,6 +4125,51 @@ public class ChemicalAddonGameTests {
 				// U16.5: the 1000 mB cake carries 300 mB of pore water with it
 				helper.assertTrue(hasSpecies(be.getOutput(), "water", 700), "filtrate water should be produced");
 			})
+			.thenSucceed();
+	}
+
+	// ---------------------------------------------------------- compressor (F)
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 40)
+	public static void compressorGatesPressureRecipe(GameTestHelper helper) {
+		// 合成氨预演：N₂+3H₂→2NH₃ 需要 pressurized 能力（压缩机壳件 FE 保压发布）。
+		// 断电时配方不匹配、气体不消耗；上电后同一釜完成合成。
+		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
+		// install the compressor in a side wall (replacing a brick)
+		BlockPos compressorPos = new BlockPos(0, 2, 2); // west wall mid-cell
+		helper.setBlock(compressorPos, AllBlocks.COMPRESSOR.get().defaultBlockState());
+		CompressorBlockEntity compressor = (CompressorBlockEntity) helper.getBlockEntity(compressorPos);
+		be.getTank().fill(new FluidStack(AllFluids.NITROGEN.get().getSource(), 400), FluidAction.EXECUTE);
+		be.getTank().fill(new FluidStack(AllFluids.HYDROGEN.get().getSource(), 1200), FluidAction.EXECUTE);
+		// no FE: the capability (and the recipe with it) stays off — stable state
+		waitFor(helper.startSequence()
+				.thenIdle(TICKS * 2),
+			() -> compressor.getStatus() == CompressorBlockEntity.Status.NO_POWER)
+			.thenExecute(() -> {
+				helper.assertTrue(!be.getStructureCapabilities().has(ProcessCapability.PRESSURIZED),
+					"a powerless compressor publishes no pressure capability");
+				helper.assertTrue(!hasFluid(be, AllFluids.AMMONIA.get().getSource(), 1),
+					"the pressure-gated recipe does not run unpowered");
+				// power up — the same charge synthesizes
+				for (int i = 0; i < 10; i++) {
+					compressor.getEnergy().receiveEnergy(2000, false);
+				}
+			})
+			.thenWaitUntil(() -> {
+				if (compressor.getStatus() != CompressorBlockEntity.Status.PRESSURIZING) {
+					throw new GameTestAssertException("Waiting");
+				}
+			})
+			.thenExecute(() -> helper.assertTrue(
+				be.getStructureCapabilities().has(ProcessCapability.PRESSURIZED),
+				"a powered compressor holds the vessel at pressure"))
+			.thenWaitUntil(() -> {
+				if (!hasFluid(be, AllFluids.AMMONIA.get().getSource(), 300)) {
+					throw new GameTestAssertException("Waiting");
+				}
+			})
+			.thenExecute(() -> helper.assertTrue(hasFluid(be, AllFluids.AMMONIA.get().getSource(), 300),
+				"N2 + H2 synthesizes ammonia under pressure"))
 			.thenSucceed();
 	}
 

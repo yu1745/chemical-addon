@@ -111,6 +111,7 @@ BLOCKS = [
     ("tower_packing",      "塔填料",       "Tower Packing",    0x8A6A48),
     ("electrolyzer",      "电解槽", "Electrolyzer",     0x5E7A8A),
     ("heat_exchanger",    "换热器", "Heat Exchanger",   0x7A7A8A),
+    ("compressor",        "压缩机", "Compressor",       0x9A9AA8),
     ("thermometer",       "温度计", "Thermometer",      0x5A5A62),
     ("thermometer_panel",  "温度计面板", "Thermometer Panel", 0x6A6A72),
     ("pressure_gauge",     "压力表", "Pressure Gauge",      0x5A6272),
@@ -947,6 +948,7 @@ def gen_block_textures():
     write_png(os.path.join(d, "tower_packing.png"), make_brick_texture(0x8A6A48))
     write_png(os.path.join(d, "electrolyzer.png"), make_panel_texture(0x5E7A8A))
     write_png(os.path.join(d, "heat_exchanger.png"), make_panel_texture(0x7A7A8A))
+    write_png(os.path.join(d, "compressor.png"), make_panel_texture(0x9A9AA8))
     write_png(os.path.join(d, "thermometer.png"), make_dial_texture(0x5A5A62))
     write_png(os.path.join(d, "thermometer_panel.png"), make_dial_texture(0x6A6A72))
     write_png(os.path.join(d, "pressure_gauge.png"), make_dial_texture(0x5A6272, needle=(72, 108, 188), dial=(226, 232, 244)))
@@ -1118,6 +1120,10 @@ EXTRA_LANG_ZH = {
     "goggles.chemicaladdon.hx_cold": "冷侧：%s°C / %s mB",
     "goggles.chemicaladdon.hx_recovered": "累计回收：%s J",
     "goggles.chemicaladdon.hx_delta": "ΔT：%s°C",
+    "status.chemicaladdon.compressor_unbound": "未绑定",
+    "status.chemicaladdon.compressor_vessel_not_sealed": "容器未密闭",
+    "status.chemicaladdon.compressor_no_power": "断电",
+    "status.chemicaladdon.compressor_pressurizing": "保压中",
     "status.chemicaladdon.not_assembled": "未成型",
     "status.chemicaladdon.reacting": "反应中",
     "status.chemicaladdon.temperature": "温度不满足",
@@ -1272,6 +1278,10 @@ EXTRA_LANG_EN = {
     "goggles.chemicaladdon.hx_cold": "Cold side: %s°C / %s mB",
     "goggles.chemicaladdon.hx_recovered": "Recovered: %s J",
     "goggles.chemicaladdon.hx_delta": "ΔT: %s°C",
+    "status.chemicaladdon.compressor_unbound": "Not bound",
+    "status.chemicaladdon.compressor_vessel_not_sealed": "Vessel not sealed",
+    "status.chemicaladdon.compressor_no_power": "No power",
+    "status.chemicaladdon.compressor_pressurizing": "Pressurizing",
     "status.chemicaladdon.not_assembled": "Not assembled",
     "status.chemicaladdon.reacting": "Reacting",
     "status.chemicaladdon.temperature": "Temperature not met",
