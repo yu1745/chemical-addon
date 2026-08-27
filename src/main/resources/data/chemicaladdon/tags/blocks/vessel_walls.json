@@ -13,6 +13,7 @@
     "chemicaladdon:ph_gauge",
     "chemicaladdon:baume_gauge",
     "chemicaladdon:turbidity_gauge",
-    "chemicaladdon:liquid_level_gauge"
+    "chemicaladdon:liquid_level_gauge",
+    "chemicaladdon:status_port"
   ]
 }

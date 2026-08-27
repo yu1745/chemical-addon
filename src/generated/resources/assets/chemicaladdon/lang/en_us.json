@@ -39,6 +39,7 @@
   "block.chemicaladdon.pressure_gauge_panel": "Pressure Gauge Panel",
   "block.chemicaladdon.reactor_controller": "Reactor Controller",
   "block.chemicaladdon.settling_basin": "Settling Basin",
+  "block.chemicaladdon.status_port": "Status Port",
   "block.chemicaladdon.stirring_head": "Stirring Head",
   "block.chemicaladdon.sulfur_dioxide": "Sulfur Dioxide",
   "block.chemicaladdon.sulfur_trioxide": "Sulfur Trioxide",
@@ -118,6 +119,8 @@
   "goggles.chemicaladdon.sediment": "sediment",
   "goggles.chemicaladdon.solution": "Solution",
   "goggles.chemicaladdon.status": "Status:",
+  "goggles.chemicaladdon.status_port": "Status: %s",
+  "goggles.chemicaladdon.status_port_progress": "Progress: %s%%",
   "goggles.chemicaladdon.suspended": "suspended",
   "goggles.chemicaladdon.temperature": "Temperature: %s°C",
   "goggles.chemicaladdon.thermometer_alarm": "ALARM",
@@ -210,6 +213,7 @@
   "item.chemicaladdon.wide_ph_paper": "Wide-Range pH Paper",
   "itemGroup.chemicaladdon": "Chemical Addon",
   "liquid_level_gauge.chemicaladdon.threshold": "Alarm Threshold",
+  "message.chemicaladdon.status_port": "Status port: %s",
   "paper.chemicaladdon.agno3_negative": "AgNO₃ paper: no change — no chloride",
   "paper.chemicaladdon.agno3_positive": "AgNO₃ paper: white turbidity — chloride detected",
   "paper.chemicaladdon.bacl2_negative": "BaCl₂ paper: no change — no sulfate",
@@ -234,6 +238,7 @@
   "status.chemicaladdon.output_full": "Output full",
   "status.chemicaladdon.reacting": "Reacting",
   "status.chemicaladdon.temperature": "Temperature not met",
+  "status_port.chemicaladdon.unbound": "Not attached to a reactor",
   "thermometer.chemicaladdon.threshold": "Alarm Threshold",
   "turbidity_gauge.chemicaladdon.threshold": "Alarm Threshold"
 }

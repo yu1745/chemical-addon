@@ -1,6 +1,6 @@
 # 开发进度
 
-> 最后更新：2026-08（M0–M2.5 + U1/U3 + U13–U19 + P6–P7.4；施工包 A 统一能力地基完成验收；**施工包 B1 搅拌头与 B2 气体分布器已完成；B3 催化托盘代码完成（GameTest 149 跑、B3 9/9 全过、既有 pH 测试两次同失败见 B3 节，判为基线/环境问题未修）+ JUnit 385（12 skip）**；B1 视觉层与 B2 放置/绑定/方向贴图均已完成客户端实机验收；**S11 液位计（双形态）已落地（GameTest 150 全过，phGauge 保持禁用）**；两条内核混沌哨兵测试因耗时暂时禁用，见施工包 A 节）
+> 最后更新：2026-08（M0–M2.5 + U1/U3 + U13–U19 + P6–P7.4；施工包 A 统一能力地基完成验收；**施工包 B1 搅拌头与 B2 气体分布器已完成；B3 催化托盘代码完成（GameTest 149 跑、B3 9/9 全过、既有 pH 测试两次同失败见 B3 节，判为基线/环境问题未修）+ JUnit 385（12 skip）**；B1 视觉层与 B2 放置/绑定/方向贴图均已完成客户端实机验收；**S11 液位计（双形态）已落地（GameTest 150 全过，phGauge 保持禁用）**；**B 状态口（墙体单形态）已落地**；两条内核混沌哨兵测试因耗时暂时禁用，见施工包 A 节）
 > 本文件只记录代码完成态与历史单元；未来设计与新开发路线见 `plans/README.md` 和 `plans/10-development.md`。旧计划编号不再定义未来里程碑。
 
 ## 状态总览
@@ -27,8 +27,20 @@
 | **施工包 B2** | 气体分布器：侧壁/底部壳格、浸没门禁、单侧 Forge 输入、气体限流、GAS_DISPERSED 快照与诊断 | ✅ 完成（140/140） |
 | **施工包 B3** | 催化托盘：侧壁壳格、朝内放置、单槽催化剂库存（catalysts 标签）、仅外侧面 ITEM_HANDLER、世界存取无 GUI、catalyst_tray 部件 + CATALYST_BED 快照、每件 100 批成功后才消耗、多托盘确定性首选、诊断+护目镜 | ✅ 代码完成（B3 9/9 过；整套 149 跑中既有 pH 测试基线失败，见下） |
 | M3+ 其余 | FE 接线 / 竖窑 / 索尔维 / 连续流 / 高压 / 零排放 | ⏳ 未开始（顺序见 `plans/10-development.md`） |
+| **B 状态口（墙体）** | 固定功能状态口：vessel_walls 壳块、IMasterBound 绑定、仅经 ProcessReadings 读 master、右键状态播报、护目镜状态+进度、固定红石编码（未绑定沉默；REACTING 强 0/比较器 4；非运行强 15 + NOT_ASSEMBLED=0/TEMPERATURE=8/OUTPUT_FULL=12/NO_RECIPE=15）、仅编码态变化才更新邻居 | ✅ 代码完成（见下节） |
 
-**自动化测试**：`./gradlew test` → **JUnit 385 用例，0 失败，12 skip**（B3 新增 `CatalystUsageTest` 6）。`./gradlew runGameTestServer` → **150 测试全部通过（148 必测基线 + S11 液位计新增 2）**（`phGaugeReadsTitrationEndpoint` 仍保持注释禁用，见 B3 节）。S11 轮实跑：150/150 全绿、`build -x test` 通过。
+**自动化测试**：`./gradlew test` → **JUnit 385 用例，0 失败，12 skip**（B3 新增 `CatalystUsageTest` 6）。`./gradlew runGameTestServer` → **153 测试全部通过（148 必测基线 + S11 液位计 2 + B 状态口 3）**（`phGaugeReadsTitrationEndpoint` 仍保持注释禁用，见 B3 节）。S11 轮实跑：150/150 全绿、`build -x test` 通过。
+
+## B 状态口（墙体单形态，2026-08）
+
+**固定功能反应釜状态口（状态口 / Status Port，施工包 B 自动化切片）**：仅墙块形态（入 `vessel_walls`、填壁位、`IMasterBound` 绑 master、能力代理与化工砖同生命周期），无面板形态/仪表刻度/批量调度器/配方选择/自定义渲染器。
+
+- **读数路径**：只经 `vessel/ProcessReadings`（`getProcessStatus` + `getProcessProgress`）读 master，不碰控制器内部；状态名归一化为小写 lang 键形态。右键空手/持物均播报当前状态（actionbar 本地化 + 继电器咔哒声）；护目镜显示状态行 + 批次进度百分比；未绑定显示红色“未连接反应釜”。
+- **固定红石编码**：未绑定（或绑到非 ProcessReadings 釜）强 0/比较器 0；REACTING 强 0/比较器 4（**反应中≠批次完成**，完成沿 = 离开 REACTING 的强 0→15 跳变）；非运行态强 15 + 比较器 NOT_ASSEMBLED=0/TEMPERATURE=8/OUTPUT_FULL=12/NO_RECIPE=15（`comparatorFor` 纯函数锁定）。邻居仅在（attached,status）编码态变化时更新；进度仅以 5% 步长刷新客户端，不触发红石。
+- **同步**：masterPos/status/progress 全在 `getUpdateTag()`（=saveWithoutMetadata，继承 ChemicalBrickBlockEntity）+ setMaster/状态变化/进度步进广播数据包——B2/B3 的 update-tag 空包缺陷不复发。
+- **文件**：`reactor/StatusPortBlock`（继承 ChemicalBrickBlock：放置自动重装配、拆除通知 master）+ `reactor/StatusPortBlockEntity`（继承 ChemicalBrickBlockEntity，实现 IHaveGoggleInformation）；注册 AllBlocks/AllBlockEntities，`vessel_walls.json` 入墙；资源经 `tools/gen_species.py`（状态窗+四级指示灯贴图、双语 lang 4 键）+ `runData`（cubeAll blockstate/item model/loot）。
+- **GameTest +3（153/153 全绿）**：`vesselStatusPortBindsUnboundSilenceAndMapping`（装配绑定、杂散未绑定完全沉默、固定映射纯函数锁定、空釜 NO_RECIPE 强 15/比较器 15）；`vesselStatusPortReactingIsNotCompletion`（硫燃烧批 REACTING 强 0/比较器 4，批完成离开 REACTING 后强 15）；`vesselStatusPortTeardownAndRebind`（拆壁砖脱绑沉默、修复重装配重绑恢复信号）。首轮 3 测全败揭了两个测试夹具问题：状态名大小写（master 发布大写枚举名）与相对/绝对坐标（getSignal 需 absolutePos），修复后全绿；未改动产品逻辑。
+- **遗留**：客户端实机验收（贴图/护目镜/右键播报）未做。
 
 ## S11 液位计（双形态，2026-08）
 

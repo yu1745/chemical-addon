@@ -26,6 +26,7 @@ import com.yu1745.chemicaladdon.reactor.PressureGaugePanelBlock;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlock;
 import com.yu1745.chemicaladdon.reactor.SettlingBasinBlockEntity.SettlingBasinBlock;
 import com.yu1745.chemicaladdon.reactor.StirringHeadBlock;
+import com.yu1745.chemicaladdon.reactor.StatusPortBlock;
 import com.yu1745.chemicaladdon.reactor.ThermometerBlock;
 import com.yu1745.chemicaladdon.reactor.ThermometerPanelBlock;
 import com.yu1745.chemicaladdon.reactor.TurbidityGaugeBlock;
@@ -425,6 +426,19 @@ public class AllBlocks {
 								.build();
 						});
 				})
+				.simpleItem()
+				.register();
+
+	/** B · status port (状态口, wall form only): a fixed-function vessel_walls shell
+	 *  brick publishing the master's process status — right-click reads it out, goggles
+	 *  show status + progress, redstone encodes it for batch interlocks (see
+	 *  StatusPortBlockEntity). No dial, no panel form, no renderer. */
+	public static final BlockEntry<StatusPortBlock> STATUS_PORT =
+			REGISTRATE.block("status_port", StatusPortBlock::new)
+				.properties(p -> p.mapColor(MapColor.METAL).strength(2.5f, 6.0f))
+				.lang("Status Port")
+				.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(),
+					prov.models().cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
 				.simpleItem()
 				.register();
 

@@ -41,6 +41,7 @@ import com.yu1745.chemicaladdon.reactor.SettlingBasinBlockEntity;
 import com.yu1745.chemicaladdon.reactor.SpillLogic;
 import com.yu1745.chemicaladdon.reactor.StirShaftMath;
 import com.yu1745.chemicaladdon.reactor.StirringHeadBlockEntity;
+import com.yu1745.chemicaladdon.reactor.StatusPortBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ThermometerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ThermometerPanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.LiquidLevelGaugeBlockEntity;
@@ -4560,5 +4561,148 @@ public class ChemicalAddonGameTests {
 			total += ionAmount(stack, ionId);
 		}
 		return total >= minAmount;
+	}
+
+	// ------------------------------------------------ B · status port (状态口)
+
+	/** Builds a 5×5×5 sealed reactor with a status port replacing the shell cell at
+	 *  the structure-relative wall position (px, py, pz). Assembles and returns the
+	 *  controller. */
+	private static ReactorControllerBlockEntity buildReactor5x5x5WithStatusPortAt(GameTestHelper helper, int x0, int z0,
+			int px, int py, int pz) {
+		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();
+		BlockState controller = AllBlocks.REACTOR_CONTROLLER.get().defaultBlockState();
+		BlockState port = AllBlocks.STATUS_PORT.get().defaultBlockState();
+		for (int x = 0; x <= 4; x++) {
+			for (int z = 0; z <= 4; z++) {
+				helper.setBlock(new BlockPos(x0 + x, 1, z0 + z), x == px && 1 == py && z == pz ? port : brick);
+				helper.setBlock(new BlockPos(x0 + x, 5, z0 + z), x == px && 5 == py && z == pz ? port : brick);
+			}
+		}
+		for (int y = 2; y <= 4; y++) {
+			for (int x = 0; x <= 4; x++) {
+				for (int z = 0; z <= 4; z++) {
+					if ((x == 0 || x == 4 || z == 0 || z == 4) && !(y == 2 && x == 2 && z == 0)) {
+						helper.setBlock(new BlockPos(x0 + x, y, z0 + z),
+							x == px && y == py && z == pz ? port : brick);
+					}
+				}
+			}
+		}
+		helper.setBlock(new BlockPos(x0 + 2, 2, z0), controller);
+		ReactorControllerBlockEntity be = (ReactorControllerBlockEntity) helper.getBlockEntity(new BlockPos(x0 + 2, 2, z0));
+		helper.assertTrue(be.tryAssemble().ok(), "5x5x5 reactor with a status port wall should assemble");
+		return be;
+	}
+
+	// getSignal/getAnalogOutputSignal take the ABSOLUTE pos (the helper's
+	// getBlockState is relative-aware, the raw level is not)
+	private static int strongSignalOf(GameTestHelper helper, BlockPos pos) {
+		BlockPos abs = helper.absolutePos(pos);
+		return helper.getLevel().getBlockState(abs)
+			.getSignal(helper.getLevel(), abs, Direction.NORTH);
+	}
+
+	private static int comparatorSignalOf(GameTestHelper helper, BlockPos pos) {
+		BlockPos abs = helper.absolutePos(pos);
+		return helper.getLevel().getBlockState(abs)
+			.getAnalogOutputSignal(helper.getLevel(), abs);
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselStatusPortBindsUnboundSilenceAndMapping(GameTestHelper helper) {
+		ReactorControllerBlockEntity vessel = buildReactor5x5x5WithStatusPortAt(helper, 0, 0, 1, 2, 0);
+		BlockPos portPos = new BlockPos(1, 2, 0);
+		StatusPortBlockEntity port = (StatusPortBlockEntity) helper.getBlockEntity(portPos);
+		helper.assertTrue(vessel.getBlockPos().equals(port.getMasterPos()),
+			"assembly must bind the status port to the controller");
+		// the fixed comparator mapping is locked as a pure function
+		helper.assertTrue(StatusPortBlockEntity.comparatorFor("not_assembled") == 0
+				&& StatusPortBlockEntity.comparatorFor("reacting") == 4
+				&& StatusPortBlockEntity.comparatorFor("temperature") == 8
+				&& StatusPortBlockEntity.comparatorFor("output_full") == 12
+				&& StatusPortBlockEntity.comparatorFor("no_recipe") == 15
+				&& StatusPortBlockEntity.comparatorFor(null) == 0,
+			"the fixed comparator mapping must be NOT_ASSEMBLED=0/REACTING=4/TEMPERATURE=8/OUTPUT_FULL=12/NO_RECIPE=15");
+		// a stray unbound port anywhere else must stay silent
+		BlockPos stray = new BlockPos(9, 1, 9);
+		helper.setBlock(stray, AllBlocks.STATUS_PORT.get().defaultBlockState());
+		StatusPortBlockEntity strayPort = (StatusPortBlockEntity) helper.getBlockEntity(stray);
+		helper.startSequence()
+			.thenIdle(25) // past the reactor's first reaction step (onAssembled parks at REACTING)
+			.thenExecute(() -> {
+				helper.assertTrue(strayPort.getStatusName() == null, "an unbound port must publish no status");
+				helper.assertTrue(strongSignalOf(helper, stray) == 0 && comparatorSignalOf(helper, stray) == 0,
+					"an unbound status port must be completely silent");
+				helper.assertTrue("no_recipe".equals(port.getStatusName()),
+					"an empty assembled reactor must publish NO_RECIPE (got " + port.getStatusName() + ")");
+				helper.assertTrue(strongSignalOf(helper, portPos) == 15,
+					"an attached non-running status must emit strong 15 (got " + strongSignalOf(helper, portPos) + ", status=" + port.getStatusName() + ")");
+				helper.assertTrue(comparatorSignalOf(helper, portPos) == 15,
+					"NO_RECIPE must map to comparator 15");
+			})
+			.thenSucceed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselStatusPortReactingIsNotCompletion(GameTestHelper helper) {
+		ReactorControllerBlockEntity vessel = buildReactor5x5x5WithStatusPortAt(helper, 0, 0, 1, 2, 0);
+		BlockPos portPos = new BlockPos(1, 2, 0);
+		StatusPortBlockEntity port = (StatusPortBlockEntity) helper.getBlockEntity(portPos);
+		// deterministic batch: sulfur burning, pinned 500 °C (the B1 fixture)
+		vessel.setPinnedTemperature(500);
+		vessel.getItems().setStackInSlot(0, new ItemStack(AllItems.SULFUR.get()));
+		vessel.getTank().fill(new FluidStack(AllFluids.OXYGEN.get().getSource(), 1000), FluidAction.EXECUTE);
+		vessel.setPinnedTemperature(500); // re-pin AFTER the fill so the fresh oxygen is hot from tick one
+		helper.startSequence()
+			.thenIdle(21)
+			.thenExecute(() -> {
+				helper.assertTrue("reacting".equals(port.getStatusName()),
+					"a running batch must publish REACTING (got " + port.getStatusName() + ")");
+				helper.assertTrue(strongSignalOf(helper, portPos) == 0,
+					"REACTING must NOT emit the completion edge (strong stays 0)");
+				helper.assertTrue(comparatorSignalOf(helper, portPos) == 4,
+					"REACTING must map to comparator 4 (got " + comparatorSignalOf(helper, portPos) + ")");
+			})
+			.thenIdle(75) // past the 80-t batch completion of the B1 fixture
+			.thenExecute(() -> {
+				helper.assertTrue(!"reacting".equals(port.getStatusName()),
+					"the finished batch must leave REACTING (got " + port.getStatusName() + ")");
+				helper.assertTrue(strongSignalOf(helper, portPos) == 15,
+					"leaving REACTING must raise the completion edge (strong 15)");
+			})
+			.thenSucceed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselStatusPortTeardownAndRebind(GameTestHelper helper) {
+		ReactorControllerBlockEntity vessel = buildReactor5x5x5WithStatusPortAt(helper, 0, 0, 1, 2, 0);
+		BlockPos portPos = new BlockPos(1, 2, 0);
+		StatusPortBlockEntity port = (StatusPortBlockEntity) helper.getBlockEntity(portPos);
+		// break a WALL brick (a roof brick only shrinks the vessel) -> de-assemble -> the port must go silent
+		BlockPos wallBrick = new BlockPos(0, 2, 1);
+		helper.setBlock(wallBrick, Blocks.AIR.defaultBlockState());
+		helper.assertFalse(vessel.isAssembled(), "breaking a wall brick must de-assemble the vessel");
+		helper.startSequence()
+			.thenIdle(25)
+			.thenExecute(() -> {
+				helper.assertTrue(port.getStatusName() == null,
+					"a de-assembled master must detach the port (got " + port.getStatusName() + ")");
+				helper.assertTrue(strongSignalOf(helper, portPos) == 0 && comparatorSignalOf(helper, portPos) == 0,
+					"a detached port must be silent");
+			})
+			.thenExecute(() -> {
+				// repair the shell: the vessel re-forms on place and the port must re-bind
+				helper.setBlock(wallBrick, AllBlocks.CHEMICAL_BRICK.get().defaultBlockState());
+				helper.assertTrue(vessel.isAssembled(), "repairing the wall must re-assemble the vessel");
+			})
+			.thenIdle(25) // re-assembled parks at REACTING until the first reaction step
+			.thenExecute(() -> {
+				helper.assertTrue("no_recipe".equals(port.getStatusName()),
+				"the re-bound port must publish the master status again (got " + port.getStatusName() + ")");
+				helper.assertTrue(strongSignalOf(helper, portPos) == 15,
+					"the re-bound port must re-emit the non-running strong signal (got " + strongSignalOf(helper, portPos) + ", status=" + port.getStatusName() + ")");
+			})
+			.thenSucceed();
 	}
 }

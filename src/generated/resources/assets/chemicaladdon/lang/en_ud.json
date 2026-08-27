@@ -39,6 +39,7 @@
   "block.chemicaladdon.pressure_gauge_panel": "ןǝuɐԀ ǝbnɐ⅁ ǝɹnssǝɹԀ",
   "block.chemicaladdon.reactor_controller": "ɹǝןןoɹʇuoƆ ɹoʇɔɐǝᴚ",
   "block.chemicaladdon.settling_basin": "uısɐᗺ buıןʇʇǝS",
+  "block.chemicaladdon.status_port": "ʇɹoԀ snʇɐʇS",
   "block.chemicaladdon.stirring_head": "pɐǝH buıɹɹıʇS",
   "block.chemicaladdon.sulfur_dioxide": "ǝpıxoıᗡ ɹnɟןnS",
   "block.chemicaladdon.sulfur_trioxide": "ǝpıxoıɹ⟘ ɹnɟןnS",
@@ -118,6 +119,8 @@
   "goggles.chemicaladdon.sediment": "ʇuǝɯıpǝs",
   "goggles.chemicaladdon.solution": "uoıʇnןoS",
   "goggles.chemicaladdon.status": ":snʇɐʇS",
+  "goggles.chemicaladdon.status_port": "%s :snʇɐʇS",
+  "goggles.chemicaladdon.status_port_progress": "%s%% :ssǝɹboɹԀ",
   "goggles.chemicaladdon.suspended": "pǝpuǝdsns",
   "goggles.chemicaladdon.temperature": "Ɔ°%s :ǝɹnʇɐɹǝdɯǝ⟘",
   "goggles.chemicaladdon.thermometer_alarm": "WᴚⱯꞀⱯ",
@@ -210,6 +213,7 @@
   "item.chemicaladdon.wide_ph_paper": "ɹǝdɐԀ Hd ǝbuɐᴚ-ǝpıM",
   "itemGroup.chemicaladdon": "uoppⱯ ןɐɔıɯǝɥƆ",
   "liquid_level_gauge.chemicaladdon.threshold": "pןoɥsǝɹɥ⟘ ɯɹɐןⱯ",
+  "message.chemicaladdon.status_port": "%s :ʇɹod snʇɐʇS",
   "paper.chemicaladdon.agno3_negative": "ǝpıɹoןɥɔ ou — ǝbuɐɥɔ ou :ɹǝdɐd ₃ONbⱯ",
   "paper.chemicaladdon.agno3_positive": "pǝʇɔǝʇǝp ǝpıɹoןɥɔ — ʎʇıpıqɹnʇ ǝʇıɥʍ :ɹǝdɐd ₃ONbⱯ",
   "paper.chemicaladdon.bacl2_negative": "ǝʇɐɟןns ou — ǝbuɐɥɔ ou :ɹǝdɐd ₂ןƆɐᗺ",
@@ -234,6 +238,7 @@
   "status.chemicaladdon.output_full": "ןןnɟ ʇndʇnO",
   "status.chemicaladdon.reacting": "buıʇɔɐǝᴚ",
   "status.chemicaladdon.temperature": "ʇǝɯ ʇou ǝɹnʇɐɹǝdɯǝ⟘",
+  "status_port.chemicaladdon.unbound": "ɹoʇɔɐǝɹ ɐ oʇ pǝɥɔɐʇʇɐ ʇoN",
   "thermometer.chemicaladdon.threshold": "pןoɥsǝɹɥ⟘ ɯɹɐןⱯ",
   "turbidity_gauge.chemicaladdon.threshold": "pןoɥsǝɹɥ⟘ ɯɹɐןⱯ"
 }

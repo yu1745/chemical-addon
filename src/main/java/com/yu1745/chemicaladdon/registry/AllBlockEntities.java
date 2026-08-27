@@ -19,6 +19,7 @@ import com.yu1745.chemicaladdon.reactor.PressureGaugePanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.SettlingBasinBlockEntity;
 import com.yu1745.chemicaladdon.reactor.StirringHeadBlockEntity;
+import com.yu1745.chemicaladdon.reactor.StatusPortBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ThermometerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ThermometerPanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.LiquidLevelGaugeBlockEntity;
@@ -158,6 +159,11 @@ public class AllBlockEntities {
 	public static final RegistryObject<BlockEntityType<CatalystTrayBlockEntity>> CATALYST_TRAY =
 			REGISTER.register("catalyst_tray",
 				() -> BlockEntityType.Builder.of(CatalystTrayBlockEntity::new, AllBlocks.CATALYST_TRAY.get())
+					.build(null));
+
+	public static final RegistryObject<BlockEntityType<StatusPortBlockEntity>> STATUS_PORT =
+			REGISTER.register("status_port",
+				() -> BlockEntityType.Builder.of(StatusPortBlockEntity::new, AllBlocks.STATUS_PORT.get())
 					.build(null));
 
 	public static void register(IEventBus modEventBus) {

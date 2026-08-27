@@ -125,6 +125,7 @@ BLOCKS = [
     ("stirring_head",      "搅拌头", "Stirring Head",      0x707880),
     ("gas_distributor",    "气体分布器", "Gas Distributor",  0x68747A),
     ("catalyst_tray",      "催化托盘", "Catalyst Tray",    0x6E5A46),
+    ("status_port",        "状态口",   "Status Port",      0x76695E),
 ]
 
 # Consumable test papers / qualitative reagents (U17, plans/12 §2.2): one-time
@@ -662,6 +663,29 @@ def make_dial_texture(rgb, needle=(196, 44, 44), dial=(236, 238, 242)):
     return rows
 
 
+def make_status_port_texture(rgb):
+    """B status port: metal shell face with a dark status window and a four-step
+    indicator bar (the fixed comparator mapping made visible — 0/4/8/12/15)."""
+    r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
+    rows = []
+    for y in range(16):
+        row = []
+        for x in range(16):
+            if y in (0, 15) or x in (0, 15):
+                row += [int(r * 1.2), int(g * 1.2), int(b * 1.2), 255]  # edge highlight
+            elif 5 <= y <= 7 and 3 <= x <= 12:
+                row += [34, 38, 44, 255]  # dark status window
+            elif y == 6 and 4 <= x <= 11:
+                row += [120, 200, 160, 255]  # window text strip
+            elif 10 <= y <= 12 and 4 <= x <= 11:
+                lit = (x - 4) // 2  # 4 lamp segments, left-lit
+                row += ([110, 190, 120, 255] if lit <= 1 else [50, 56, 50, 255])
+            else:
+                row += [r, g, b, 255]
+        rows.append(row)
+    return rows
+
+
 def make_gas_distributor_textures(rgb):
     """B2 directional gas distributor face set.
 
@@ -929,6 +953,8 @@ def gen_block_textures():
     write_png(os.path.join(d, "catalyst_tray_front.png"), tray_front)
     write_png(os.path.join(d, "catalyst_tray_back.png"), tray_back)
     write_png(os.path.join(d, "catalyst_tray_side.png"), make_panel_texture(0x6E5A46))
+    # B status port: shell casing with status window + step indicator
+    write_png(os.path.join(d, "status_port.png"), make_status_port_texture(0x76695E))
 
 
 # Extra lang keys added by hand (GUIs, goggles, diagnostics, assemble messages).
@@ -986,6 +1012,10 @@ EXTRA_LANG_ZH = {
     "goggles.chemicaladdon.liquid_level_gauge_threshold": "报警阈值：%s%%",
     "goggles.chemicaladdon.liquid_level_gauge_no_vessel": "未连接反应釜",
     "goggles.chemicaladdon.liquid_level_gauge_alarm": "报警：高液位",
+    "goggles.chemicaladdon.status_port": "状态：%s",
+    "goggles.chemicaladdon.status_port_progress": "进度：%s%%",
+    "message.chemicaladdon.status_port": "状态口：%s",
+    "status_port.chemicaladdon.unbound": "未连接反应釜",
     "goggles.chemicaladdon.crystallizer_condensate": "馏出水量：%s mB",
     "goggles.chemicaladdon.crystallizer_state": "状态：",
     "goggles.chemicaladdon.crystallizer_endpoint": "已到终点（停热）",
@@ -1105,6 +1135,10 @@ EXTRA_LANG_EN = {
     "goggles.chemicaladdon.liquid_level_gauge_threshold": "Threshold: %s%%",
     "goggles.chemicaladdon.liquid_level_gauge_no_vessel": "Not attached to a reactor",
     "goggles.chemicaladdon.liquid_level_gauge_alarm": "ALARM: high level",
+    "goggles.chemicaladdon.status_port": "Status: %s",
+    "goggles.chemicaladdon.status_port_progress": "Progress: %s%%",
+    "message.chemicaladdon.status_port": "Status port: %s",
+    "status_port.chemicaladdon.unbound": "Not attached to a reactor",
     "goggles.chemicaladdon.crystallizer_condensate": "Distillate: %s mB",
     "goggles.chemicaladdon.crystallizer_state": "Status:",
     "goggles.chemicaladdon.crystallizer_endpoint": "endpoint reached (heat cut)",
