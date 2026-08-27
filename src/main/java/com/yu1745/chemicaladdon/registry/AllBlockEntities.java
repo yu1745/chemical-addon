@@ -21,6 +21,8 @@ import com.yu1745.chemicaladdon.reactor.SettlingBasinBlockEntity;
 import com.yu1745.chemicaladdon.reactor.StirringHeadBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ThermometerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ThermometerPanelBlockEntity;
+import com.yu1745.chemicaladdon.reactor.LiquidLevelGaugeBlockEntity;
+import com.yu1745.chemicaladdon.reactor.LiquidLevelGaugePanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.TurbidityGaugeBlockEntity;
 import com.yu1745.chemicaladdon.reactor.TurbidityGaugePanelBlockEntity;
 
@@ -125,6 +127,16 @@ public class AllBlockEntities {
 	public static final RegistryObject<BlockEntityType<TurbidityGaugePanelBlockEntity>> TURBIDITY_GAUGE_PANEL =
 		REGISTER.register("turbidity_gauge_panel",
 			() -> BlockEntityType.Builder.of(TurbidityGaugePanelBlockEntity::new, AllBlocks.TURBIDITY_GAUGE_PANEL.get())
+				.build(null));
+
+	public static final RegistryObject<BlockEntityType<LiquidLevelGaugeBlockEntity>> LIQUID_LEVEL_GAUGE =
+		REGISTER.register("liquid_level_gauge",
+			() -> BlockEntityType.Builder.of(LiquidLevelGaugeBlockEntity::new, AllBlocks.LIQUID_LEVEL_GAUGE.get())
+				.build(null));
+
+	public static final RegistryObject<BlockEntityType<LiquidLevelGaugePanelBlockEntity>> LIQUID_LEVEL_GAUGE_PANEL =
+		REGISTER.register("liquid_level_gauge_panel",
+			() -> BlockEntityType.Builder.of(LiquidLevelGaugePanelBlockEntity::new, AllBlocks.LIQUID_LEVEL_GAUGE_PANEL.get())
 				.build(null));
 
 	public static final RegistryObject<BlockEntityType<CrystallizerControllerBlockEntity>> CRYSTALLIZER_CONTROLLER =

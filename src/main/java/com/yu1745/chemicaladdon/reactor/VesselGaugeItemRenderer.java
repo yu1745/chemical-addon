@@ -80,14 +80,16 @@ public class VesselGaugeItemRenderer extends BlockEntityWithoutLevelRenderer {
 	}
 
 	/** The resting needle tint of the item's gauge form, or −1 when the block is
-	 *  not one of the four gauge blocks (values mirror the block entities'
-	 *  {@code needleTint()}). */
+	 *  not a vessel gauge (values mirror the block entities' {@code needleTint()}). */
 	private static int needleTintOf(Block block) {
 		if (block instanceof ThermometerBlock || block instanceof ThermometerPanelBlock) {
 			return 0xFFC42C2C; // the thermometer dial art's red needle
 		}
 		if (block instanceof PressureGaugeBlock || block instanceof PressureGaugePanelBlock) {
 			return 0xFF486CBC; // the pressure dial art's blue needle
+		}
+		if (block instanceof LiquidLevelGaugeBlock || block instanceof LiquidLevelGaugePanelBlock) {
+			return 0xFF3CA0BE; // S11 liquid-level dial's cyan needle
 		}
 		return -1;
 	}

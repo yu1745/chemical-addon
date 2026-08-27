@@ -1,6 +1,6 @@
 # 开发进度
 
-> 最后更新：2026-08（M0–M2.5 + U1/U3 + U13–U19 + P6–P7.4；施工包 A 统一能力地基完成验收；**施工包 B1 搅拌头与 B2 气体分布器已完成；B3 催化托盘代码完成（GameTest 149 跑、B3 9/9 全过、既有 pH 测试两次同失败见 B3 节，判为基线/环境问题未修）+ JUnit 385（12 skip）**；B1 视觉层与 B2 放置/绑定/方向贴图均已完成客户端实机验收；两条内核混沌哨兵测试因耗时暂时禁用，见施工包 A 节）
+> 最后更新：2026-08（M0–M2.5 + U1/U3 + U13–U19 + P6–P7.4；施工包 A 统一能力地基完成验收；**施工包 B1 搅拌头与 B2 气体分布器已完成；B3 催化托盘代码完成（GameTest 149 跑、B3 9/9 全过、既有 pH 测试两次同失败见 B3 节，判为基线/环境问题未修）+ JUnit 385（12 skip）**；B1 视觉层与 B2 放置/绑定/方向贴图均已完成客户端实机验收；**S11 液位计（双形态）已落地（GameTest 150 全过，phGauge 保持禁用）**；两条内核混沌哨兵测试因耗时暂时禁用，见施工包 A 节）
 > 本文件只记录代码完成态与历史单元；未来设计与新开发路线见 `plans/README.md` 和 `plans/10-development.md`。旧计划编号不再定义未来里程碑。
 
 ## 状态总览
@@ -28,7 +28,16 @@
 | **施工包 B3** | 催化托盘：侧壁壳格、朝内放置、单槽催化剂库存（catalysts 标签）、仅外侧面 ITEM_HANDLER、世界存取无 GUI、catalyst_tray 部件 + CATALYST_BED 快照、每件 100 批成功后才消耗、多托盘确定性首选、诊断+护目镜 | ✅ 代码完成（B3 9/9 过；整套 149 跑中既有 pH 测试基线失败，见下） |
 | M3+ 其余 | FE 接线 / 竖窑 / 索尔维 / 连续流 / 高压 / 零排放 | ⏳ 未开始（顺序见 `plans/10-development.md`） |
 
-**自动化测试**：`./gradlew test` → **JUnit 385 用例，0 失败，12 skip**（B3 新增 `CatalystUsageTest` 6）。`./gradlew runGameTestServer` → **149 测试运行（基线 140 + B3 9），B3 全部通过；但既有 `phGaugeReadsTitrationEndpoint` 连续两次完整运行同一失败（读 11 而非 ≥13）**——该测试与 B3 改动无接触（B3 未触碰 pH/EngineReadings/Mixture 路径），且 progress 早已记录其历史偶发；本次两次同失败判为当前基线/环境问题，未修改（遵循"不改无关代码"约束），待独立排查。
+**自动化测试**：`./gradlew test` → **JUnit 385 用例，0 失败，12 skip**（B3 新增 `CatalystUsageTest` 6）。`./gradlew runGameTestServer` → **150 测试全部通过（148 必测基线 + S11 液位计新增 2）**（`phGaugeReadsTitrationEndpoint` 仍保持注释禁用，见 B3 节）。S11 轮实跑：150/150 全绿、`build -x test` 通过。
+
+## S11 液位计（双形态，2026-08）
+
+**S11 液位计（液位计 / Liquid Level Gauge）照 S03/S04/S17 仪表族范本落地双形态**：墙块形态（入 `vessel_walls` 标签、填壁位、绑 master、代理能力、UP 不代理）+ 薄板形态（贴面读身后壳块/控制器）。
+
+- **语义：液相填充百分比 0–100**，气体分类沿用全项目统一规则（FluidStack 的 FluidType lighter-than-air 即气体，`Miscibility.isGas`）——气相是气垫不抬液位；分母为釜容量（每内部块 1000 mB）。
+- **仪表族参数**：阈值 1%/格、0–100 格、里程碑每 10%、默认 80%（留气垫）；报警 = 读数≥阈值；比较器/表盘动态量程照基类（0..阈值 → 0..15，12 点钟 = 0%）。
+- **文件**：`reactor/AbstractLiquidLevelGaugeBlockEntity` + 墙/板四类 + 注册（AllBlocks/AllBlockEntities/ChemicalAddonClient 渲染器）；资源经 `tools/gen_species.py`（表盘贴图青色指针、双语 lang）+ `runData`（blockstate/item model/loot）；面板手写模型 JSON；`vessel_walls.json` 入墙形态。
+- **GameTest +2（150/150）**：`liquidLevelGaugeReadsLiquidOnlyFill`（50% 读数/比较器 9、气垫不抬液位、达 80% 报警 15+比较器 15、排空归零、拆控制器脱离后零红石）；`liquidLevelGaugePanelReadsAndAlarms`（贴面经壳块 master 读书、阈值/报警/红石）。首跑揭了测试自身一个容量算错（气垫占用容量使二次补液不足），修正后全绿。
 
 ## P6 · 化学权威全量切换（2026-08-20，用户决策：旧引擎从未正常工作，直接切新引擎）
 
@@ -468,6 +477,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 | 问题 | 根因 | 修复 |
 |------|------|------|
 | B2 气体分布器 / B3 催化托盘客户端收不到状态（护目镜恒 UNBOUND/旧状态，区块同步清零） | 两类 BE 手动广播 `ClientboundBlockEntityDataPacket.create(this)` 但未重写 `getUpdateTag`/`getUpdatePacket`，继承 BlockEntity 的空 tag：区块下发与 update 包都携带空 NBT，客户端 `load` 把 masterPos/status 等重置 | 照 `ChemicalBrickBlockEntity` 模式补 `getUpdateTag()=saveWithoutMetadata()` + `getUpdatePacket()=create(this)`（托盘含 master 绑定/status/催化库存/batchesUsed，分布器含 master 绑定/status/限流窗口字段）；不加 `onDataPacket`（Forge 默认已路由到 `handleUpdateTag→load`，仓库内 ChemicalBrick 同样未加）。无 GameTest：GameTest 服务端环境观察不到客户端包流转 |
+| S11 液位计在创造栏、手持和掉落状态没有图标 | 液位计 item model 用 `builtin/entity` 交给 `GaugeBlockItem` 的 `VesselGaugeItemRenderer`，但 renderer 的 `needleTintOf` 只识别温度计/压力表，未识别液位计后直接返回，整个模型不画 | 把液位计墙块/面板加入 renderer，按 BE 同色值绘制青色零位指针；创造栏物品实际一直由本模组命名空间遍历自动收录，只是此前不可见 |
 | 客户端启动崩溃 `Registry Object not present` | DistExecutor 立即执行先于注册 | FMLClientSetupEvent |
 | GUI 打不开 | `openMenu(MenuProvider)` 不带额外数据，菜单读 BlockPos 空缓冲区 | `NetworkHooks.openScreen` |
 | GUI 容量恒 0（Jade 正常） | `sendBlockUpdated` 不同步 BE NBT | `getUpdatePacket`/`onDataPacket` + 显式推送 BE 数据包 |
@@ -499,7 +509,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 > 下列条目是旧路线留下的现状索引，不再定义未来开工顺序；全新施工路线见 `plans/10-development.md`。
 
 1. **客户端实机验证**（用户）：护目镜 HUD 显示、釜内物品渲染（开口釜）、成型失败提示、开口/闭口切换、quickPlay 自动进档
-2. **贴面仪表**：✅ S02 温度计、✅ S03 压力表（U1，仪表族基类 `AbstractVesselGaugeBlockEntity` 就位）——剩余 S04 浓度计 / S11 液位计（照基类复制即可）
+2. **贴面仪表**：✅ S02 温度计、✅ S03 压力表（U1，仪表族基类 `AbstractVesselGaugeBlockEntity` 就位）、✅ S04 波美计（U17）、✅ S16 pH 计、✅ S17 浊度计、✅ S18 电导率计、✅ S11 液位计（2026-08）——仪表族全部落地
 3. **M3**：电解槽（FE）、吸收塔（塔式实例）、换热器、压缩机——氯碱 + 硫酸厂。电解槽拟要求**去离子水（纯净水）**投料（避免杂质副反应）；纯净水是**未来新物质**，判定在「浓度/杂质」层（非再注册一个 H₂O 流体物种），届时再落地
 4. **M4 旗舰**：索尔维制碱闭环（吸收塔氨盐水 → 碳化 → 煅烧 → 氨回收）
 5. **基础设施**：流体桶（S08）、GUI 美化、datagen 接入（配方/模型 provider）、Jade 集成（流体显示/温度/进度 tooltip）、JEI 配方展示

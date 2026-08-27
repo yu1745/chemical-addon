@@ -119,6 +119,8 @@ BLOCKS = [
     ("baume_gauge_panel",      "波美计面板", "Baumé Gauge Panel", 0x7E7262),
     ("turbidity_gauge",        "浊度计",  "Turbidity Gauge",    0x62685A),
     ("turbidity_gauge_panel",  "浊度计面板", "Turbidity Gauge Panel", 0x72786A),
+    ("liquid_level_gauge",      "液位计",  "Liquid Level Gauge",      0x5A6E7E),
+    ("liquid_level_gauge_panel", "液位计面板", "Liquid Level Gauge Panel", 0x6A7E8E),
     ("crystallizer_controller", "终点结晶器", "Crystallizer Controller", 0x6E7A6E),
     ("stirring_head",      "搅拌头", "Stirring Head",      0x707880),
     ("gas_distributor",    "气体分布器", "Gas Distributor",  0x68747A),
@@ -898,6 +900,9 @@ def gen_block_textures():
     write_png(os.path.join(d, "baume_gauge_panel.png"), make_dial_texture(0x7E7262, needle=(196, 124, 44), dial=(242, 234, 222)))
     write_png(os.path.join(d, "turbidity_gauge.png"), make_dial_texture(0x62685A, needle=(150, 133, 78), dial=(236, 238, 228)))
     write_png(os.path.join(d, "turbidity_gauge_panel.png"), make_dial_texture(0x72786A, needle=(150, 133, 78), dial=(236, 238, 228)))
+    # S11 liquid-level gauge (cyan needle): liquid-only fill percent
+    write_png(os.path.join(d, "liquid_level_gauge.png"), make_dial_texture(0x5A6E7E, needle=(60, 160, 190), dial=(224, 238, 244)))
+    write_png(os.path.join(d, "liquid_level_gauge_panel.png"), make_dial_texture(0x6A7E8E, needle=(60, 160, 190), dial=(224, 238, 244)))
     write_png(os.path.join(d, "crystallizer_controller.png"), make_panel_texture(0x6E7A6E))
     # decant_hose was missing from here since D18.5 — runData's blockstate
     # provider for it failed on the absent texture (U1 fix)
@@ -976,6 +981,11 @@ EXTRA_LANG_ZH = {
     "goggles.chemicaladdon.turbidity_gauge_threshold": "报警阈值：%s",
     "goggles.chemicaladdon.turbidity_gauge_no_vessel": "未连接反应釜",
     "goggles.chemicaladdon.turbidity_gauge_alarm": "报警：初浑",
+    # S11 liquid-level gauge
+    "goggles.chemicaladdon.liquid_level": "液位：%s%%",
+    "goggles.chemicaladdon.liquid_level_gauge_threshold": "报警阈值：%s%%",
+    "goggles.chemicaladdon.liquid_level_gauge_no_vessel": "未连接反应釜",
+    "goggles.chemicaladdon.liquid_level_gauge_alarm": "报警：高液位",
     "goggles.chemicaladdon.crystallizer_condensate": "馏出水量：%s mB",
     "goggles.chemicaladdon.crystallizer_state": "状态：",
     "goggles.chemicaladdon.crystallizer_endpoint": "已到终点（停热）",
@@ -1004,6 +1014,7 @@ EXTRA_LANG_ZH = {
     "ph_gauge.chemicaladdon.threshold": "报警阈值",
     "baume_gauge.chemicaladdon.threshold": "设定点",
     "turbidity_gauge.chemicaladdon.threshold": "报警阈值",
+    "liquid_level_gauge.chemicaladdon.threshold": "报警阈值",
     "crystallizer.chemicaladdon.setpoint": "终点设定（°Bé）",
     "status.chemicaladdon.not_assembled": "未成型",
     "status.chemicaladdon.reacting": "反应中",
@@ -1089,6 +1100,11 @@ EXTRA_LANG_EN = {
     "goggles.chemicaladdon.turbidity_gauge_threshold": "Threshold: %s",
     "goggles.chemicaladdon.turbidity_gauge_no_vessel": "Not attached to a reactor",
     "goggles.chemicaladdon.turbidity_gauge_alarm": "ALARM: first clouding",
+    # S11 liquid-level gauge
+    "goggles.chemicaladdon.liquid_level": "Level: %s%%",
+    "goggles.chemicaladdon.liquid_level_gauge_threshold": "Threshold: %s%%",
+    "goggles.chemicaladdon.liquid_level_gauge_no_vessel": "Not attached to a reactor",
+    "goggles.chemicaladdon.liquid_level_gauge_alarm": "ALARM: high level",
     "goggles.chemicaladdon.crystallizer_condensate": "Distillate: %s mB",
     "goggles.chemicaladdon.crystallizer_state": "Status:",
     "goggles.chemicaladdon.crystallizer_endpoint": "endpoint reached (heat cut)",
@@ -1117,6 +1133,7 @@ EXTRA_LANG_EN = {
     "ph_gauge.chemicaladdon.threshold": "Alarm Threshold",
     "baume_gauge.chemicaladdon.threshold": "Setpoint",
     "turbidity_gauge.chemicaladdon.threshold": "Alarm Threshold",
+    "liquid_level_gauge.chemicaladdon.threshold": "Alarm Threshold",
     "crystallizer.chemicaladdon.setpoint": "Endpoint Setpoint (°Bé)",
     "status.chemicaladdon.not_assembled": "Not assembled",
     "status.chemicaladdon.reacting": "Reacting",

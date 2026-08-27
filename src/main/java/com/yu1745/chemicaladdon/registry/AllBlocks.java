@@ -5,8 +5,10 @@ import com.tterrag.registrate.util.entry.BlockEntry;
 import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.client.connected.ConnectedModelBuilder;
 import com.yu1745.chemicaladdon.item.GaugeBlockItem;
+import com.yu1745.chemicaladdon.reactor.LiquidLevelGaugeBlock;
 import com.yu1745.chemicaladdon.reactor.BaumeGaugeBlock;
 import com.yu1745.chemicaladdon.reactor.BaumeGaugePanelBlock;
+import com.yu1745.chemicaladdon.reactor.LiquidLevelGaugePanelBlock;
 import com.yu1745.chemicaladdon.reactor.ChemicalBrickBlock;
 import com.yu1745.chemicaladdon.reactor.ChemicalGlassBlock;
 import com.yu1745.chemicaladdon.reactor.CatalystTrayBlock;
@@ -302,6 +304,35 @@ public class AllBlocks {
 					.isSuffocating((a, b, c) -> false)
 					.isViewBlocking((a, b, c) -> false))
 				.lang("Turbidity Gauge Panel")
+				.blockstate((ctx, prov) -> plateVariants(prov, ctx.get(), ctx.getName()))
+				.item(GaugeBlockItem::new)
+				.model((ctx, prov) -> prov.getBuilder(ctx.getName())
+					.parent(new ModelFile.UncheckedModelFile("builtin/entity")))
+				.build()
+				.register();
+
+	/** S11 liquid-level gauge (液位计, 方块形式): vessel shell block reading the liquid fill percent. */
+	public static final BlockEntry<LiquidLevelGaugeBlock> LIQUID_LEVEL_GAUGE =
+			REGISTRATE.block("liquid_level_gauge", LiquidLevelGaugeBlock::new)
+				.properties(p -> p.mapColor(MapColor.METAL).strength(2.0f, 6.0f))
+				.lang("Liquid Level Gauge")
+				.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(),
+					prov.models().cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
+				.item(GaugeBlockItem::new)
+				.model((ctx, prov) -> prov.getBuilder(ctx.getName())
+					.parent(new ModelFile.UncheckedModelFile("builtin/entity")))
+				.build()
+				.register();
+
+	/** S11 liquid-level gauge (液位计, 薄板形式): thin face-mounted plate reading the liquid fill percent. */
+	public static final BlockEntry<LiquidLevelGaugePanelBlock> LIQUID_LEVEL_GAUGE_PANEL =
+			REGISTRATE.block("liquid_level_gauge_panel", LiquidLevelGaugePanelBlock::new)
+				.properties(p -> p.mapColor(MapColor.METAL).strength(1.5f, 4.0f)
+					.noOcclusion()
+					.isRedstoneConductor((a, b, c) -> false)
+					.isSuffocating((a, b, c) -> false)
+					.isViewBlocking((a, b, c) -> false))
+				.lang("Liquid Level Gauge Panel")
 				.blockstate((ctx, prov) -> plateVariants(prov, ctx.get(), ctx.getName()))
 				.item(GaugeBlockItem::new)
 				.model((ctx, prov) -> prov.getBuilder(ctx.getName())

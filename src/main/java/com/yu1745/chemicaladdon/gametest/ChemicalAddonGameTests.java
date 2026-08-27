@@ -43,6 +43,8 @@ import com.yu1745.chemicaladdon.reactor.StirShaftMath;
 import com.yu1745.chemicaladdon.reactor.StirringHeadBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ThermometerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ThermometerPanelBlockEntity;
+import com.yu1745.chemicaladdon.reactor.LiquidLevelGaugeBlockEntity;
+import com.yu1745.chemicaladdon.reactor.LiquidLevelGaugePanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.TurbidityGaugeBlockEntity;
 import com.yu1745.chemicaladdon.recipe.AllRecipeTypes;
 import com.yu1745.chemicaladdon.recipe.ChemicalReactionRecipe;
@@ -3574,6 +3576,89 @@ public class ChemicalAddonGameTests {
 		helper.assertTrue(gauge.getTurbidity() == 3, "a 25% slurry reads 浆 (got " + gauge.getTurbidity() + ")");
 		helper.assertTrue(gauge.isAlarm(), "first clouding past 微浑 raises the alarm");
 		helper.assertTrue(gauge.analogSignal() == 15, "4 bins map onto 0/5/10/15 (got " + gauge.analogSignal() + ")");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void liquidLevelGaugeReadsLiquidOnlyFill(GameTestHelper helper) {
+		// S11: liquid-only fill percent — a gas headspace never raises the level.
+		// Default threshold 80 %; the alarm fires at/above it; the comparator maps
+		// 0..threshold onto 0..15 (the dynamic dial range).
+		ReactorControllerBlockEntity reactor = buildReactorWithGauge(helper, AllBlocks.LIQUID_LEVEL_GAUGE.get());
+		LiquidLevelGaugeBlockEntity gauge = (LiquidLevelGaugeBlockEntity) helper.getBlockEntity(new BlockPos(3, 2, 1));
+
+		// 500 mB of water in the 1000 mB interior: 50 %, below the 80 % threshold
+		reactor.getTank().fill(new FluidStack(Fluids.WATER, 500), FluidAction.EXECUTE);
+		gauge.tick();
+		helper.assertTrue(gauge.isAttached() && gauge.getLiquidPercent() == 50,
+			"half-full vessel reads 50% (got " + gauge.getLiquidPercent() + "%)");
+		helper.assertTrue(gauge.getThreshold() == 80, "default threshold must be 80% (got " + gauge.getThreshold() + "%)");
+		helper.assertTrue(!gauge.isAlarm(), "50% vs 80% threshold: no alarm");
+		helper.assertTrue(gauge.analogSignal() == 9, "comparator: 50% of the 80% full scale = 9 (got " + gauge.analogSignal() + ")");
+
+		// a gas headspace must not raise the level: +100 mB oxygen on top of the
+		// 500 mB water — the level stays 50 % even though the tank holds 600 mB
+		reactor.getTank().fill(new FluidStack(AllFluids.OXYGEN.get().getSource(), 100), FluidAction.EXECUTE);
+		gauge.tick();
+		helper.assertTrue(gauge.getLiquidPercent() == 50,
+			"gas must not raise the level (got " + gauge.getLiquidPercent() + "%)");
+		helper.assertTrue(!gauge.isAlarm(), "gas headspace alone never trips the level alarm");
+
+		// more liquid reaches the threshold: +300 mB water → 800/1000 = 80 %
+		reactor.getTank().fill(new FluidStack(Fluids.WATER, 300), FluidAction.EXECUTE);
+		gauge.tick();
+		helper.assertTrue(gauge.getLiquidPercent() == 80,
+			"800 mB liquid reads 80% even with a gas phase present (got " + gauge.getLiquidPercent() + "%)");
+		helper.assertTrue(gauge.isAlarm(), "80% at/above the 80% threshold raises the alarm");
+		BlockPos abs = helper.absolutePos(new BlockPos(3, 2, 1));
+		BlockState state = helper.getBlockState(new BlockPos(3, 2, 1));
+		helper.assertTrue(state.getSignal(helper.getLevel(), abs, Direction.EAST) == 15,
+			"the alarm must emit a strong redstone signal");
+		helper.assertTrue(state.getAnalogOutputSignal(helper.getLevel(), abs) == 15,
+			"the comparator saturates at 15 once the reading reaches the threshold");
+
+		// lifecycle: drain → level 0, alarm off; break the controller → detach → 0
+		reactor.getTank().clear();
+		gauge.tick();
+		helper.assertTrue(gauge.isAttached() && gauge.getLiquidPercent() == 0 && !gauge.isAlarm(),
+			"a drained vessel reads 0% with no alarm");
+		helper.assertTrue(gauge.analogSignal() == 0, "drained vessel: comparator 0");
+		helper.setBlock(new BlockPos(2, 2, 1), Blocks.AIR.defaultBlockState());
+		gauge.tick();
+		helper.assertTrue(!gauge.isAttached() && gauge.getLiquidPercent() == 0,
+			"breaking the controller must detach the gauge (ambient 0%)");
+		helper.assertTrue(gauge.alarmSignal() == 0 && gauge.analogSignal() == 0,
+			"a detached gauge emits no redstone");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void liquidLevelGaugePanelReadsAndAlarms(GameTestHelper helper) {
+		// S11 (薄板): mounted on a SHELL BRICK it reads the vessel's liquid level
+		// through the brick's master pointer and trips the alarm at 80 %.
+		ReactorControllerBlockEntity reactor = buildReactor5x5x5(helper);
+		// 27 interior blocks → 27000 mB capacity; 21600 mB water = 80 %
+		reactor.getTank().fill(new FluidStack(Fluids.WATER, 21600), FluidAction.EXECUTE);
+
+		// mounted on the east wall brick at (5,2,2) — behind it is the brick,
+		// not the controller, so the read goes panel -> brick.getValidMaster -> reactor
+		BlockState gauge = AllBlocks.LIQUID_LEVEL_GAUGE_PANEL.get().defaultBlockState()
+			.setValue(BlockStateProperties.FACING, Direction.EAST);
+		helper.setBlock(new BlockPos(5, 2, 2), gauge);
+		LiquidLevelGaugePanelBlockEntity be = (LiquidLevelGaugePanelBlockEntity) helper.getBlockEntity(new BlockPos(5, 2, 2));
+		helper.assertTrue(be != null, "liquid level gauge panel should have a block entity");
+		be.tick();
+		helper.assertTrue(be.isAttached() && be.getLiquidPercent() == 80,
+			"panel must read the vessel through the shell brick (got " + be.getLiquidPercent() + "%)");
+		helper.assertTrue(be.getThreshold() == 80, "default threshold must be 80% (got " + be.getThreshold() + "%)");
+		helper.assertTrue(be.isAlarm(), "80% at/above the 80% threshold trips the alarm");
+
+		BlockPos abs = helper.absolutePos(new BlockPos(5, 2, 2));
+		BlockState state = helper.getBlockState(new BlockPos(5, 2, 2));
+		helper.assertTrue(state.getSignal(helper.getLevel(), abs, Direction.EAST) == 15,
+			"the alarm must emit a strong redstone signal");
+		helper.assertTrue(state.getAnalogOutputSignal(helper.getLevel(), abs) == 15,
+			"comparator saturates at 15 at the threshold (dynamic 0..threshold scale)");
 		helper.succeed();
 	}
 

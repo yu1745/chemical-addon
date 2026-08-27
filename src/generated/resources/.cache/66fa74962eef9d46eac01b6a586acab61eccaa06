@@ -1,4 +1,4 @@
-// 1.20.1	2026-08-28T02:07:14.5567761	Registrate Provider for chemicaladdon [Recipes, Advancements, Loot Tables, Tags (blocks), Tags (items), Tags (fluids), Tags (entity_types), Blockstates, Item models, Lang (en_us/en_ud)]
+// 1.20.1	2026-08-28T02:22:07.01561	Registrate Provider for chemicaladdon [Recipes, Advancements, Loot Tables, Tags (blocks), Tags (items), Tags (fluids), Tags (entity_types), Blockstates, Item models, Lang (en_us/en_ud)]
 404f8d84274018255af4e6938f419a71dbabebf5 assets/chemicaladdon/blockstates/air.json
 5398f4a42a9384736e88ebf696b792477ed35819 assets/chemicaladdon/blockstates/ammonia.json
 60b9015792fb318c83af85b54214b2eae520cb3d assets/chemicaladdon/blockstates/baume_gauge.json
@@ -18,6 +18,8 @@ f9aa0a067e1f93fb034850b418d658e11cd313fd assets/chemicaladdon/blockstates/filter
 627c70b4e076755ed7ebd4c1b560449938e34240 assets/chemicaladdon/blockstates/gas_distributor.json
 1c78f44cce2bcd9fa1b6d962dd1edf66a846cbbb assets/chemicaladdon/blockstates/hydrogen.json
 94a7314daed727fd249b4b8b39b2db300ea2803f assets/chemicaladdon/blockstates/hydrogen_chloride.json
+4b882b5bcacfb97cb631dfd1d7ddd16f425f81f3 assets/chemicaladdon/blockstates/liquid_level_gauge.json
+569681f73dace616f45c821d7624909f4b6366d9 assets/chemicaladdon/blockstates/liquid_level_gauge_panel.json
 c1d2710de0789f30bc2938210f8cb32904024e79 assets/chemicaladdon/blockstates/mixture.json
 f9ac09b513a87b886d40d8d6db9888f7f4cdcdff assets/chemicaladdon/blockstates/nitric_oxide.json
 3e245078787265c5e27b56c8e5770a1097ede8f2 assets/chemicaladdon/blockstates/nitrogen.json
@@ -37,8 +39,8 @@ cca96f8d0570837890fc1952992b68ec43577a3a assets/chemicaladdon/blockstates/therma
 a33d1c8ee8ca36ddd5c5deb034e10f9069825ad8 assets/chemicaladdon/blockstates/thermometer_panel.json
 52aa60a58573877557bc02aaf20c15b6b87136ed assets/chemicaladdon/blockstates/turbidity_gauge.json
 6ccb990219a38242195f4b3dff3359fd0e5f3abd assets/chemicaladdon/blockstates/turbidity_gauge_panel.json
-840ec919582cba396c664926feabff538ebf4ff0 assets/chemicaladdon/lang/en_ud.json
-100a9f1212d18f1d01e6958ed9b57a7b64fe8265 assets/chemicaladdon/lang/en_us.json
+3a52e1c9bbe6a628bd8763d3089518ad3d379b12 assets/chemicaladdon/lang/en_ud.json
+be170302338dbfc43867e0703e2a2d3de10a713d assets/chemicaladdon/lang/en_us.json
 736302a02c48b95eab2dc5fc031636ef7f903874 assets/chemicaladdon/models/block/air.json
 87e1eda6ed5b3bcf841040ce4a18402e9e9ca9e8 assets/chemicaladdon/models/block/ammonia.json
 9c9e5951960ccfa0ea6fbac27b287b6e0a5c284d assets/chemicaladdon/models/block/baume_gauge.json
@@ -55,6 +57,7 @@ fa28945f4dbf2edb90f23cd7ec83650a63394b77 assets/chemicaladdon/models/block/decan
 bf3bf696b0bc5a43b58055ab10e5ff3b7524517c assets/chemicaladdon/models/block/gas_distributor.json
 1b5bbc546102e830eb0189cd91f5346e5b1c5c29 assets/chemicaladdon/models/block/hydrogen.json
 58ceaa565c0ab479b89a7521437da7a19cd27f76 assets/chemicaladdon/models/block/hydrogen_chloride.json
+c37717ef6b9d1ee39bb639f771399ad220fea366 assets/chemicaladdon/models/block/liquid_level_gauge.json
 b8cae35c776679c89f3bc84968e8016636664840 assets/chemicaladdon/models/block/mixture.json
 9656896ce16f7442be3561e514a9a2e9f3e3c19c assets/chemicaladdon/models/block/nitric_oxide.json
 c7b5a750e2e3184983fe72bc5528bbe03bf463fc assets/chemicaladdon/models/block/nitrogen.json
@@ -98,6 +101,8 @@ e61342bf921951f48b870fe83ada05eaac429526 assets/chemicaladdon/models/item/filter
 061b97cf530a35a0d48becd1464acd70e5ce8817 assets/chemicaladdon/models/item/gas_distributor.json
 df3c5446f9104828ecc3c5639aaca1c8f5244a5a assets/chemicaladdon/models/item/gypsum.json
 e683ed9bd65e1dd82f33c83c625e5607cbdf771b assets/chemicaladdon/models/item/limestone.json
+e0f7b66a84e6588f01abbbce75b1803ffe5d46e2 assets/chemicaladdon/models/item/liquid_level_gauge.json
+e0f7b66a84e6588f01abbbce75b1803ffe5d46e2 assets/chemicaladdon/models/item/liquid_level_gauge_panel.json
 39cafc2c5335e99145bd2721a64dc121b575618a assets/chemicaladdon/models/item/litmus_paper.json
 cec6c8607a37d4b5ec93413538fc8ec49e5db1f7 assets/chemicaladdon/models/item/magnesium_chloride.json
 e93a394eed71af0e5ae13e0f717f9cee5c762f48 assets/chemicaladdon/models/item/magnesium_chloride_grain.json
@@ -146,6 +151,8 @@ ef66c1ce81bfaca5663397f6e03633721a636cc7 data/chemicaladdon/loot_tables/blocks/c
 1d6ba71308648ecbae30acf40ce4084d04e4f2d7 data/chemicaladdon/loot_tables/blocks/decant_port.json
 f0f702905e43071389cbc327b1a1fe4729e7a9b2 data/chemicaladdon/loot_tables/blocks/filter_press.json
 68b39a1408b9912034ead43fc6096bfab028f75b data/chemicaladdon/loot_tables/blocks/gas_distributor.json
+19f63278b622037250e43cc99f356cbb465c5e52 data/chemicaladdon/loot_tables/blocks/liquid_level_gauge.json
+c140c6290c312c6cea5c27200649bf2abf22e9fb data/chemicaladdon/loot_tables/blocks/liquid_level_gauge_panel.json
 39a26e79029f161293dc2d5572741510575620b7 data/chemicaladdon/loot_tables/blocks/ph_gauge.json
 12d6c4d96d49b9919ea6c0b1a953eeb33e9043fa data/chemicaladdon/loot_tables/blocks/ph_gauge_panel.json
 ef194a0b843654755b34c51f2671bceb447ca6b9 data/chemicaladdon/loot_tables/blocks/pressure_gauge.json
