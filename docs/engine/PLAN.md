@@ -2,7 +2,7 @@
 
 > 📍 **本文档是 chem-engine（化学内核）的计划书**，与 mod 侧计划（`plans/`，主索引 plans/README.md）分离维护；引擎完成态明细见同目录 development_status.md / known_limitations.md。
 > 🏠 **正本**：chem-engine 已 vendor 并入本仓库（commit c988ea9，原 chem-engine 仓库封存），本文即唯一正本。
-> 📌 **结构注记（2026-08）**：Tracks A–F/E 已完成或封存（历史记录保留于下文）；**当前主线是 Track G（IPhreeqc 内核嵌入）**；mod 侧接线待办见文末「下一步：mod 侧」。工业原料蓝图（原 Track C 总表）的 mod 侧唯一定义已迁 `plans/14-process-facility-map.md`（§0 归并方法/§2 工艺线）。
+> 📌 **结构注记（2026-08）**：Tracks A–F/E 已完成或封存（历史记录保留于下文）；**当前主线是 Track G（IPhreeqc 内核嵌入）**；mod 侧接线待办见文末「下一步：mod 侧」。旧工业原料蓝图已废止，新的候选产业与准入规则见 `plans/08-industry-map.md`。
 
 > 原 HANDOVER.md 的交接要点已并入本文，不再单独维护。
 
