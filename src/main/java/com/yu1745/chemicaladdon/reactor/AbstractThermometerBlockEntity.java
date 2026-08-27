@@ -13,6 +13,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.ChatFormatting;
+import com.yu1745.chemicaladdon.vessel.ProcessReadings;
 
 /**
  * The S02 thermometer: a {@link AbstractVesselGaugeBlockEntity} reading the
@@ -62,9 +63,10 @@ public abstract class AbstractThermometerBlockEntity extends AbstractVesselGauge
 		return DEFAULT_THRESHOLD_STEPS;
 	}
 
+	/** The thermometer consumes only the controller-independent reading view. */
 	@Override
-	protected int readValue(ReactorControllerBlockEntity reactor) {
-		return reactor.getTemperature();
+	protected int readProcessValue(ProcessReadings readings) {
+		return readings.getTemperature();
 	}
 
 	@Override

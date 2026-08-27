@@ -12,6 +12,7 @@ import com.simibubi.create.foundation.blockEntity.behaviour.CenteredSideValueBox
 import com.simibubi.create.foundation.blockEntity.behaviour.ValueSettingsBoard;
 import com.simibubi.create.foundation.blockEntity.behaviour.ValueSettingsFormatter;
 import com.simibubi.create.foundation.blockEntity.behaviour.scrollValue.ScrollValueBehaviour;
+import com.yu1745.chemicaladdon.vessel.ProcessReadings;
 
 import net.createmod.catnip.animation.LerpedFloat;
 import net.minecraft.core.BlockPos;
@@ -99,8 +100,25 @@ public abstract class AbstractVesselGaugeBlockEntity extends SmartBlockEntity im
 	@Nullable
 	protected abstract ReactorControllerBlockEntity findReactor();
 
-	/** The reading taken from an attached reactor. */
-	protected abstract int readValue(ReactorControllerBlockEntity reactor);
+	/**
+	 * Narrow reading view used by migrated instruments. The default adapter keeps
+	 * existing gauges on their legacy lookup until each consumer moves over.
+	 */
+	@Nullable
+	protected ProcessReadings findProcessReadings() {
+		return findReactor();
+	}
+
+	/** Legacy value hook retained for unmigrated gauges during A1. */
+	protected int readValue(ReactorControllerBlockEntity reactor) {
+		return ambientValue();
+	}
+
+	/** Read a value from the controller-independent measurement contract. */
+	protected int readProcessValue(ProcessReadings readings) {
+		return readings instanceof ReactorControllerBlockEntity reactor
+			? readValue(reactor) : ambientValue();
+	}
 
 	/** The reading reported when not attached (ambient / zero). */
 	protected abstract int ambientValue();
@@ -224,9 +242,9 @@ public abstract class AbstractVesselGaugeBlockEntity extends SmartBlockEntity im
 			needleAngle.tickChaser();
 			return; // the reading itself is computed server-side; see the write/read pair
 		}
-		ReactorControllerBlockEntity reactor = findReactor();
-		boolean newAttached = reactor != null;
-		int newValue = newAttached ? readValue(reactor) : ambientValue();
+		ProcessReadings readings = findProcessReadings();
+		boolean newAttached = readings != null;
+		int newValue = newAttached ? readProcessValue(readings) : ambientValue();
 		boolean changed = newAttached != attached || newValue != value;
 		attached = newAttached;
 		value = newValue;

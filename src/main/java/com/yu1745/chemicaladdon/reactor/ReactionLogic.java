@@ -17,6 +17,8 @@ import com.yu1745.chemicaladdon.fluid.Temperature;
 import com.yu1745.chemicaladdon.recipe.AllRecipeTypes;
 import com.yu1745.chemicaladdon.recipe.ChemicalReactionRecipe;
 import com.yu1745.chemicaladdon.recipe.SolutionIngredient;
+import com.yu1745.chemicaladdon.vessel.ProcessReadings;
+import com.yu1745.chemicaladdon.vessel.StructureAccess;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
@@ -74,6 +76,14 @@ final class ReactionLogic {
 	}
 
 	private static boolean matches(ReactorControllerBlockEntity reactor, ChemicalReactionRecipe recipe) {
+		// Structure requirements are deliberately checked through the narrow
+		// contracts. Required parts and agitation metadata are retained by the
+		// recipe but are not enforced until reliable snapshots/readings exist.
+		StructureAccess structure = reactor;
+		ProcessReadings readings = reactor;
+		if (!recipe.matchesStructureRequirements(structure, readings)) {
+			return false;
+		}
 		// heat condition vs current temperature
 		int temperature = reactor.getTemperature();
 		HeatCondition heat = recipe.getRequiredHeat();

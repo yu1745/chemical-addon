@@ -2,6 +2,9 @@ package com.yu1745.chemicaladdon.gametest;
 
 import com.simibubi.create.content.processing.burner.BlazeBurnerBlock;
 import com.simibubi.create.content.processing.burner.BlazeBurnerBlockEntity;
+import io.netty.buffer.Unpooled;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.composition.Chemistry;
 import com.yu1745.chemicaladdon.composition.Solution;
@@ -34,11 +37,18 @@ import com.yu1745.chemicaladdon.reactor.SpillLogic;
 import com.yu1745.chemicaladdon.reactor.ThermometerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ThermometerPanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.TurbidityGaugeBlockEntity;
+import com.yu1745.chemicaladdon.recipe.AllRecipeTypes;
+import com.yu1745.chemicaladdon.recipe.ChemicalReactionRecipe;
 import com.yu1745.chemicaladdon.registry.AllBlocks;
 import com.yu1745.chemicaladdon.registry.AllContainers;
 import com.yu1745.chemicaladdon.registry.AllFluids;
 import com.yu1745.chemicaladdon.registry.AllItems;
 import com.yu1745.chemicaladdon.vessel.VesselBlockEntity;
+import com.yu1745.chemicaladdon.vessel.StructureAccess;
+import com.yu1745.chemicaladdon.vessel.ProcessCapability;
+import com.yu1745.chemicaladdon.vessel.StructureCapabilities;
+import com.yu1745.chemicaladdon.vessel.LiquidProcessAccess;
+import com.yu1745.chemicaladdon.vessel.ProcessReadings;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -50,6 +60,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.gametest.framework.GameTestSequence;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -86,6 +97,151 @@ public class ChemicalAddonGameTests {
 	}
 
 	// ------------------------------------------------------------------ reactor
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselA1NarrowViews(GameTestHelper helper) {
+		buildReactor(helper);
+		ReactorControllerBlockEntity be = reactor(helper);
+		helper.assertTrue(be instanceof StructureAccess, "controller must expose structure access");
+		helper.assertTrue(be instanceof LiquidProcessAccess, "controller must expose liquid process access");
+		helper.assertTrue(be instanceof ProcessReadings, "controller must expose process readings");
+		StructureAccess structure = be;
+		LiquidProcessAccess liquid = be;
+		ProcessReadings readings = be;
+		helper.assertTrue(structure.isAssembled() && structure.getSize() == 3 && structure.getHeight() == 1,
+			"structure view must report the assembled geometry");
+		helper.assertTrue(liquid.getLiquidCapacity() == be.getTank().getTankCapacity(0),
+			"liquid view must preserve the legacy tank capacity");
+		helper.assertTrue(readings.getTemperature() == be.getTemperature()
+			&& readings.getPressure() == be.getPressure(),
+			"reading view must preserve temperature and pressure values");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselA2OpenCapabilitySnapshot(GameTestHelper helper) {
+		ReactorControllerBlockEntity be = buildReactor3x3x5HighController(helper);
+		StructureCapabilities snapshot = ((StructureAccess) be).getStructureCapabilities();
+		helper.assertTrue(snapshot.has(ProcessCapability.MIXED_VOLUME),
+			"assembled vessel must advertise mixed-volume capability");
+		helper.assertTrue(snapshot.has(ProcessCapability.OPEN_TOP)
+			&& !snapshot.has(ProcessCapability.SEALED),
+			"open vessel must advertise OPEN_TOP only");
+		helper.assertTrue(snapshot.size() == 3 && snapshot.height() == 3
+			&& snapshot.capacityMb() == be.getTank().getTankCapacity(0)
+			&& snapshot.interiorVolumeBlocks() == 3,
+			"open capability snapshot must preserve geometry and capacity");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void vesselA2SealedCapabilitySnapshot(GameTestHelper helper) {
+		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
+		StructureCapabilities snapshot = ((StructureAccess) be).getStructureCapabilities();
+		helper.assertTrue(snapshot.has(ProcessCapability.MIXED_VOLUME),
+			"assembled vessel must advertise mixed-volume capability");
+		helper.assertTrue(snapshot.has(ProcessCapability.SEALED)
+			&& !snapshot.has(ProcessCapability.OPEN_TOP),
+			"sealed vessel must advertise SEALED only");
+		helper.assertTrue(snapshot.size() == 5 && snapshot.height() == 3
+			&& snapshot.capacityMb() == be.getTank().getTankCapacity(0)
+			&& snapshot.interiorVolumeBlocks() == 27,
+			"sealed capability snapshot must preserve geometry and capacity");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void recipeA3LegacyJsonKeepsMixedVesselMatch(GameTestHelper helper) {
+		buildReactor(helper);
+		ReactorControllerBlockEntity be = reactor(helper);
+		ChemicalReactionRecipe recipe = recipeFromA3Json(new JsonObject());
+		helper.assertTrue(recipe.getRequiredCapabilities().size() == 1
+			&& recipe.getRequiredCapabilities().contains(ProcessCapability.MIXED_VOLUME),
+			"legacy recipe JSON must default to mixed-volume capability");
+		helper.assertTrue(recipe.matchesStructureRequirements((StructureAccess) be, (ProcessReadings) be),
+			"legacy recipe must still match an assembled vessel");
+		JsonObject encoded = new JsonObject();
+		recipe.writeAdditional(encoded);
+		helper.assertTrue(!encoded.has("requiredCapabilities"),
+			"legacy JSON serialization must not gain an observable requirement field");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void recipeA3OpenCapabilityRequirement(GameTestHelper helper) {
+		ReactorControllerBlockEntity be = buildReactor3x3x5HighController(helper);
+		JsonObject json = new JsonObject();
+		json.add("requiredCapabilities", jsonArray("open_top"));
+		ChemicalReactionRecipe recipe = recipeFromA3Json(json);
+		helper.assertTrue(recipe.matchesStructureRequirements((StructureAccess) be, (ProcessReadings) be),
+			"OPEN_TOP requirement must match an open vessel");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void recipeA3SealedCapabilityAndConditionRejection(GameTestHelper helper) {
+		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
+		JsonObject json = new JsonObject();
+		json.add("requiredCapabilities", jsonArray("sealed"));
+		json.add("requiredParts", jsonArray("chemicaladdon:catalyst_bed"));
+		JsonObject agitationOnly = new JsonObject();
+		JsonObject agitation = new JsonObject();
+		agitation.addProperty("min", 99.0);
+		agitationOnly.add("agitation", agitation);
+		json.add("conditions", agitationOnly);
+		ChemicalReactionRecipe sealedRecipe = recipeFromA3Json(json);
+		helper.assertTrue(sealedRecipe.getRequiredParts().contains(
+			new ResourceLocation(ChemicalAddon.MODID, "catalyst_bed")),
+			"required part must be parsed and retained");
+		helper.assertTrue(sealedRecipe.getConditions().hasAgitation()
+			&& sealedRecipe.matchesStructureRequirements((StructureAccess) be, (ProcessReadings) be),
+			"agitation metadata must not be enforced before an agitation reading exists");
+
+		json = new JsonObject();
+		json.add("requiredCapabilities", jsonArray("sealed"));
+		JsonObject conditions = new JsonObject();
+		JsonObject temperature = new JsonObject();
+		temperature.addProperty("min", 300);
+		conditions.add("temperature", temperature);
+		json.add("conditions", conditions);
+		ChemicalReactionRecipe recipe = recipeFromA3Json(json);
+		helper.assertTrue(!recipe.matchesStructureRequirements((StructureAccess) be, (ProcessReadings) be),
+			"a sealed recipe above the current temperature must be rejected");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void recipeA3NetworkRoundTripKeepsAllCustomFields(GameTestHelper helper) {
+		JsonObject json = new JsonObject();
+		json.addProperty("deltaHeat", -17);
+		json.add("solutions", solutionArray("chemicaladdon:hydrochloric_acid", 120, 0.2, 0.8));
+		json.add("solutionOutputs", solutionArray("chemicaladdon:sodium_hydroxide", 80, 0.5, 0.7));
+		json.add("requiredCapabilities", new JsonArray());
+		json.add("requiredParts", jsonArray("chemicaladdon:catalyst_bed"));
+		JsonObject conditions = new JsonObject();
+		conditions.add("temperature", range(303, 333));
+		conditions.add("pressureKpa", range(-5, 300));
+		conditions.add("agitation", range(0.25, 0.75));
+		json.add("conditions", conditions);
+		ChemicalReactionRecipe original = recipeFromA3Json(json);
+		FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
+		try {
+			original.writeAdditional(buffer);
+			ChemicalReactionRecipe copy = recipeFromA3Json(new JsonObject());
+			copy.readAdditional(buffer);
+			helper.assertTrue(copy.getDeltaHeat() == original.getDeltaHeat()
+				&& copy.getSolutions().equals(original.getSolutions())
+				&& copy.getSolutionOutputs().equals(original.getSolutionOutputs()),
+				"network sync must retain legacy chemical reaction fields");
+			helper.assertTrue(copy.getRequiredCapabilities().isEmpty()
+				&& copy.getRequiredParts().equals(original.getRequiredParts())
+				&& copy.getConditions().toJson().equals(original.getConditions().toJson()),
+				"network sync must retain A3 requirements, including explicit empty capabilities");
+		} finally {
+			buffer.release();
+		}
+		helper.succeed();
+	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void reactorAssembles(GameTestHelper helper) {
@@ -3226,6 +3382,39 @@ public class ChemicalAddonGameTests {
 	}
 
 	// ------------------------------------------------------------------ helpers
+
+	private static JsonArray jsonArray(String value) {
+		JsonArray array = new JsonArray();
+		array.add(value);
+		return array;
+	}
+
+	private static JsonArray solutionArray(String species, int amount, double min, double max) {
+		JsonArray array = new JsonArray();
+		JsonObject solution = new JsonObject();
+		solution.addProperty("species", species);
+		solution.addProperty("amount", amount);
+		solution.addProperty("minConcentration", min);
+		solution.addProperty("maxConcentration", max);
+		array.add(solution);
+		return array;
+	}
+
+	private static JsonObject range(double min, double max) {
+		JsonObject range = new JsonObject();
+		range.addProperty("min", min);
+		range.addProperty("max", max);
+		return range;
+	}
+
+	private static ChemicalReactionRecipe recipeFromA3Json(JsonObject json) {
+		JsonArray ingredients = new JsonArray();
+		JsonArray results = new JsonArray();
+		json.add("ingredients", ingredients);
+		json.add("results", results);
+		return (ChemicalReactionRecipe) AllRecipeTypes.CHEMICAL_REACTION.getSerializer()
+			.fromJson(new ResourceLocation(ChemicalAddon.MODID, "gametest/a3"), json);
+	}
 
 	private static void buildReactor(GameTestHelper helper) {
 		BlockState brick = AllBlocks.CHEMICAL_BRICK.get().defaultBlockState();

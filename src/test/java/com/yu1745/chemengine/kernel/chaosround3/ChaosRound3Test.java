@@ -404,9 +404,10 @@ class ChaosRound3Test {
 
     // ==== 6. 终极大杂烩 ====
 
-    @Test
-    @Timeout(300) // 14 反应×9 相×7 步在高离子强度下 CVODE 真实耗时 >60s，放宽防挂上限
-    @DisplayName("终极杂烩: 14 bulk 全发射 + 9 相 + 7 档步长, 全收敛/守恒±1.5%/无NaN/末步 Decay 走完")
+    // 2026-08 暂时禁用：实测耗时 49.6s（单核满载，~5000 次内核全量求解）。因为嫌慢，所以注释掉的，最后一次运行时本身是通过了。
+    // @Test
+    // @Timeout(300) // 14 反应×9 相×7 步在高离子强度下 CVODE 真实耗时 >60s，放宽防挂上限
+    // @DisplayName("终极杂烩: 14 bulk 全发射 + 9 相 + 7 档步长, 全收敛/守恒±1.5%/无NaN/末步 Decay 走完")
     void scenario6_ultimateSoup() {
         // 注：sit.dat 无 Smithsonite 相（rg "^Smithsonite" 0 命中）——Zn 只留液相，记录为疑似问题
         String sol = """

@@ -1,7 +1,7 @@
 # 开发进度
 
-> 最后更新：2026-08（M0–M2.5 + U1/U3 + U13–U17 插队 + U18 定点分数 + **U19 引擎切换：IPhreeqc 内核接管运行时化学**，RulesEngine 退役；115/115 必测 + JUnit 全绿）
-> 里程碑定义见 `plans/11-content-scope.md`；设计计划书主索引 `plans/README.md`。
+> 最后更新：2026-08（M0–M2.5 + U1/U3 + U13–U19 + P6–P7.4；**施工包 A 统一能力地基完成验收：GameTest 125/125 + JUnit 364 全绿**；两条内核混沌哨兵测试因耗时暂时禁用，见施工包 A 节）
+> 本文件只记录代码完成态与历史单元；未来设计与新开发路线见 `plans/README.md` 和 `plans/10-development.md`。旧计划编号不再定义未来里程碑。
 
 ## 状态总览
 
@@ -21,9 +21,11 @@
 | U17 分析化学层 | Kw 读数层 + S16 pH/S04 波美/S17 浊度 + 试纸族 + SI 降级 + M08 终点结晶器 | ✅ 完成（插队） |
 | U18 定点分数 | 量子网格 10⁷/mB + Mixture long 通道 + 引擎量子往返 | ✅ 完成（插队） |
 | **U19 引擎切换（parity）** | IPhreeqc 内核接管运行时化学（EngineBridge/TickDriver/WriteBack 主循环）+ RulesEngine 退役 | ✅ 完成（插队；内核 vendor commit c988ea9） |
-| M3+ 其余 | FE 接线 / 竖窑 / 索尔维 / 连续流 / 高压 / 零排放 | ⏳ 未开始（顺序见 plans/11 §2.1） |
+| 施工包 A1/A2 | 窄过程接口 + 结构能力快照 | ✅ 完成 |
+| 施工包 A3 | 配方可选结构要求 | 🟡 按设计部分实现：能力/温度/压力已校验；部件/搅拌仅数据化（待 B1/B2 提供真实快照/读数） |
+| M3+ 其余 | FE 接线 / 竖窑 / 索尔维 / 连续流 / 高压 / 零排放 | ⏳ 未开始（顺序见 `plans/10-development.md`） |
 
-**自动化测试**：`./gradlew runGameTestServer` → **115/115 必测通过**（+1 optional 悬置）；`./gradlew test` → JUnit 全绿（含内核策展/性能哨兵）。
+**自动化测试**：`./gradlew runGameTestServer` → **125/125 必测通过**（2026-08 施工包 A 验收实测，0 optional）；`./gradlew test` → JUnit 364 用例全绿（12 skip 带理由；两条混沌哨兵测试因耗时暂时禁用，见施工包 A 节）。
 
 ## P6 · 化学权威全量切换（2026-08-20，用户决策：旧引擎从未正常工作，直接切新引擎）
 
@@ -83,7 +85,7 @@
 
 ### M2.5 · 反应釜可玩性改造（世界内交互优先，GUI 弱化）
 
-- **设计基调落地**：交互哲学写入 AGENTS.md（世界内交互优先、GUI 弱化，生态证据见 plans/archive/00-ecosystem-recon.md §7（冻结）：Create 本体 ~40 GUI 类全为配置/物品用途、createaddition 0 GUI、TFMG 仅 2 配置 GUI、New Age/Broken Bad/Estrogen 0 GUI）
+- **设计基调落地**：交互哲学写入 AGENTS.md（世界内交互优先、GUI 弱化）；旧生态盘点随旧计划废止，现行游戏性原则见 `plans/01-gameplay.md`。
 - **护目镜 HUD**：釜实现 `IHaveGoggleInformation`——戴护目镜看控制器显示：温度+热级（无/加热/超级加热）、诊断状态、多流体内容、物品、反应进度（Create 标准通道）
 - **诊断状态**：`ReactorStatus` 枚举——未成型/反应中/温度不满足/输出已满/无匹配配方（每 10 tick 自动判定，原因可诊断）
 - **成型反馈**：`tryAssemble()` 返回结构化结果（面+问题类型+坐标），失败 chat 报具体缺砖位置；成功音效+粒子
@@ -108,7 +110,7 @@
 - **判定**：MixDegree 是「容器局部瞬态」被错误建模成「流体属性」——物理上不存在「还有 40% 没混匀」的可抽流体。
 - **删除**：`Mixture` 的 MixDegree 键/方法、`ReactorTank` 的传输冻结标志 + 加权合并、`tickMixture/mixRate/MIX_TICK/NATURAL_MIX_RATE`、色带渲染 `renderMixtureSurface`、护目镜 mix% 显示、4 个 GameTest。
 - **保留内核**：搅拌→反应速率下沉为釜局部 `stirring` 字段（未来接 Create 机械混合器）；分层语义交给 D18 互溶性。
-- 决策见 [plans/03-substance-model.md §5.1](../../plans/03-substance-model.md)。
+- 当时的设计决策文件已随旧计划废止；本条仅保留为代码历史，现行物质表示见 `plans/02-common-architecture.md`。
 
 ### S1 · 离子基底存储（v2 物质模型，plans/03 §11）
 
@@ -333,7 +335,7 @@ M3 首单元（plans/11 §2.1）：修掉 G1/G2/G3 三条公共地基缺口，�
 
 ### U18 · 定点分数（量子网格 10⁷/mB）
 
-把规则引擎的求解刻度从 10⁴/mB 细化到 10⁷/mB（`Chemistry.QUANTA_PER_UNIT=1000`、`QUANTA_PER_MB=10⁷`），亚单位平衡残差在 ratio-tag 里存活而不是每次求解被截断。GameTest 102/102 + JUnit 66/66 全绿。后续（焓记账退休最后两条热护栏）见 plans/13。
+把规则引擎的求解刻度从 10⁴/mB 细化到 10⁷/mB（`Chemistry.QUANTA_PER_UNIT=1000`、`QUANTA_PER_MB=10⁷`），亚单位平衡残差在 ratio-tag 里存活而不是每次求解被截断。GameTest 102/102 + JUnit 66/66 全绿。旧焓计划已随计划重建废止；现行热与结构边界见 `plans/02-common-architecture.md`。
 
 - **Mixture long 通道**：parts 存取 `putLong`/`getLong`（legacy int tag 经 `contains(key,99)` 升级），四域 get*/set* 与混合视图 `deriveLongView`/`distributeLong` 全 long 域；`blendColorLong`/`createLong` 为 long 核、Integer 版为兼容委托（泛型擦除不能重载）；量子视图 `deriveQuanta*Amounts`（求解器往返用）、unit/mB 视图保留（运输/显示/测试）。
 - **RulesEngine 量子往返**：读 `deriveQuanta*` → 求解 → `ReactorTank.setContentsLong`（镜像 Integer 版，含 `repairTraceChargeImbalanceLong`）写回；`ITEM_UNITS`/蒸发/纯水入料同步量子化。
@@ -397,7 +399,15 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 - **读数 `EngineReadings`**：主循环每拍步进结果共享缓存供全部表计（pH/温度/浊度…），零额外 JNA 求解；无快照回退 legacy 读数。**`Kernel` 共享会话**：sit.dat 装载每 JVM 一次——不复用则 GameTest 1 分钟劣化到 5–10 分钟（切换初版实测）。
 - **红氧解禁**（推翻旧 pe 否决，plans/03 §8.1 v2）：介稳价态=伪元素池（独立守恒），跨池红氧=KINETICS 速率方程（k=游戏节奏旋钮），价态分配=元素总量+pe 涌现。FeCl₂+Cl₂、MnO₂+浓盐酸等旧引擎判「数学不可行」场景内核直接做对。
 - **RulesEngine 退役处置**：不再被 tick 调用；保留①物流常量（MB_PER_ITEM/晶粒面额/湿饼残液率/洗涤效率——ReactorTank/ReactionLogic 生产依赖）②GameTest 回归锁（U15–U17 玩法级语义：投种塌缩亚稳/分步结晶选择性/湿饼洗涤——内核迁移验收=同语义保持，待逐批迁移）。
-- **待办**：sit.dat（ThermoChimie）许可证核实补 THIRD_PARTY；溶解度曲线/结晶动力学语义在内核侧逐场景对照；热量记账按新架构重设计（U20，见 plans/11 附录）；KINETICS -m 剩量跨 tick 续接。
+- **待办**：sit.dat（ThermoChimie）许可证核实补 THIRD_PARTY；溶解度曲线/结晶动力学语义在内核侧逐场景对照；热量记账按新架构重设计（U20）；KINETICS -m 剩量跨 tick 续接。
+
+### 施工包 A · 统一能力地基（2026-08，已验收）
+
+- **A1 窄接口**：新增 `StructureAccess`、`LiquidProcessAccess`、`ProcessReadings`；`VesselBlockEntity` 提供结构/液相访问，`ReactorControllerBlockEntity` 提供过程读数。温度/压力仪表迁至 `ProcessReadings`，分液口迁至 `LiquidProcessAccess`，旧公开 API 与 NBT 格式保持不变。
+- **A2 结构能力快照**：新增 `ProcessCapability` 与不可变 `StructureCapabilities`。已成型容器发布 `MIXED_VOLUME` 和 `OPEN_TOP` 或 `SEALED`，并携带容量、边长、环高与控制器环层；派生自活结构、零新 NBT；尚不改变既有工艺行为。
+- **A3 配方可选结构要求（按审计 §12 设计的部分范围）**：`ChemicalReactionRecipe` 已解析、JSON 写回和网络同步 `requiredCapabilities`、`requiredParts`、温度/压力/搅拌条件；`ReactionLogic` 经窄接口强制校验能力、温度和压力。`requiredParts` 与搅拌只保留数据、不参与匹配——等 B1 搅拌头/B2 气体分布器提供真实部件快照与搅拌读数后启用；现有资源配方尚未迁移这些字段。
+- **验收（2026-08 本轮实跑）**：`gradlew build` 2m47s 通过；JUnit 364 用例 0 失败（12 skip 全为 HydrolysisSurvey 带理由禁用）；`runGameTestServer` 125/125 必测全过（= 基线 118 + A 包新增 7；测试段 34s，批次 100+25 串行）；两类 GameTest 文件 holder 注解齐全、127 个 `@GameTest` 字面计数 = 125 方法 + 2 个 `@GameTestHolder`，无静默排除（P6 假绿陷阱核对）。
+- **混沌哨兵暂时禁用（2026-08）**：ChaosRound2「一锅炖」21.7s / ChaosRound3「终极杂烩」49.6s，实测为单核满载的真实计算（7 档步长 KINETICS 积分 × 每子步全量 speciation 求解，~5000 次求解/测试），因嫌慢注释禁用（注释内写明耗时与原因），**最后一次运行本身通过**；JUnit 计数 366→364。恢复 = 解注三行注解。
 
 ## 修复记录（近期）
 
@@ -430,7 +440,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 
 ## 待办 / 下一步
 
-> **M3+ 开工顺序以 `plans/11-content-scope.md` §2 为唯一定义**（U1 容器状态层 → U2 FE 接线 → U3 模板抽取 → U4 竖窑 → …，单元序列见该文件 §2.1）。下列条目为现状索引。
+> 下列条目是旧路线留下的现状索引，不再定义未来开工顺序；全新施工路线见 `plans/10-development.md`。
 
 1. **客户端实机验证**（用户）：护目镜 HUD 显示、釜内物品渲染（开口釜）、成型失败提示、开口/闭口切换、quickPlay 自动进档
 2. **贴面仪表**：✅ S02 温度计、✅ S03 压力表（U1，仪表族基类 `AbstractVesselGaugeBlockEntity` 就位）——剩余 S04 浓度计 / S11 液位计（照基类复制即可）
@@ -439,7 +449,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 5. **基础设施**：流体桶（S08）、GUI 美化、datagen 接入（配方/模型 provider）、Jade 集成（流体显示/温度/进度 tooltip）、JEI 配方展示
 6. **混合物流体系统（Mixture）**：✅ 互溶性（D18）已落地——`miscibilityGroup` 声明式溶剂族、按组合并、按密度分相抽出。**剩余**：液-液分离手段见新增 **D18.5 分液软管** 条目；给 M9 加「不互溶共管=混液炸管」的输送约束
 7. **已知限制**：沉淀池/过滤机无 GUI；方块纹理为程序生成色块；砖无连接纹理（多变体方案待做）；压力/相态/催化未实现（计划 M3+）。（~~反应热集总常数~~ ✅ U16 已改能量记账；底面尺寸已参数化为任意 W×W×H 3..7；轻相抽出已由 D18.5 分液软管落地）
-8. **设计定案待实施（2026-08 讨论批，plans/11 §2.1）**：~~**U15 晶粒、投种与混合固体物品**~~（✅ 已完成，见「已完成明细」；~~MgCl₂/CaCl₂ 苦卤盐数据首位~~ 一并落地）；~~**U16 反应热能量记账**~~（✅ 已完成，见「已完成明细」——J/unit 账本 + ΔT=Q/(feedUnits×4.18) + 蒸发潜热自限 + deltaHeat 质量耦合）；~~**U16.5 湿饼夹带与洗涤**~~（✅ 已完成，见「已完成明细」——残液率夹带 + residue 母液相 + 再浆/置换洗涤两路 + 电导率计 S18 落地；否决共沉淀，03 §12）；~~**U17 分析化学层 + 终点控制**~~（✅ 已完成，见「已完成明细」——Kw 读数层常数 + S16/S04/S17 三表 + 试纸族 7 件 + SI 降级 + M08 终点结晶器）；远期弹性见 plans/11（rate 数据授权 / 底排口零头打包晶粒 / 萃取独立系统）。
+8. **设计定案待实施（2026-08 讨论批，plans/11 §2.1）**：~~**U15 晶粒、投种与混合固体物品**~~（✅ 已完成，见「已完成明细」；~~MgCl₂/CaCl₂ 苦卤盐数据首位~~ 一并落地）；~~**U16 反应热能量记账**~~（✅ 已完成，见「已完成明细」——J/unit 账本 + ΔT=Q/(feedUnits×4.18) + 蒸发潜热自限 + deltaHeat 质量耦合）；~~**U16.5 湿饼夹带与洗涤**~~（✅ 已完成，见「已完成明细」——残液率夹带 + residue 母液相 + 再浆/置换洗涤两路 + 电导率计 S18 落地；否决共沉淀，03 §12）；~~**U17 分析化学层 + 终点控制**~~（✅ 已完成，见「已完成明细」——Kw 读数层常数 + S16/S04/S17 三表 + 试纸族 7 件 + SI 降级 + M08 终点结晶器）；远期弹性条目（rate 数据授权 / 底排口零头打包晶粒 / 萃取独立系统）随旧 plans/11 废止，待按新计划重审。
 9. **D18.5 分液（分液口 + 软管滑轮）**：✅ **已实现**——`decant_port`（壁块，只抽最重相，锁相）+ `decant_hose`（Create 软管滑轮装**开口釜上方** → Forge `EntityPlaceEvent` 转化为分液软管；`FLUID_HANDLER` 只抽最轻相/锁相，扳手切「只抽上层/全部抽」，敲掉/中键掉回原版 `create:hose_pulley`）。**视觉已实现**：`DecantHoseRenderer` 照抄 Create `AbstractPulleyRenderer`（coil 滚动 + 下垂 rope + magnet，复用 Create 的 hose_pulley 部分模型与 `HOSE_PULLEY_COIL` sprite shift），块体直接引用 `create:block/hose_pulley/block` 模型（占位贴图废弃）；软管 `offset`（BE 内 `LerpedFloat`，客户端 tick 用 `Chaser.EXP` 缓动追 `ReactorControllerBlockEntity.getLiquidSurfaceY`）从 0 **慢慢下放**到液面、液面升降自动跟随、无手动收放；转化瞬间播**铁砧放置音**（`SoundEvents.ANVIL_PLACE`）提示。**剩余**：Ponder 提示。详见 plans/05 §M7。
 
 ## 常用命令
@@ -447,7 +457,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 ```bash
 ./gradlew build              # 构建
 ./gradlew test               # 引擎 JUnit（composition 层，无需 MC 启动）
-./gradlew runGameTestServer  # 102/102 自动化测试
+./gradlew runGameTestServer  # 施工包 A 基线 125/125
 ./run-server.sh              # 服务端冒烟（自动关闭）
 ./gradlew runClient          # 客户端（自动进 "New World"，-PquickPlayWorld= 覆盖）
 python3 tools/gen_species.py # 改物种后重新生成资源/注册代码

@@ -17,6 +17,7 @@ import com.yu1745.chemicaladdon.fluid.Temperature;
 import com.yu1745.chemicaladdon.recipe.ChemicalReactionRecipe;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
 import com.yu1745.chemicaladdon.vessel.VesselBlockEntity;
+import com.yu1745.chemicaladdon.vessel.ProcessReadings;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
@@ -44,7 +45,8 @@ import net.minecraftforge.items.ItemHandlerHelper;
  * chemical_reaction recipes with progress / intermediate completion /
  * delta-heat). Shape: hollow W x W x H shell, W,H = 3..7, open or sealed top.
  */
-public class ReactorControllerBlockEntity extends VesselBlockEntity implements IHaveGoggleInformation {
+public class ReactorControllerBlockEntity extends VesselBlockEntity
+	implements IHaveGoggleInformation, ProcessReadings {
 
 	/** P3b：最近一次读档的内核态 dump（DUMP SOLUTION_RAW 文本；null = 此档无内核态）。 */
 	@Nullable
@@ -488,11 +490,45 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity implements I
 		return Math.max(0, (int) Math.round(pAbs - ATMOSPHERE_KPA));
 	}
 
+	/** Published aqueous pH reading for the narrow instrument contract. */
+	@Override
+	public int getPh() {
+		return AbstractPhGaugeBlockEntity.phOf(tank);
+	}
+
+	/** Published four-bin suspended-solids reading for the narrow instrument contract. */
+	@Override
+	public int getTurbidity() {
+		return AbstractTurbidityGaugeBlockEntity.turbidityOf(tank);
+	}
+
+	/** Published Baumé density reading for the narrow instrument contract. */
+	@Override
+	public int getBaume() {
+		return AbstractBaumeGaugeBlockEntity.baumeOf(tank);
+	}
+
+	/** Published ionic-conductivity reading for the narrow instrument contract. */
+	@Override
+	public int getConductivity() {
+		return AbstractConductivityGaugeBlockEntity.conductivityOf(tank);
+	}
+
 	public ReactorStatus getStatus() {
 		return status;
 	}
 
+	@Override
+	public String getProcessStatus() {
+		return status.name();
+	}
+
 	public float getProgress() {
+		return progress;
+	}
+
+	@Override
+	public float getProcessProgress() {
 		return progress;
 	}
 

@@ -2,10 +2,12 @@ package com.yu1745.chemicaladdon.reactor;
 
 import javax.annotation.Nullable;
 
+import java.util.List;
+
 import com.yu1745.chemicaladdon.fluid.Miscibility;
 import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
-import com.yu1745.chemicaladdon.vessel.VesselBlockEntity;
+import com.yu1745.chemicaladdon.vessel.LiquidProcessAccess;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -78,29 +80,29 @@ public class DecantPortBlockEntity extends ChemicalBrickBlockEntity {
 	}
 
 	@Nullable
-	private ReactorTank vesselTank() {
+	private LiquidProcessAccess liquidProcess() {
 		BlockEntity master = getValidMaster();
-		return master instanceof VesselBlockEntity vessel ? vessel.getTank() : null;
+		return master instanceof LiquidProcessAccess access ? access : null;
 	}
 
 	private void ensureLatched() {
 		if (!latched.isEmpty()) {
 			return;
 		}
-		ReactorTank tank = vesselTank();
-		if (tank == null) {
+		LiquidProcessAccess process = liquidProcess();
+		if (process == null) {
 			return;
 		}
-		FluidStack heaviest = heaviest(tank);
+		FluidStack heaviest = heaviest(process.getFluidPhases());
 		if (!heaviest.isEmpty()) {
 			latched = heaviest;
 		}
 	}
 
 	/** The densest phase (bottom layer) — a copy, never the live stack. */
-	private static FluidStack heaviest(ReactorTank tank) {
+	private static FluidStack heaviest(List<FluidStack> phases) {
 		FluidStack best = FluidStack.EMPTY;
-		for (FluidStack f : tank.getFluids()) {
+		for (FluidStack f : phases) {
 			if (best.isEmpty() || Miscibility.densityOf(f) > Miscibility.densityOf(best)) {
 				best = f;
 			}
@@ -117,25 +119,25 @@ public class DecantPortBlockEntity extends ChemicalBrickBlockEntity {
 
 		@Override
 		public FluidStack getFluidInTank(int tank) {
-			ReactorTank t = vesselTank();
-			if (t == null) {
+			LiquidProcessAccess process = liquidProcess();
+			if (process == null) {
 				return FluidStack.EMPTY;
 			}
 			if (!latched.isEmpty()) {
-				for (FluidStack f : t.getFluids()) {
+				for (FluidStack f : process.getFluidPhases()) {
 					if (f.isFluidEqual(latched)) {
 						return f.copy();
 					}
 				}
 				return FluidStack.EMPTY; // latched phase drained out -> port closed
 			}
-			return heaviest(t);
+			return heaviest(process.getFluidPhases());
 		}
 
 		@Override
 		public int getTankCapacity(int tank) {
-			ReactorTank t = vesselTank();
-			return t == null ? 0 : t.getTankCapacity(0);
+			LiquidProcessAccess process = liquidProcess();
+			return process == null ? 0 : process.getLiquidCapacity();
 		}
 
 		@Override
@@ -154,16 +156,16 @@ public class DecantPortBlockEntity extends ChemicalBrickBlockEntity {
 			if (latched.isEmpty() || !latched.isFluidEqual(resource)) {
 				return FluidStack.EMPTY;
 			}
-			ReactorTank t = vesselTank();
-			if (t == null) {
+			LiquidProcessAccess process = liquidProcess();
+			if (process == null) {
 				return FluidStack.EMPTY;
 			}
 			// U16.5: a clear-liquid spout skims the liquid only, never the
 			// settled bed or its pore liquor (the reslurry-washing primitive)
 			if (Mixture.isMixture(latched)) {
-				return t.decantClear(resource.getAmount(), action);
+				return process.decantClear(resource.getAmount(), action);
 			}
-			return t.drain(resource, action);
+			return process.drain(resource, action);
 		}
 
 		@Override
@@ -172,16 +174,16 @@ public class DecantPortBlockEntity extends ChemicalBrickBlockEntity {
 			if (latched.isEmpty()) {
 				return FluidStack.EMPTY;
 			}
-			ReactorTank t = vesselTank();
-			if (t == null) {
+			LiquidProcessAccess process = liquidProcess();
+			if (process == null) {
 				return FluidStack.EMPTY;
 			}
 			if (Mixture.isMixture(latched)) {
-				return t.decantClear(maxDrain, action);
+				return process.decantClear(maxDrain, action);
 			}
 			FluidStack request = latched.copy();
 			request.setAmount(maxDrain);
-			return t.drain(request, action);
+			return process.drain(request, action);
 		}
 	}
 }

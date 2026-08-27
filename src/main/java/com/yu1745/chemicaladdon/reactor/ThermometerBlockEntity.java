@@ -4,6 +4,7 @@ import javax.annotation.Nullable;
 
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
 import com.yu1745.chemicaladdon.vessel.IMasterBound;
+import com.yu1745.chemicaladdon.vessel.ProcessReadings;
 import com.yu1745.chemicaladdon.vessel.VesselBlockEntity;
 
 import net.minecraft.core.BlockPos;
@@ -72,6 +73,14 @@ public class ThermometerBlockEntity extends AbstractThermometerBlockEntity imple
 	protected ReactorControllerBlockEntity findReactor() {
 		BlockEntity master = getValidMaster();
 		return master instanceof ReactorControllerBlockEntity reactor ? reactor : null;
+	}
+
+	/** Use the narrow measurements contract for this migrated thermometer. */
+	@Override
+	@Nullable
+	protected ProcessReadings findProcessReadings() {
+		BlockEntity master = getValidMaster();
+		return master instanceof ProcessReadings readings ? readings : null;
 	}
 
 	@Override

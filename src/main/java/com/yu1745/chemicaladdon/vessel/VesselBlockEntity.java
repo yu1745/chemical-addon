@@ -1,6 +1,7 @@
 package com.yu1745.chemicaladdon.vessel;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -46,7 +47,8 @@ import net.minecraftforge.items.ItemStackHandler;
  * public accessors — gauges, the decant hose, the renderer and the GameTests
  * call them directly.
  */
-public abstract class VesselBlockEntity extends SmartBlockEntity {
+public abstract class VesselBlockEntity extends SmartBlockEntity
+	implements StructureAccess, LiquidProcessAccess {
 
 	/**
 	 * Interior internals allowlist (U3): extra block types allowed to occupy the
@@ -725,6 +727,26 @@ public abstract class VesselBlockEntity extends SmartBlockEntity {
 		return assembled;
 	}
 
+	@Override
+	public BlockPos getStructurePos() {
+		return worldPosition;
+	}
+
+	/**
+	 * Derive the A2 capability snapshot from the already-authoritative geometry
+	 * fields.  Keeping this derived avoids another persisted representation that
+	 * could drift from the legacy structure/NBT state.
+	 */
+	@Override
+	public StructureCapabilities getStructureCapabilities() {
+		if (!assembled) {
+			return StructureCapabilities.unassembled();
+		}
+		Set<ProcessCapability> capabilities = EnumSet.of(ProcessCapability.MIXED_VOLUME,
+			open ? ProcessCapability.OPEN_TOP : ProcessCapability.SEALED);
+		return StructureCapabilities.of(capabilities, tank.getTankCapacity(0), size, height, ringLayer);
+	}
+
 	/** mB still queued to pour out of the breach (server-side spill state; tests/debug). */
 	public int getPendingSpillAmount() {
 		int total = 0;
@@ -787,6 +809,11 @@ public abstract class VesselBlockEntity extends SmartBlockEntity {
 		return inward;
 	}
 
+	@Override
+	public int getRingLayer() {
+		return ringLayer;
+	}
+
 	/** true when the vessel is open-topped (interior visible from above). */
 	public boolean isOpen() {
 		return open;
@@ -824,6 +851,16 @@ public abstract class VesselBlockEntity extends SmartBlockEntity {
 
 	public ReactorTank getTank() {
 		return tank;
+	}
+
+	@Override
+	public List<FluidStack> getFluidPhases() {
+		return java.util.Collections.unmodifiableList(tank.getFluids());
+	}
+
+	@Override
+	public int getLiquidCapacity() {
+		return tank.getTankCapacity(0);
 	}
 
 	public ItemStackHandler getItems() {
@@ -881,6 +918,16 @@ public abstract class VesselBlockEntity extends SmartBlockEntity {
 			}
 		}
 		return floorY + levelHeight * liquidAmount / total;
+	}
+
+	@Override
+	public FluidStack drain(FluidStack resource, IFluidHandler.FluidAction action) {
+		return tank.drain(resource, action);
+	}
+
+	@Override
+	public FluidStack decantClear(int maxDrain, IFluidHandler.FluidAction action) {
+		return tank.decantClear(maxDrain, action);
 	}
 
 	// --------------------------------------------- capability + serialization

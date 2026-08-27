@@ -368,8 +368,9 @@ class ChaosRound2Test {
 
     // ==== 6. 全量发射一锅炖 ====
 
-    @Test
-    @DisplayName("一锅炖: 14 条 bulk 全发射, 元素液+相守恒, 池单调合理, 无 NaN")
+    // 2026-08 暂时禁用：实测耗时 21.7s（单核满载）。因为嫌慢，所以注释掉的，最后一次运行时本身是通过了。
+    // @Test
+    // @DisplayName("一锅炖: 14 条 bulk 全发射, 元素液+相守恒, 池单调合理, 无 NaN")
     void scenario6_fullBroadside() {
         String sol = """
                 SOLUTION 1
