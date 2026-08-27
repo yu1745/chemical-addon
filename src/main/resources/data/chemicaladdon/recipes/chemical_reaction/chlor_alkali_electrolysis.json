@@ -1,0 +1,19 @@
+{
+  "type": "chemicaladdon:chemical_reaction",
+  "ingredients": [
+    { "fluid": "minecraft:water", "amount": 200 }
+  ],
+  "results": [
+    { "fluid": "chemicaladdon:hydrogen", "amount": 100 },
+    { "fluid": "chemicaladdon:chlorine", "amount": 100 }
+  ],
+  "solutions": [
+    { "species": "chemicaladdon:brine", "amount": 200 }
+  ],
+  "solutionOutputs": [
+    { "species": "chemicaladdon:caustic_soda_solution", "amount": 200, "concentration": 1.0 }
+  ],
+  "requiredCapabilities": ["electrolysis"],
+  "energyFe": 4000,
+  "processingTime": 100
+}

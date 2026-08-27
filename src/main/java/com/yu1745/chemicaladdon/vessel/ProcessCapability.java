@@ -27,7 +27,8 @@ public enum ProcessCapability {
 	STAGED_CONTACT,
 	SOLID_BED,
 	REFRACTORY_CHAMBER,
-	MOLTEN_BATH;
+	MOLTEN_BATH,
+	ELECTROLYSIS;
 
 	/**
 	 * Stable recipe spelling. Keep this explicit rather than deriving it from
@@ -51,6 +52,7 @@ public enum ProcessCapability {
 		case SOLID_BED -> "solid_bed";
 		case REFRACTORY_CHAMBER -> "refractory_chamber";
 		case MOLTEN_BATH -> "molten_bath";
+		case ELECTROLYSIS -> "electrolysis";
 		};
 	}
 

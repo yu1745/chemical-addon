@@ -36,6 +36,8 @@ import net.minecraft.world.level.Level;
 public class ChemicalReactionRecipe extends ProcessingRecipe<Container> {
 
 	private int deltaHeat = 0;
+	/** FE the electrolyzer pays per completed batch (0 = no energy gate). */
+	private int energyFe = 0;
 	private final List<SolutionIngredient> solutions = new ArrayList<>();
 	private final List<SolutionIngredient> solutionOutputs = new ArrayList<>();
 	/* Legacy recipes implicitly target the existing mixed-volume vessel. */
@@ -52,6 +54,11 @@ public class ChemicalReactionRecipe extends ProcessingRecipe<Container> {
 
 	public int getDeltaHeat() {
 		return deltaHeat;
+	}
+
+	/** FE per completed batch (the electrolysis energy gate). */
+	public int getEnergyFe() {
+		return energyFe;
 	}
 
 	/** Solution-species inputs (matched against the vessel's dissolved ions). */
@@ -172,6 +179,9 @@ public class ChemicalReactionRecipe extends ProcessingRecipe<Container> {
 		if (GsonHelper.isValidNode(json, "deltaHeat")) {
 			deltaHeat = GsonHelper.getAsInt(json, "deltaHeat");
 		}
+		if (GsonHelper.isValidNode(json, "energyFe")) {
+			energyFe = GsonHelper.getAsInt(json, "energyFe");
+		}
 		if (GsonHelper.isValidNode(json, "solutions")) {
 			solutions.addAll(SolutionIngredient.listFromJson(json.getAsJsonArray("solutions")));
 		}
@@ -211,6 +221,9 @@ public class ChemicalReactionRecipe extends ProcessingRecipe<Container> {
 		if (deltaHeat != 0) {
 			json.addProperty("deltaHeat", deltaHeat);
 		}
+		if (energyFe != 0) {
+			json.addProperty("energyFe", energyFe);
+		}
 		if (!solutions.isEmpty()) {
 			json.add("solutions", SolutionIngredient.listToJson(solutions));
 		}
@@ -240,6 +253,7 @@ public class ChemicalReactionRecipe extends ProcessingRecipe<Container> {
 	public void writeAdditional(FriendlyByteBuf buffer) {
 		super.writeAdditional(buffer);
 		buffer.writeInt(deltaHeat);
+		buffer.writeInt(energyFe);
 		writeSolutionList(buffer, solutions);
 		writeSolutionList(buffer, solutionOutputs);
 		buffer.writeBoolean(capabilitiesSpecified || !requiredCapabilities.equals(EnumSet.of(ProcessCapability.MIXED_VOLUME)));
@@ -273,6 +287,7 @@ public class ChemicalReactionRecipe extends ProcessingRecipe<Container> {
 	public void readAdditional(FriendlyByteBuf buffer) {
 		super.readAdditional(buffer);
 		deltaHeat = buffer.readInt();
+		energyFe = buffer.readInt();
 		solutions.clear();
 		solutionOutputs.clear();
 		requiredCapabilities.clear();

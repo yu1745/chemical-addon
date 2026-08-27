@@ -28,6 +28,7 @@ import com.yu1745.chemicaladdon.reactor.CrystallizerControllerBlock;
 import com.yu1745.chemicaladdon.reactor.CrystallizerControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.FurnaceControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.TowerControllerBlockEntity;
+import com.yu1745.chemicaladdon.reactor.ElectrolyzerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.MeteringInletBlockEntity;
 import com.yu1745.chemicaladdon.reactor.DecantHoseBlockEntity;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlockEntity;
@@ -2614,10 +2615,12 @@ public class ChemicalAddonGameTests {
 	public static void reactorReportsDiagnostics(GameTestHelper helper) {
 		buildReactor(helper);
 		ReactorControllerBlockEntity be = reactor(helper);
-		// empty vessel: no ingredients anywhere -> NO_RECIPE (wait one reaction interval)
-		helper.startSequence()
-			.thenIdle(TICKS)
-			.thenExecute(() -> helper.assertTrue(
+		// empty vessel: no ingredients anywhere -> NO_RECIPE (poll: the first
+		// reaction tick's phase drifts under load — the end state is stable)
+		GameTestSequence seq = waitFor(helper.startSequence()
+				.thenIdle(TICKS),
+			() -> be.getStatus() == ReactorControllerBlockEntity.ReactorStatus.NO_RECIPE);
+		seq.thenExecute(() -> helper.assertTrue(
 				be.getStatus() == ReactorControllerBlockEntity.ReactorStatus.NO_RECIPE,
 				"empty assembled vessel should report NO_RECIPE (got " + be.getStatus() + ")"))
 			.thenExecute(() -> {
@@ -2625,7 +2628,12 @@ public class ChemicalAddonGameTests {
 				be.getItems().setStackInSlot(0, new ItemStack(AllItems.SULFUR.get()));
 				be.getTank().fill(new FluidStack(AllFluids.OXYGEN.get().getSource(), 1000), FluidAction.EXECUTE);
 			})
-			.thenIdle(TICKS)
+			// poll the stable TEMPERATURE state too (same phase-drift fix)
+			.thenWaitUntil(() -> {
+				if (be.getStatus() != ReactorControllerBlockEntity.ReactorStatus.TEMPERATURE) {
+					throw new GameTestAssertException("Waiting");
+				}
+			})
 			.thenExecute(() -> helper.assertTrue(
 				be.getStatus() == ReactorControllerBlockEntity.ReactorStatus.TEMPERATURE,
 				"ingredients ready but unheated should report TEMPERATURE (got " + be.getStatus() + ")"))
@@ -4116,6 +4124,87 @@ public class ChemicalAddonGameTests {
 				helper.assertTrue(hasSpecies(be.getOutput(), "water", 700), "filtrate water should be produced");
 			})
 			.thenSucceed();
+	}
+
+	// --------------------------------------------------------- electrolyzer (F)
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 40)
+	public static void electrolyzerRunsBothCellLines(GameTestHelper helper) {
+		// 氯碱：盐水 + 水 + FE → 烧碱液（离子）+ H₂ + Cl₂；水电解：水 + FE → H₂ + O₂。
+		// 同一槽体、同一 chemical_reaction 配方管线，能力门禁 electrolysis 只由电解槽发布。
+		helper.setBlock(new BlockPos(4, 1, 4), AllBlocks.ELECTROLYZER.get().defaultBlockState());
+		ElectrolyzerBlockEntity cell = (ElectrolyzerBlockEntity) helper.getBlockEntity(new BlockPos(4, 1, 4));
+		FluidStack brine = Mixture.create(
+			Map.of(Solution.WATER, 2000),
+			Map.of("Na+1", 200, "Cl-1", 200),
+			2200);
+		cell.getTank().fill(brine, FluidAction.EXECUTE);
+		for (int i = 0; i < 4; i++) {
+			cell.getEnergy().receiveEnergy(2000, false);
+		}
+		helper.setBlock(new BlockPos(8, 1, 8), AllBlocks.ELECTROLYZER.get().defaultBlockState());
+		ElectrolyzerBlockEntity waterCell = (ElectrolyzerBlockEntity) helper.getBlockEntity(new BlockPos(8, 1, 8));
+		waterCell.getTank().fill(new FluidStack(Fluids.WATER, 600), FluidAction.EXECUTE);
+		for (int i = 0; i < 4; i++) {
+			waterCell.getEnergy().receiveEnergy(2000, false);
+		}
+		waitFor(helper.startSequence()
+				.thenIdle(TICKS),
+			() -> hasFluidIn(cell.getTank(), AllFluids.HYDROGEN.get().getSource(), 100)
+				&& hasFluidIn(waterCell.getTank(), AllFluids.HYDROGEN.get().getSource(), 200))
+			.thenExecute(() -> {
+				helper.assertTrue(hasFluidIn(cell.getTank(), AllFluids.CHLORINE.get().getSource(), 100),
+					"chlor-alkali vents chlorine");
+				helper.assertTrue(hasIon(cell.getTank(), "OH-1", 100) && hasIon(cell.getTank(), "Na+1", 100),
+					"the caustic liquor lands as dissolved ions (Na+OH from 200 solute mB = 100 formula units)");
+				helper.assertTrue(hasFluidIn(waterCell.getTank(), AllFluids.OXYGEN.get().getSource(), 100),
+					"water electrolysis vents oxygen");
+				helper.assertTrue(cell.getEnergy().getEnergyStored() == 4000,
+					"the cell pays its FE per batch (got " + cell.getEnergy().getEnergyStored() + ")");
+			})
+			.thenSucceed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 40)
+	public static void electrolyzerStallsWithoutPowerThenResumes(GameTestHelper helper) {
+		helper.setBlock(new BlockPos(4, 1, 4), AllBlocks.ELECTROLYZER.get().defaultBlockState());
+		ElectrolyzerBlockEntity cell = (ElectrolyzerBlockEntity) helper.getBlockEntity(new BlockPos(4, 1, 4));
+		FluidStack brine = Mixture.create(
+			Map.of(Solution.WATER, 2000),
+			Map.of("Na+1", 200, "Cl-1", 200),
+			2200);
+		cell.getTank().fill(brine, FluidAction.EXECUTE);
+		// no FE: the batch waits in place (断电可诊断)， inputs untouched
+		waitFor(helper.startSequence()
+				.thenIdle(TICKS * 2),
+			() -> cell.getStatus() == ElectrolyzerBlockEntity.CellStatus.NO_POWER)
+			.thenExecute(() -> {
+				helper.assertTrue(cell.getTank().getTotalAmount() == 2200,
+					"a powerless cell consumes nothing");
+				helper.assertTrue(cell.getProcessStatus().equals("NO_POWER"), "the status port reads the cell");
+				// power arrives -> the same charge runs to completion
+				for (int i = 0; i < 4; i++) {
+					cell.getEnergy().receiveEnergy(2000, false);
+				}
+			})
+			.thenWaitUntil(() -> {
+				if (!hasFluidIn(cell.getTank(), AllFluids.HYDROGEN.get().getSource(), 100)) {
+					throw new GameTestAssertException("Waiting");
+				}
+			})
+			.thenExecute(() -> helper.assertTrue(cell.getStatus() != ElectrolyzerBlockEntity.CellStatus.NO_POWER,
+				"a powered cell resumes"))
+			.thenSucceed();
+	}
+
+	/** True when the tank holds at least {@code min} mB of the pure fluid. */
+	private static boolean hasFluidIn(ReactorTank tank, net.minecraft.world.level.material.Fluid fluid, int min) {
+		for (FluidStack stack : tank.getFluids()) {
+			if (!Mixture.isMixture(stack) && stack.getFluid() == fluid && stack.getAmount() >= min) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	// -------------------------------------------------------------- tower (E)

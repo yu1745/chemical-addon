@@ -1,0 +1,13 @@
+{
+  "type": "chemicaladdon:chemical_reaction",
+  "ingredients": [
+    { "fluid": "minecraft:water", "amount": 300 }
+  ],
+  "results": [
+    { "fluid": "chemicaladdon:hydrogen", "amount": 200 },
+    { "fluid": "chemicaladdon:oxygen", "amount": 100 }
+  ],
+  "requiredCapabilities": ["electrolysis"],
+  "energyFe": 3000,
+  "processingTime": 100
+}

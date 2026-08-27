@@ -32,8 +32,19 @@
 | **施工包 C1/C2 池式工程化** | 池几何 3×3~15×15×深 1~4 真实化、面积通量沉降、底泥床容量、溢流/底泥双口、超抽夹带+扰动回悬反馈环、底泥再浆化联过滤机 | ✅ 完成（GameTest 164/164） |
 | **施工包 D1 炉式垂直切片** | furnace_controller 多方块（3×3~7×7×高至 12 环密闭）、料床/产品分口、Blaze Burner 炉底供热、calcination 配方管线（石灰/重碱/氢氧化铝三线+炉气回收）、欠烧/过热诊断 | ✅ 完成（GameTest 168/168） |
 | **施工包 E1 塔式垂直切片** | tower_controller（3×3/5×5×高至 16 环密闭）+ tower_packing 内部件（分层计级，空塔无收益）、顶喷淋/侧气口/底采出三向端口、段数限速气液传质、液泛可测可恢复 | ✅ 完成（GameTest 171/171） |
+| **施工包 F1 电解槽** | electrolyzer 单方块：chemical_reaction 能力门禁（electrolysis）+ energyFe 字段，FE 驱动氯碱（盐水→烧碱液+H₂+Cl₂）与水电解（H₂+O₂）双线，断电诊断/恢复 | ✅ 完成（GameTest 173/173） |
 
-**自动化测试**：施工包 E1 后：`./gradlew runGameTestServer` → **171/171 必测通过**（148 基线 + S11 2 + 状态口 3 + 计量投料口 6 + 池式 5 + 炉式 4 + 塔式 3；`phGaugeReadsTitrationEndpoint` 保持注释禁用）；JUnit 分组见「JUnit 测试分组」节。
+**自动化测试**：施工包 F1 后：`./gradlew runGameTestServer` → **173/173 必测通过**（148 基线 + S11 2 + 状态口 3 + 计量投料口 6 + 池式 5 + 炉式 4 + 塔式 3 + 电解槽 2；`phGaugeReadsTitrationEndpoint` 保持注释禁用）；JUnit 分组见「JUnit 测试分组」节。
+
+## 施工包 F1 · 电解槽（2026-08）
+
+**首个专用单方块**（plans/07 §2.2 / plans/10 F）：FE 驱动的电解——不新建配方类型：电解配方就是普通 `chemical_reaction`，声明 `requiredCapabilities: [electrolysis]`（只有电解槽发布该能力）+ 新字段 `energyFe`（FE/批）；反应釜永远不匹配它们，配方管线保持单一。
+
+- **`electrolyzer`**：单方块 BE（多流体罐 4000 mB + Forge EnergyStorage 20000/收发 2000，对外 FE 面）；状态机 IDLE/NO_RECIPE/NO_POWER/RUNNING/OUTPUT_FULL（断电批停在原地、来电续跑）；ProcessReadings → 状态口/护目镜可用；完成逻辑复用 ReactionLogic 同款（drainSolution/drainIngredient + fluidResults + solutionOutputs 展开成离子+水）。
+- **配方**：氯碱（盐水 200 溶质 + 水 200 → 烧碱液 200 + H₂ 100 + Cl₂ 100，4000 FE）与水电解（水 300 → H₂ 200 + O₂ 100，3000 FE）。
+- **踩坑三连（测试钉出）**：① Create 6.0.8 同样不读 `fluidIngredients` 键——流体输入必须进统一 `ingredients` 数组（零输入配方会匹配一切：空釜诊断变 TEMPERATURE、状态口测试连锁崩）；② Forge `EnergyStorage` 构造第三参是 maxExtract，填 0 则永不扣费，填 2000 则单次提取被封顶（内部消耗应设为全容量）；③ 溶质 mB 按公式单元分摊——200 mB NaOH 溶质 = Na 100 + OH 100，不是各 200。
+- **GameTest +2（173/173）**：`electrolyzerRunsBothCellLines`（双线产出+FE 扣费）、`electrolyzerStallsWithoutPowerThenResumes`（断电不动料、来电续完）。既有 `reactorReportsDiagnostics` 两处固定等待改稳定态轮询（负载下首拍相位漂移）。
+- **待做（F 剩余）**：H₂/Cl₂ 消费闭环（HCl 合成需水相存在，纯气相会击穿共享 IPhreeqc 会话收敛——已验证并退回）；换热器/压缩机；温压/流量/能耗统一读数。
 
 ## 施工包 E1 · 塔式垂直切片（2026-08）
 
@@ -592,7 +603,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 ./gradlew modTest            # 方块/资源/玩法改动的快速 JUnit（93 项）
 ./gradlew engineTest         # 引擎分组 JUnit（296 项；仅纯 Java 分组最多双 JVM fork）
 ./gradlew test               # 完整、串行 release-equivalent JUnit（389 项）
-./gradlew runGameTestServer  # 服务端 GameTest（当前 171/171 必测；2026-08-28 起部分用例的固定等待改为逐 tick 轮询（首个有效状态即续行），详见 GameTests 内 waitFor 助手）
+./gradlew runGameTestServer  # 服务端 GameTest（当前 173/173 必测；2026-08-28 起部分用例的固定等待改为逐 tick 轮询（首个有效状态即续行），详见 GameTests 内 waitFor 助手）
 ./run-server.sh              # 服务端冒烟（自动关闭）
 ./gradlew runClient          # 客户端（自动进 "New World"，-PquickPlayWorld= 覆盖）
 python3 tools/gen_species.py # 改物种后重新生成资源/注册代码
