@@ -1,0 +1,32 @@
+{
+    "explorationModelMap": {
+        "openai-codex/gpt-5.6-sol": {
+            "model": "openai-codex/gpt-5.6-luna",
+            "thinkingLevels": [
+                "low",
+                "medium"
+            ]
+        },
+        "openai-codex/gpt-5.6-terra": {
+            "model": "openai-codex/gpt-5.6-luna",
+            "thinkingLevels": [
+                "low",
+                "medium"
+            ]
+        }
+    },
+    "generalPurposeModelMap": {
+        "openai-codex/gpt-5.6-sol": {
+            "model": "zai-coding-cn/glm-5.3",
+            "thinkingLevels": [
+                "low"
+            ]
+        },
+        "openai-codex/gpt-5.6-terra": {
+            "model": "zai-coding-cn/glm-5.3",
+            "thinkingLevels": [
+                "low"
+            ]
+        }
+    }
+}
