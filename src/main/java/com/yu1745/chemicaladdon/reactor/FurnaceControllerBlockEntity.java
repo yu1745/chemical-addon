@@ -353,9 +353,22 @@ public class FurnaceControllerBlockEntity extends VesselBlockEntity
 	}
 
 	private boolean canFitOutputs(CalcinationRecipe recipe) {
+		// Reserve the single product slot cumulatively. Simulating every result
+		// independently would let two outputs each claim the same free space.
+		ItemStack reserved = items.getStackInSlot(1).copy();
 		for (var out : recipe.getRollableResults()) {
 			ItemStack stack = out.getStack();
-			if (!stack.isEmpty() && !ItemHandlerHelper.insertItemStacked(productOnly(), stack.copy(), true).isEmpty()) {
+			if (stack.isEmpty()) {
+				continue;
+			}
+			if (reserved.isEmpty()) {
+				reserved = stack.copy();
+			} else if (!ItemStack.isSameItemSameTags(reserved, stack)) {
+				return false;
+			} else {
+				reserved.grow(stack.getCount());
+			}
+			if (reserved.getCount() > reserved.getMaxStackSize()) {
 				return false;
 			}
 		}
@@ -438,10 +451,9 @@ public class FurnaceControllerBlockEntity extends VesselBlockEntity
 			if (stack.isEmpty() || (out.getChance() < 1 && level.random.nextFloat() >= out.getChance())) {
 				continue;
 			}
-			ItemStack remainder = ItemHandlerHelper.insertItemStacked(productOnly(), stack.copy(), false);
-			if (!remainder.isEmpty()) {
-				remainder = ItemHandlerHelper.insertItemStacked(items, remainder, false);
-			}
+			// canFitOutputs reserved this slot for the whole batch; never fall back
+			// to the charge bed, which would contaminate feed or silently lose yield.
+			ItemHandlerHelper.insertItemStacked(productOnly(), stack.copy(), false);
 		}
 		for (FluidStack out : recipe.getFluidResults()) {
 			tank.fill(out.copy(), FluidAction.EXECUTE);
@@ -654,6 +666,20 @@ public class FurnaceControllerBlockEntity extends VesselBlockEntity
 						: "§c结构不完整：需要化工砖空心壳（3×3~7×7，高最多 12 环，顶封），控制器嵌在壁中"),
 						false);
 				} else {
+					ItemStack held = player.getItemInHand(hand);
+					if (!held.isEmpty() && !player.isShiftKeyDown()) {
+						ItemStack remainder = furnace.bedPort.resolve()
+							.map(handler -> handler.insertItem(0, held.copy(), false))
+							.orElseGet(held::copy);
+						int inserted = held.getCount() - remainder.getCount();
+						if (inserted > 0) {
+							held.shrink(inserted);
+							player.setItemInHand(hand, held);
+						}
+						// Consume the interaction even when the bed is full or the held item
+						// cannot join its current stack; never place it against the controller.
+						return InteractionResult.SUCCESS;
+					}
 					player.displayClientMessage(Component.literal(String.format(
 						"§7煅烧炉（%s，%d°C，床 %s，产品 %s，炉气 %d mB）",
 						furnace.getStatus(), furnace.getTemperature(),

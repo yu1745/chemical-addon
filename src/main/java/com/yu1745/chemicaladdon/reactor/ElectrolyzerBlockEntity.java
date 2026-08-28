@@ -211,6 +211,9 @@ public class ElectrolyzerBlockEntity extends BlockEntity
 		for (FluidStack out : recipe.getFluidResults()) {
 			fluidOut += out.getAmount();
 		}
+		for (SolutionIngredient out : recipe.getSolutionOutputs()) {
+			fluidOut += createSolutionOutput(out, getTemperature()).getAmount();
+		}
 		return fluidOut <= tank.getTankCapacity(0) - tank.getTotalAmount();
 	}
 
@@ -228,25 +231,32 @@ public class ElectrolyzerBlockEntity extends BlockEntity
 			tank.fill(copy, FluidAction.EXECUTE);
 		}
 		for (SolutionIngredient out : recipe.getSolutionOutputs()) {
-			Species species = SpeciesManager.get(out.speciesId());
-			if (species == null || !species.isSolution() || Double.isNaN(out.targetConcentration())) {
-				continue;
+			FluidStack mix = createSolutionOutput(out, temp);
+			if (!mix.isEmpty()) {
+				tank.fill(mix, FluidAction.EXECUTE);
 			}
-			Map<ResourceLocation, Integer> molecules = new LinkedHashMap<>();
-			Map<String, Integer> ions = new LinkedHashMap<>();
-			species.expand(out.amount(), out.targetConcentration(), molecules, ions);
-			int total = 0;
-			for (int v : molecules.values()) {
-				total += v;
-			}
-			for (int v : ions.values()) {
-				total += v;
-			}
-			FluidStack mix = Mixture.create(molecules, ions, total);
-			Temperature.set(mix, temp);
-			tank.fill(mix, FluidAction.EXECUTE);
 		}
 		tank.collapseIfNeeded();
+	}
+
+	private FluidStack createSolutionOutput(SolutionIngredient out, int temperature) {
+		Species species = SpeciesManager.get(out.speciesId());
+		if (species == null || !species.isSolution() || Double.isNaN(out.targetConcentration())) {
+			return FluidStack.EMPTY;
+		}
+		Map<ResourceLocation, Integer> molecules = new LinkedHashMap<>();
+		Map<String, Integer> ions = new LinkedHashMap<>();
+		species.expand(out.amount(), out.targetConcentration(), molecules, ions);
+		int total = 0;
+		for (int v : molecules.values()) {
+			total += v;
+		}
+		for (int v : ions.values()) {
+			total += v;
+		}
+		FluidStack mix = Mixture.create(molecules, ions, total);
+		Temperature.set(mix, temperature);
+		return mix;
 	}
 
 	private void setStatus(CellStatus value) {

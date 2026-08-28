@@ -175,6 +175,9 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 
 		@Override
 		public FluidStack drain(FluidStack resource, FluidAction action) {
+			if (!Miscibility.isGas(resource)) {
+				return FluidStack.EMPTY;
+			}
 			return TowerControllerBlockEntity.this.tank.drain(resource, action);
 		}
 
@@ -203,16 +206,19 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 
 		@Override
 		public boolean isFluidValid(int tank, FluidStack stack) {
-			return true;
+			return false; // bottoms is an outlet only
 		}
 
 		@Override
 		public int fill(FluidStack resource, FluidAction action) {
-			return TowerControllerBlockEntity.this.tank.fill(resource, action);
+			return 0;
 		}
 
 		@Override
 		public FluidStack drain(FluidStack resource, FluidAction action) {
+			if (Miscibility.isGas(resource)) {
+				return FluidStack.EMPTY;
+			}
 			return TowerControllerBlockEntity.this.tank.drain(resource, action);
 		}
 
@@ -678,8 +684,7 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 				} else {
 					player.displayClientMessage(Component.literal(String.format(
 						"§7吸收塔（%s，有效段 %d，液 %d mB / 气 %d mB）—— 顶喷淋进液、侧口进出气、底采出",
-						tower.getStatus(), tower.getStages(), tower.getTank().getTotalAmount(),
-						tower.getStages())), false);
+						tower.getStatus(), tower.getStages(), tower.liquidMb(), tower.gasMb())), false);
 				}
 			}
 			return InteractionResult.sidedSuccess(level.isClientSide);

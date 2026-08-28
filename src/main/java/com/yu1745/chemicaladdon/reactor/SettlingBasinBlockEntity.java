@@ -2,6 +2,9 @@ package com.yu1745.chemicaladdon.reactor;
 
 import javax.annotation.Nullable;
 
+import com.simibubi.create.content.fluids.transfer.GenericItemEmptying;
+import com.simibubi.create.content.fluids.transfer.GenericItemFilling;
+import com.simibubi.create.foundation.fluid.FluidHelper;
 import com.yu1745.chemicaladdon.composition.Chemistry;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
 import com.yu1745.chemicaladdon.vessel.VesselBlockEntity;
@@ -13,6 +16,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
@@ -357,6 +361,17 @@ public class SettlingBasinBlockEntity extends VesselBlockEntity {
 						: "§c结构不完整：需要化工砖池底 + 一圈以上池壁（3×3 ~ 15×15，深 1~4），控制器嵌在壁中"),
 						false);
 				} else {
+					ItemStack held = player.getItemInHand(hand);
+					// Match Create Basin / reactor-controller container interaction. The
+					// side-less capability deliberately resolves to the surface port.
+					if (FluidHelper.tryEmptyItemIntoBE(level, player, hand, held, basin)
+						|| FluidHelper.tryFillItemFromBE(level, player, hand, held, basin)) {
+						return InteractionResult.SUCCESS;
+					}
+					if (GenericItemEmptying.canItemBeEmptied(level, held)
+						|| GenericItemFilling.canItemBeFilled(level, held)) {
+						return InteractionResult.SUCCESS;
+					}
 					player.displayClientMessage(Component.literal(String.format(
 						"§7沉淀池 %d×%d×%d（澄清 %d mB/步，底泥 %d/%d mB，清液层 %d mB）—— 侧面溢流取清液，底下排泥",
 						basin.getSize(), basin.getSize(), basin.getHeight(),
