@@ -155,11 +155,19 @@ public final class WriteBack {
 			return false;
 		}
 		for (Species.IonComponent ic : sp.ions()) {
-			if (feedKeyOfSymbol(ic.ion().symbol()) == null) {
+			if (feedKeyOfSymbol(ic.ion().symbol()) == null
+					&& !(sp.phase() == Species.Phase.GAS && isWaterIon(ic.ion().symbol()))) {
 				return false;
 			}
 		}
 		return true;
+	}
+
+	/** H+/OH- of a dissolved gas are represented by PHREEQC pH and charge
+	 * balancing, not by a separate elemental pool.  They therefore do not keep
+	 * the original gas molecule alive after its mapped element has written back. */
+	private static boolean isWaterIon(String symbol) {
+		return "H".equals(symbol) || "OH".equals(symbol);
 	}
 
 	/** 存储离子 id → 它进料时记在哪个元素/伪池账上（null = 不参与本套账）。 */

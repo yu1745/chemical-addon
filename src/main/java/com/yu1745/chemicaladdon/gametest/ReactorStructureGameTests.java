@@ -107,6 +107,7 @@ import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import static com.yu1745.chemicaladdon.gametest.GameTestFixtures.buildReactor;
 import static com.yu1745.chemicaladdon.gametest.GameTestFixtures.buildReactor3x3x5HighController;
 import static com.yu1745.chemicaladdon.gametest.GameTestFixtures.buildReactor5x5x5;
+import static com.yu1745.chemicaladdon.gametest.GameTestFixtures.buildReactor5x5x5WithGasAt;
 import static com.yu1745.chemicaladdon.gametest.GameTestFixtures.hasFluid;
 import static com.yu1745.chemicaladdon.gametest.GameTestFixtures.hasIon;
 import static com.yu1745.chemicaladdon.gametest.GameTestFixtures.reactor;
@@ -506,8 +507,9 @@ public class ReactorStructureGameTests {
 		// U1/G2: an exothermic whitelist recipe heats EVERY phase — the SO2
 		// absorption (deltaHeat +100) must warm the inert oil bystander as well,
 		// not just whichever stack happens to be entry 0.
-		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
-		be.getTank().fill(new FluidStack(Fluids.WATER, 1000), FluidAction.EXECUTE);
+		ReactorControllerBlockEntity be = buildReactor5x5x5WithGasAt(
+			helper, 0, 0, 1, 2, 0, Direction.SOUTH);
+		be.getTank().fill(new FluidStack(Fluids.WATER, 10000), FluidAction.EXECUTE);
 		be.getTank().fill(new FluidStack(AllFluids.THERMAL_OIL.get().getSource(), 1000), FluidAction.EXECUTE);
 		be.getTank().fill(new FluidStack(AllFluids.SULFUR_DIOXIDE.get().getSource(), 1000), FluidAction.EXECUTE);
 		waitFor(helper.startSequence()

@@ -3,7 +3,9 @@ package com.yu1745.chemicaladdon;
 import com.yu1745.chemicaladdon.client.connected.ConnectedModel;
 import com.yu1745.chemicaladdon.reactor.CatalystTrayRenderer;
 import com.yu1745.chemicaladdon.reactor.DecantHoseRenderer;
+import com.yu1745.chemicaladdon.reactor.FilterPressRenderer;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerRenderer;
+import com.yu1745.chemicaladdon.reactor.SettlingBasinRenderer;
 import com.yu1745.chemicaladdon.reactor.StirringHeadRenderer;
 import com.yu1745.chemicaladdon.reactor.VesselGaugeRenderer;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
@@ -30,6 +32,9 @@ public class ChemicalAddonClient {
 	public static void init() {
 		// render the vessel's item buffer + fluid surface inside the hollow interior
 		BlockEntityRenderers.register(AllBlockEntities.REACTOR_CONTROLLER.get(), ReactorControllerRenderer::new);
+		BlockEntityRenderers.register(AllBlockEntities.SETTLING_BASIN.get(), SettlingBasinRenderer::new);
+		FilterPressRenderer.init();
+		BlockEntityRenderers.register(AllBlockEntities.FILTER_PRESS.get(), FilterPressRenderer::new);
 		// render the decant hose's coil + hanging rope (Create hose-pulley look, surface-tracking)
 		BlockEntityRenderers.register(AllBlockEntities.DECANT_HOSE.get(), DecantHoseRenderer::new);
 		// B1 stirring head visuals: dynamic shaft + enlarged impeller hanging from the

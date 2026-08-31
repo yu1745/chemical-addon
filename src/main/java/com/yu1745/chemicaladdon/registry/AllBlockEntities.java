@@ -8,7 +8,6 @@ import com.yu1745.chemicaladdon.reactor.FurnaceControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ElectrolyzerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.HeatExchangerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.CompressorBlockEntity;
-import com.yu1745.chemicaladdon.reactor.TowerControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.CatalystTrayBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ConductivityGaugeBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ConductivityGaugePanelBlockEntity;
@@ -16,6 +15,7 @@ import com.yu1745.chemicaladdon.reactor.CrystallizerControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.DecantHoseBlockEntity;
 import com.yu1745.chemicaladdon.reactor.DecantPortBlockEntity;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlockEntity;
+import com.yu1745.chemicaladdon.reactor.FilterPressPartBlockEntity;
 import com.yu1745.chemicaladdon.reactor.GasDistributorBlockEntity;
 import com.yu1745.chemicaladdon.reactor.PhGaugeBlockEntity;
 import com.yu1745.chemicaladdon.reactor.PhGaugePanelBlockEntity;
@@ -70,6 +70,11 @@ public class AllBlockEntities {
 			() -> BlockEntityType.Builder.of(FilterPressBlockEntity::new, AllBlocks.FILTER_PRESS.get())
 				.build(null));
 
+	public static final RegistryObject<BlockEntityType<FilterPressPartBlockEntity>> FILTER_PRESS_PART =
+		REGISTER.register("filter_press_part",
+			() -> BlockEntityType.Builder.of(FilterPressPartBlockEntity::new,
+				AllBlocks.FILTER_PRESS_PLATE.get(), AllBlocks.FILTER_PRESS_MANIFOLD.get()).build(null));
+
 	public static final RegistryObject<BlockEntityType<SettlingBasinBlockEntity>> SETTLING_BASIN =
 		REGISTER.register("settling_basin",
 			() -> BlockEntityType.Builder.of(SettlingBasinBlockEntity::new, AllBlocks.SETTLING_BASIN.get())
@@ -78,11 +83,6 @@ public class AllBlockEntities {
 	public static final RegistryObject<BlockEntityType<FurnaceControllerBlockEntity>> FURNACE_CONTROLLER =
 		REGISTER.register("furnace_controller",
 			() -> BlockEntityType.Builder.of(FurnaceControllerBlockEntity::new, AllBlocks.FURNACE_CONTROLLER.get())
-				.build(null));
-
-	public static final RegistryObject<BlockEntityType<TowerControllerBlockEntity>> TOWER_CONTROLLER =
-		REGISTER.register("tower_controller",
-			() -> BlockEntityType.Builder.of(TowerControllerBlockEntity::new, AllBlocks.TOWER_CONTROLLER.get())
 				.build(null));
 
 	public static final RegistryObject<BlockEntityType<ElectrolyzerBlockEntity>> ELECTROLYZER =

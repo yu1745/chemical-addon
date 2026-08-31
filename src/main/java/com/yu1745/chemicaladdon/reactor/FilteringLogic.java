@@ -33,12 +33,14 @@ import net.minecraftforge.items.ItemStackHandler;
 public class FilteringLogic {
 
 	public static final int TICK_INTERVAL = 10;
+	public static final int SLURRY_PROCESSING_TICKS = 100;
 
 	private float progress = 0;
 
 	public float getProgress() {
 		return progress;
 	}
+	public void setProgress(float progress) { this.progress = Math.max(0, Math.min(1, progress)); }
 
 	public void tick(Level level, ReactorTank input, ReactorTank output, ItemStackHandler items, BlockPos pos,
 		float speed) {
@@ -51,9 +53,18 @@ public class FilteringLogic {
 		if (level == null || level.isClientSide) {
 			return;
 		}
-		// generic: separate suspended solids out of any slurry
-		if (filterSuspended(level, input, output, washTank, items, pos)) {
-			progress = 0;
+		// Generic slurry follows a real powered press cycle; the old path separated
+		// the entire tank instantly on its first process tick.
+		if (hasSuspended(input)) {
+			if (!canFitSuspendedOutputs(input, output, washTank, items)) {
+				progress = 0;
+				return;
+			}
+			progress += (float) TICK_INTERVAL * speed / SLURRY_PROCESSING_TICKS;
+			if (progress >= 1.0f) {
+				filterSuspended(level, input, output, washTank, items, pos);
+				progress = 0;
+			}
 			return;
 		}
 		FilteringRecipe recipe = findRecipe(level, input);
@@ -71,16 +82,7 @@ public class FilteringLogic {
 	/** True when the input tank holds a mixture with suspended solids; separates them if so. */
 	private static boolean filterSuspended(Level level, ReactorTank input, ReactorTank output, ReactorTank washTank,
 		ItemStackHandler items, BlockPos pos) {
-		boolean hasSuspended = false;
-		for (FluidStack stack : input.getFluids()) {
-			if (Mixture.isMixture(stack) && !Mixture.getSuspended(stack).isEmpty()) {
-				hasSuspended = true;
-				break;
-			}
-		}
-		if (!hasSuspended) {
-			return false;
-		}
+		if (!hasSuspended(input)) return false;
 		// whole-lump extraction (plans/03 §12): single species + clean pore
 		// liquor = pure item, anything else = mixed salt residue; sub-item
 		// remainder stays behind. U16.5: the wet cake drags its pore mother
@@ -91,11 +93,41 @@ public class FilteringLogic {
 				Containers.dropItemStack(level, pos.getX(), pos.getY(), pos.getZ(), remainder);
 			}
 		}, false, washTank, output);
-		if (input != output) {
-			moveLiquid(input, output);
-		}
-		output.collapseIfNeeded(); // degrade a single-component remainder to a pure fluid
+		if (input != output) moveLiquid(input, output);
+		output.collapseIfNeeded();
 		return true;
+	}
+
+	private static boolean hasSuspended(ReactorTank input) {
+		for (FluidStack stack : input.getFluids()) {
+			if (Mixture.isMixture(stack) && !Mixture.getSuspended(stack).isEmpty()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Conservatively reserves all liquid currently in the feed plus all optional
+	 * wash water.  The actual filtrate is smaller because the cake retains pore
+	 * liquor, but reserving the upper bound guarantees that completion can never
+	 * void fluid when the filtrate line is backed up.
+	 */
+	private static boolean canFitSuspendedOutputs(ReactorTank input, ReactorTank output,
+		ReactorTank washTank, ItemStackHandler items) {
+		long itemUnits = (long) RulesEngine.MB_PER_ITEM
+			* com.yu1745.chemicaladdon.composition.Chemistry.UNIT_PER_MB;
+		long cakeCount = input.suspendedUnits() / itemUnits;
+		if (cakeCount <= 0) {
+			return false;
+		}
+		// The exact cake item (pure solid or mixed residue) depends on entrained
+		// liquor, so an occupied slot cannot be proven compatible before extraction.
+		if (!items.getStackInSlot(0).isEmpty()) {
+			return false;
+		}
+		long requiredFluidRoom = input.getTotalAmount() + (washTank == null ? 0 : washTank.getTotalAmount());
+		return requiredFluidRoom <= output.getTankCapacity(0) - output.getTotalAmount();
 	}
 
 	/** Drain the whole input into the output (the liquid left behind after filtering). */

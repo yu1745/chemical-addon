@@ -105,10 +105,10 @@ BLOCKS = [
     ("decant_hose",       "分液软管", "Decant Hose",       0xB87333),
     ("reactor_controller", "反应釜控制器", "Reactor Controller", 0x6E6E6E),
     ("filter_press",      "过滤机", "Filter Press",      0x7A7A8A),
+    ("filter_press_plate", "过滤机滤板组", "Filter Press Plate Pack", 0x686874),
+    ("filter_press_manifold", "过滤机管汇端", "Filter Press Manifold", 0x526878),
     ("settling_basin",    "沉淀池控制器", "Settling Basin", 0x5E6E7A),
     ("furnace_controller", "煅烧炉控制器", "Furnace Controller", 0xB05828),
-    ("tower_controller",   "吸收塔控制器", "Tower Controller", 0x3868A8),
-    ("tower_packing",      "塔填料",       "Tower Packing",    0x8A6A48),
     ("electrolyzer",      "电解槽", "Electrolyzer",     0x5E7A8A),
     ("heat_exchanger",    "换热器", "Heat Exchanger",   0x7A7A8A),
     ("compressor",        "压缩机", "Compressor",       0x9A9AA8),
@@ -634,6 +634,46 @@ def make_panel_texture(rgb):
     return rows
 
 
+def make_filter_metal_texture(rgb, ribs=False):
+    """Brushed filter-press steel; optional alternating ribs for plate edges."""
+    r, g, b = (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF
+    rows = []
+    for y in range(16):
+        row = []
+        for x in range(16):
+            edge = x in (0, 15) or y in (0, 15)
+            rib = ribs and x % 4 in (0, 1)
+            grain = 10 if (x + y * 3) % 7 == 0 else (-8 if (x * 5 + y) % 11 == 0 else 0)
+            factor = 1.18 if edge else (0.72 if rib else 1.0)
+            row += [max(0, min(255, int(r * factor) + grain)),
+                    max(0, min(255, int(g * factor) + grain)),
+                    max(0, min(255, int(b * factor) + grain)), 255]
+        rows.append(row)
+    return rows
+
+
+def make_filter_port_texture(rgb, port_rgb, symbol):
+    """Bolted flange with a colour-coded world-space port symbol."""
+    base = make_filter_metal_texture(rgb)
+    pr, pg, pb = port_rgb
+    for y in range(16):
+        for x in range(16):
+            dx, dy = x - 7.5, y - 7.5
+            d2 = dx * dx + dy * dy
+            px = [30, 34, 38, 255] if d2 < 10 else ([pr, pg, pb, 255] if d2 < 25 else None)
+            if px is not None:
+                base[y][x * 4:x * 4 + 4] = px
+    # I=input, W=wash, V=filtrate; tiny high-contrast glyphs remain legible at 16 px.
+    glyphs = {
+        "I": ((7,5),(8,5),(7,6),(8,6),(7,7),(8,7),(7,8),(8,8),(7,9),(8,9),(7,10),(8,10)),
+        "W": ((5,5),(10,5),(5,6),(10,6),(5,7),(7,7),(8,7),(10,7),(6,8),(7,8),(8,8),(9,8),(7,9),(8,9),(7,10),(8,10)),
+        "V": ((5,5),(10,5),(5,6),(10,6),(6,7),(9,7),(6,8),(9,8),(7,9),(8,9),(7,10),(8,10))
+    }
+    for x, y in glyphs[symbol]:
+        base[y][x * 4:x * 4 + 4] = [238, 242, 246, 255]
+    return base
+
+
 def make_open_panel_texture(rgb):
     """Machine panel for the open-topped vessel variant: a bright lip along the
     top edge marks the open rim."""
@@ -941,11 +981,16 @@ def gen_block_textures():
     write_png(os.path.join(d, "decant_port.png"), make_decant_port_texture(0x8E8478))
     write_png(os.path.join(d, "reactor_controller.png"), make_panel_texture(0x6E6E6E))
     write_png(os.path.join(d, "reactor_controller_open.png"), make_open_panel_texture(0x6E6E6E))
-    write_png(os.path.join(d, "filter_press.png"), make_panel_texture(0x7A7A8A))
+    # Filter press uses Create's copper/brass palette.  These local textures are
+    # reserved for the labelled process flanges and item fallback particles.
+    write_png(os.path.join(d, "filter_press.png"), make_filter_metal_texture(0xB87333))
+    write_png(os.path.join(d, "filter_press_plate.png"), make_filter_metal_texture(0xC88745, ribs=True))
+    write_png(os.path.join(d, "filter_press_manifold_front.png"), make_filter_port_texture(0xB87333, (222, 139, 42), "I"))
+    write_png(os.path.join(d, "filter_press_manifold_top.png"), make_filter_port_texture(0xB87333, (54, 126, 205), "W"))
+    write_png(os.path.join(d, "filter_press_manifold_bottom.png"), make_filter_port_texture(0xB87333, (52, 158, 92), "V"))
+    write_png(os.path.join(d, "filter_press_manifold_side.png"), make_filter_metal_texture(0xB87333))
     write_png(os.path.join(d, "settling_basin.png"), make_panel_texture(0x5E6E7A))
     write_png(os.path.join(d, "furnace_controller.png"), make_panel_texture(0xB05828))
-    write_png(os.path.join(d, "tower_controller.png"), make_panel_texture(0x3868A8))
-    write_png(os.path.join(d, "tower_packing.png"), make_brick_texture(0x8A6A48))
     write_png(os.path.join(d, "electrolyzer.png"), make_panel_texture(0x5E7A8A))
     write_png(os.path.join(d, "heat_exchanger.png"), make_panel_texture(0x7A7A8A))
     write_png(os.path.join(d, "compressor.png"), make_panel_texture(0x9A9AA8))
@@ -1019,6 +1064,27 @@ EXTRA_LANG_ZH = {
     "goggles.chemicaladdon.items": "物品：",
     "goggles.chemicaladdon.progress": "进度：%s%%（%s）",
     "goggles.chemicaladdon.status": "状态：",
+    "goggles.chemicaladdon.filter_press_incomplete": "结构不完整：主机 → 滤板组 → 管汇端",
+    "goggles.chemicaladdon.filter_press_speed": "压紧转速：%s RPM",
+    "goggles.chemicaladdon.filter_press_feed": "浆料：%s / %s mB",
+    "goggles.chemicaladdon.filter_press_wash": "洗水：%s / %s mB",
+    "goggles.chemicaladdon.filter_press_filtrate": "滤液：%s / %s mB",
+    "goggles.chemicaladdon.filter_press_progress": "压滤进度：%s%%",
+    "goggles.chemicaladdon.filter_press_no_power": "停机：未接入旋转动力",
+    "goggles.chemicaladdon.filter_press_overstressed": "停机：动力网络过应力",
+    "goggles.chemicaladdon.filter_press_no_slurry": "等待：输入含悬浮固体的浆料",
+    "goggles.chemicaladdon.filter_press_need_solids": "等待更多固体：%s / %s mB（每块滤饼）",
+    "goggles.chemicaladdon.filter_press_cake_blocked": "停机：请先取走滤饼",
+    "goggles.chemicaladdon.filter_press_filtrate_blocked": "停机：滤液空间不足（需要 %s，可用 %s mB）",
+    "goggles.chemicaladdon.basin_not_assembled": "结构未成型",
+    "goggles.chemicaladdon.basin_volume": "池内液体：%s / %s mB",
+    "goggles.chemicaladdon.basin_clarification": "澄清速度：%s mB/步",
+    "goggles.chemicaladdon.basin_clear_credit": "可抽清液：%s mB",
+    "goggles.chemicaladdon.basin_suspended": "悬浮固体：%s 单位",
+    "goggles.chemicaladdon.basin_sludge": "池底污泥：%s / %s 单位",
+    "goggles.chemicaladdon.basin_sludge_contents": "化验—底泥组成：",
+    "goggles.chemicaladdon.basin_overdraw": "扰动：超量抽取 %s mB",
+    "goggles.chemicaladdon.basin_ports": "端口：上部出清液，下部出污泥",
     "goggles.chemicaladdon.thermometer_threshold": "报警阈值：%s°C",
     "goggles.chemicaladdon.thermometer_alarm": "报警：超温",
     "goggles.chemicaladdon.thermometer_no_vessel": "未连接反应釜",
@@ -1102,14 +1168,6 @@ EXTRA_LANG_ZH = {
     "status.chemicaladdon.underheated": "欠烧（温度不足）",
     "status.chemicaladdon.calcining": "煅烧中",
     "status.chemicaladdon.overheated": "过热警告",
-    "status.chemicaladdon.tower_not_assembled": "未成型",
-    "status.chemicaladdon.tower_no_stages": "空塔（无有效段）",
-    "status.chemicaladdon.tower_idle": "待料（需气液同在）",
-    "status.chemicaladdon.tower_absorbing": "吸收中",
-    "status.chemicaladdon.tower_flooded": "液泛",
-    "goggles.chemicaladdon.tower_stages": "有效段数：%s",
-    "goggles.chemicaladdon.tower_liquid": "液体",
-    "goggles.chemicaladdon.tower_gas": "气体",
     "goggles.chemicaladdon.energy": "储能：%s / %s FE",
     "status.chemicaladdon.cell_idle": "待料",
     "status.chemicaladdon.cell_no_recipe": "无匹配电解配方",
@@ -1177,6 +1235,27 @@ EXTRA_LANG_EN = {
     "goggles.chemicaladdon.items": "Items:",
     "goggles.chemicaladdon.progress": "Progress: %s%% (%s)",
     "goggles.chemicaladdon.status": "Status:",
+    "goggles.chemicaladdon.filter_press_incomplete": "Incomplete: drive → plate pack → manifold",
+    "goggles.chemicaladdon.filter_press_speed": "Clamping speed: %s RPM",
+    "goggles.chemicaladdon.filter_press_feed": "Slurry: %s / %s mB",
+    "goggles.chemicaladdon.filter_press_wash": "Wash water: %s / %s mB",
+    "goggles.chemicaladdon.filter_press_filtrate": "Filtrate: %s / %s mB",
+    "goggles.chemicaladdon.filter_press_progress": "Pressing: %s%%",
+    "goggles.chemicaladdon.filter_press_no_power": "Stopped: no rotational power",
+    "goggles.chemicaladdon.filter_press_overstressed": "Stopped: kinetic network overstressed",
+    "goggles.chemicaladdon.filter_press_no_slurry": "Waiting for slurry with suspended solids",
+    "goggles.chemicaladdon.filter_press_need_solids": "Waiting for solids: %s / %s mB per cake",
+    "goggles.chemicaladdon.filter_press_cake_blocked": "Stopped: remove the filter cake",
+    "goggles.chemicaladdon.filter_press_filtrate_blocked": "Stopped: filtrate needs %s mB, only %s mB free",
+    "goggles.chemicaladdon.basin_not_assembled": "Structure not assembled",
+    "goggles.chemicaladdon.basin_volume": "Liquid: %s / %s mB",
+    "goggles.chemicaladdon.basin_clarification": "Clarification: %s mB/step",
+    "goggles.chemicaladdon.basin_clear_credit": "Clear withdrawal credit: %s mB",
+    "goggles.chemicaladdon.basin_suspended": "Suspended solids: %s units",
+    "goggles.chemicaladdon.basin_sludge": "Settled sludge: %s / %s units",
+    "goggles.chemicaladdon.basin_sludge_contents": "Assay — sludge composition:",
+    "goggles.chemicaladdon.basin_overdraw": "Churning: %s mB overdrawn",
+    "goggles.chemicaladdon.basin_ports": "Ports: clear liquid above, sludge below",
     "goggles.chemicaladdon.thermometer_threshold": "Threshold: %s°C",
     "goggles.chemicaladdon.thermometer_alarm": "ALARM",
     "goggles.chemicaladdon.thermometer_no_vessel": "Not attached to a reactor",
@@ -1260,14 +1339,6 @@ EXTRA_LANG_EN = {
     "status.chemicaladdon.underheated": "Underheated (raw charge)",
     "status.chemicaladdon.calcining": "Calcining",
     "status.chemicaladdon.overheated": "Overheated",
-    "status.chemicaladdon.tower_not_assembled": "Not assembled",
-    "status.chemicaladdon.tower_no_stages": "Empty shell (no stages)",
-    "status.chemicaladdon.tower_idle": "Idle (needs gas and liquid)",
-    "status.chemicaladdon.tower_absorbing": "Absorbing",
-    "status.chemicaladdon.tower_flooded": "Flooded",
-    "goggles.chemicaladdon.tower_stages": "Stages: %s",
-    "goggles.chemicaladdon.tower_liquid": "liquid",
-    "goggles.chemicaladdon.tower_gas": "gas",
     "goggles.chemicaladdon.energy": "Energy: %s / %s FE",
     "status.chemicaladdon.cell_idle": "Idle",
     "status.chemicaladdon.cell_no_recipe": "No electrolysis recipe",

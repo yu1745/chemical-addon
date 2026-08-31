@@ -8,7 +8,9 @@
 
 ### 2.1 过滤机
 
-保留现有过滤机：浆料→滤液＋滤饼，支持母液夹带、置换洗涤和滤饼再浆。与池形成“沉降预浓缩→压滤脱水”，而不是互相替代。
+过滤机采用固定三格组合专机，不升级为第五种通用多方块模板：动力压紧端（保留 `filter_press` 注册 ID）→滤板组→管汇端。结构轴向由动力端朝向决定；动力端接 Create 旋转并由任意面输入浆料，滤板组任意面输入洗水并抽出滤饼，管汇端任意面输出滤液。端口语义按结构方块区分、不再按六面区分，三股流体仍不共享 capability 节点。浆料→滤液＋滤饼，支持母液夹带、置换洗涤和滤饼再浆。与池形成“沉降预浓缩→压滤脱水”，而不是互相替代。
+
+活动表现复用 Create 的基础设施：动力端按 `HorizontalKineticBlock`/`KineticBlockEntity`，压紧动画采用 `PortableStorageInterfaceRenderer` 的六向伸缩变换与 `MechanicalPressRenderer` 的活动压头模式；使用本模组滤板 PartialModel，不引入机械活塞的 Contraption 移动系统。
 
 ### 2.2 电解槽
 

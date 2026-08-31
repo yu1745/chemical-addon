@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=east": {
+      "model": "chemicaladdon:block/filter_press_plate",
+      "y": 90
+    },
+    "facing=north": {
+      "model": "chemicaladdon:block/filter_press_plate"
+    },
+    "facing=south": {
+      "model": "chemicaladdon:block/filter_press_plate",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "chemicaladdon:block/filter_press_plate",
+      "y": 270
+    }
+  }
+}

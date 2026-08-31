@@ -1175,7 +1175,7 @@ public class ReactorTank implements IFluidHandler {
 
 	// ------------------------------------------------- basin domain transfers (C)
 
-	/** Replace the whole fluid list (the tower's two-phase write-back). */
+	/** Replace the whole fluid list for an atomic process write-back. */
 	public void setFluids(List<FluidStack> stacks) {
 		fluids.clear();
 		fluids.addAll(stacks);

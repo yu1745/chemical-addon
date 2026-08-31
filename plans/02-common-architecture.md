@@ -43,7 +43,7 @@
 建议配方匹配结构：
 
 ```text
-requiredCapabilities: [mixed_volume, sealed, pressurized, counter_current,
+requiredCapabilities: [mixed_volume, sealed, pressurized, gas_dispersed,
                        settling_area, solid_bed, molten_bath, catalyst_bed]
 requiredParts: [...]     requiredMaterial: {...}
 temperature: {...}       pressure: {...}

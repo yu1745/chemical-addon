@@ -11,11 +11,11 @@
       "entries": [
         {
           "type": "minecraft:item",
-          "name": "chemicaladdon:tower_packing"
+          "name": "chemicaladdon:filter_press_plate"
         }
       ],
       "rolls": 1.0
     }
   ],
-  "random_sequence": "chemicaladdon:blocks/tower_packing"
+  "random_sequence": "chemicaladdon:blocks/filter_press_plate"
 }

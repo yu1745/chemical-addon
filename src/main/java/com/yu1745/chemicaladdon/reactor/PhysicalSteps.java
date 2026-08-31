@@ -35,7 +35,9 @@ import net.minecraftforge.registries.ForgeRegistries;
  *       无种 NUCLEATION_PENALTY——语义逐行提取自旧 Solution#curveBalance，
  *       物种数据=溶解度表，非 Ksp，内核结构性不含）；</li>
  *   <li><b>开口蒸发</b>（沸腾开釜每拍常数速率蒸水，浓缩由下一拍内核/曲线
- *       感知；蒸出量经 ventedQuanta 上报，M08 冷凝罐回收为馏出水）。</li>
+ *       感知；蒸出量经 ventedQuanta 上报，M08 冷凝罐回收为馏出水）；</li>
+ *   <li><b>通用气液传质</b>（所有独立气相都经同一入口进入水相分子域；
+ *       有物种数据时使用其 {@code gasSolubility}，否则使用统一默认值）。</li>
  * </ul>
  *
  * <p>单位空间 = quanta（mB×{@link Chemistry#QUANTA_PER_MB}，U18 细网格），
@@ -65,6 +67,7 @@ public final class PhysicalSteps {
 			double stirring, @Nullable long[] ventedQuanta, int temperature) {
 		// 1. 读水相（quanta）：mixture 四域 + 纯水并入溶剂；气体/非极性旁观
 		List<FluidStack> bystanders = new ArrayList<>();
+		List<FluidStack> gasPhase = new ArrayList<>();
 		Map<ResourceLocation, Long> mol = new LinkedHashMap<>();
 		Map<String, Long> ions = new LinkedHashMap<>();
 		Map<ResourceLocation, Long> susp = new LinkedHashMap<>();
@@ -91,6 +94,8 @@ public final class PhysicalSteps {
 				if (id != null) {
 					mol.merge(id, (long) stack.getAmount() * Chemistry.QUANTA_PER_MB, Long::sum);
 				}
+			} else if (Miscibility.isGas(stack)) {
+				gasPhase.add(stack.copy());
 			} else {
 				bystanders.add(stack);
 			}
@@ -100,14 +105,18 @@ public final class PhysicalSteps {
 		}
 		long feedUnits = total * Chemistry.QUANTA_PER_MB; // U16 热容基准：入拍质量体
 
-		// 2. 投料溶解（过饱和时投种 → Sediment，成核基底）
+		// 2. 鼓泡气液传质：所有气体从同一个路径进入 molecular 域；本拍后续
+		// 配方以及下一拍 IPhreeqc 只消费这份已经实际从气相扣除的传质量。
+		boolean absorbed = absorbGasPhase(mol, gasPhase);
+
+		// 3. 投料溶解（过饱和时投种 → Sediment，成核基底）
 		boolean consumed = items != null
 			&& RulesEngine.dissolveItems(mol, ions, susp, sed, items, temperature);
 
-		// 3. 曲线结晶（过饱和→沉底生长 / 欠饱和回溶 / 干涸全析）
+		// 4. 曲线结晶（过饱和→沉底生长 / 欠饱和回溶 / 干涸全析）
 		boolean moved = crystalliseCurves(mol, ions, sed, temperature, stirring);
 
-		// 4. 开口蒸发：沸腾每拍常数速率蒸水（浓缩由下一拍感知）；
+		// 5. 开口蒸发：沸腾每拍常数速率蒸水（浓缩由下一拍感知）；
 		//    汽化潜热冷却剩余液体（U16 自限：无热源续热则自灭）
 		boolean vented = false;
 		int tempAfter = temperature;
@@ -129,14 +138,47 @@ public final class PhysicalSteps {
 			}
 		}
 
-		// 5. 有事件才重写（静置不动 = 无同步churn）
-		if (!consumed && !moved && !vented) {
+		// 6. 有事件才重写（静置不动 = 无同步churn）
+		if (!absorbed && !consumed && !moved && !vented) {
 			return;
 		}
 		tank.setContentsLong(mol, ions, susp, sed, tempAfter, Chemistry.QUANTA_PER_MB);
+		for (FluidStack s : gasPhase) {
+			if (!s.isEmpty()) {
+				tank.fill(s, FluidAction.EXECUTE);
+			}
+		}
 		for (FluidStack s : bystanders) {
 			tank.fill(s.copy(), FluidAction.EXECUTE);
 		}
+	}
+
+	private static boolean absorbGasPhase(Map<ResourceLocation, Long> molecular,
+			List<FluidStack> gasPhase) {
+		long water = molecular.getOrDefault(Solution.WATER, 0L);
+		if (water <= 0) {
+			return false;
+		}
+		boolean moved = false;
+		for (FluidStack gas : gasPhase) {
+			ResourceLocation id = ForgeRegistries.FLUIDS.getKey(gas.getFluid());
+			Species species = id == null ? null : SpeciesManager.get(id);
+			if (id == null) {
+				continue;
+			}
+			double retention = species == null || Double.isNaN(species.gasSolubility())
+				? Solution.GAS_SOLUBILITY_DEFAULT : species.gasSolubility();
+			long capacity = Math.max(0L, (long) Math.floor(retention * water));
+			long available = Math.max(0L, capacity - molecular.getOrDefault(id, 0L));
+			int transferMb = (int) Math.min(gas.getAmount(), available / Chemistry.QUANTA_PER_MB);
+			if (transferMb <= 0) {
+				continue;
+			}
+			molecular.merge(id, (long) transferMb * Chemistry.QUANTA_PER_MB, Long::sum);
+			gas.shrink(transferMb);
+			moved = true;
+		}
+		return moved;
 	}
 
 	/**

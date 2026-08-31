@@ -385,7 +385,7 @@ public class VesselHardwareGameTests {
 	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 30)
-	public static void vesselB2DistributorUsesPressureFeedAndRateWindow(GameTestHelper helper) {
+	public static void vesselB2DistributorUsesUnifiedTransferAndRateWindow(GameTestHelper helper) {
 		ReactorControllerBlockEntity vessel = buildReactor5x5x5WithGasAt(helper, 0, 0, 1, 2, 0, Direction.SOUTH);
 		GasDistributorBlockEntity distributor = (GasDistributorBlockEntity) helper.getBlockEntity(new BlockPos(1, 2, 0));
 		vessel.getTank().fill(new FluidStack(Fluids.WATER, 10000), FluidAction.EXECUTE);
@@ -395,9 +395,8 @@ public class VesselHardwareGameTests {
 		helper.assertTrue(inlet.fill(gas, FluidAction.EXECUTE) == 0
 			&& distributor.getStatus() == GasDistributorBlockEntity.Status.RATE_LIMITED,
 			"a second fill in the same window must be rate limited");
-		helper.assertTrue(com.yu1745.chemicaladdon.composition.parity.PressureFeed.of(
-			vessel.getTank().getFluids(), vessel.getTank().getTankCapacity(0), vessel.getTemperature()).containsKey("SulAbsorb"),
-			"gas accepted through the distributor must be visible to the existing PressureFeed path");
+		helper.assertTrue(hasFluid(vessel.getTank(), AllFluids.SULFUR_DIOXIDE.get().getSource(), 250),
+			"accepted gas must enter the vessel inventory before unified gas-liquid transfer");
 		helper.startSequence().thenIdle(10).thenExecute(() -> {
 			helper.assertTrue(inlet.fill(new FluidStack(AllFluids.SULFUR_DIOXIDE.get().getSource(), 100), FluidAction.EXECUTE) == 100,
 				"the window must reset at exactly 10 ticks");

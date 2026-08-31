@@ -1,0 +1,7 @@
+{
+  "formula": "Cl2",
+  "phase": "GAS",
+  "gasSolubility": 0.01,
+  "boilingPointC": -34,
+  "meltingPointC": -101
+}

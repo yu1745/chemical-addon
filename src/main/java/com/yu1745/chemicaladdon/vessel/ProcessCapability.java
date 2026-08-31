@@ -23,8 +23,6 @@ public enum ProcessCapability {
 	SETTLING_AREA,
 	CLEAR_OVERFLOW,
 	SLUDGE_UNDERFLOW,
-	COUNTER_CURRENT,
-	STAGED_CONTACT,
 	SOLID_BED,
 	REFRACTORY_CHAMBER,
 	MOLTEN_BATH,
@@ -47,8 +45,6 @@ public enum ProcessCapability {
 		case SETTLING_AREA -> "settling_area";
 		case CLEAR_OVERFLOW -> "clear_overflow";
 		case SLUDGE_UNDERFLOW -> "sludge_underflow";
-		case COUNTER_CURRENT -> "counter_current";
-		case STAGED_CONTACT -> "staged_contact";
 		case SOLID_BED -> "solid_bed";
 		case REFRACTORY_CHAMBER -> "refractory_chamber";
 		case MOLTEN_BATH -> "molten_bath";

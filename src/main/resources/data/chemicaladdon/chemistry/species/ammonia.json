@@ -4,6 +4,10 @@
   "gasSolubility": 0.5,
   "boilingPointC": -33,
   "meltingPointC": -78,
+  "ions": [
+    { "ion": "NH4", "charge": 1, "count": 1 },
+    { "ion": "OH", "charge": -1, "count": 1 }
+  ],
   "equilibria": [
     {
       "reaction": "chemicaladdon:ammonia + water = NH4+1 + OH-1",

@@ -103,7 +103,7 @@ public class SpeciesManager {
 	 * listener re-reads the datapack (which can override them) at world load.
 	 */
 	private static final String[] BUILTIN_SPECIES = {
-		"ammonia", "ammoniated_brine", "rock_salt", "water", "limestone", "gypsum",
+		"ammonia", "sulfur_dioxide", "chlorine", "ammoniated_brine", "rock_salt", "water", "limestone", "gypsum",
 		"sulfuric_acid", "hydrochloric_acid", "nitric_acid",
 		"caustic_soda_solution", "soda_ash_solution", "ammonium_chloride_solution",
 		"calcium_chloride_solution", "ammonia_water", "milk_of_lime",

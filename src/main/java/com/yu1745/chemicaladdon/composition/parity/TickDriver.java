@@ -14,8 +14,8 @@ import net.minecraftforge.fluids.FluidStack;
  * tick 桥：游戏时间 → KINETICS 步进 + 池变化报告（mod 侧唯一化学主循环的驱动器）。
  *
  * <p>时间映射：REACTION_TICK（10 tick = 0.5 s 游戏时间）一步；节奏旋钮 =
- * 策展 k 值（chemistry.json 设计语义）。bulk 反应全量发射；interface 反应
- * 由 {@link PressureFeed} 供压驱动（分压 0 不发射）。
+ * 策展 k 值（chemistry.json 设计语义）。bulk 反应全量发射。反应釜运行时的
+ * 气体先由统一物理传质写入水相，不再从残余气相并行发射 interface 反应。
  *
  * <p>产出 {@link Step}：行 0 = 步进前基线（i_soln punch），末行 = 步进后终态的
  * 元素/伪池总量快照（mol，容器总量）——供 {@link WriteBack} 写回与表计消费。
@@ -67,12 +67,6 @@ public final class TickDriver {
 
 	private TickDriver() {}
 
-	/** 带 interface 供压 + 釜温的步进（主循环路径）。 */
-	public static Step stepWithPressure(List<FluidStack> fluids, Map<String, double[]> parms,
-			double seconds, int tempC) {
-		return stepInternal(fluids, parms, seconds, tempC);
-	}
-
 	public static Step step(List<FluidStack> fluids, double seconds) {
 		return stepInternal(fluids, null, seconds, 25);
 	}
@@ -108,9 +102,8 @@ public final class TickDriver {
 			IPhreeqc q = Kernel.get();
 			// 两段模拟：初始（i_soln punch 基线，行 0）+ KINETICS 步进（末行）。
 			// Step 的 totals 收集全部 punch 列（含动力学新键），不只进料键。
-			IPhreeqc.RunResult r = q.run(parms == null || parms.isEmpty()
-					? feed.toScriptWithKinetics(CURATION, seconds)
-					: feed.toScriptWithKinetics(CURATION, parms.keySet(), parms, seconds));			int last = r.rowCount() - 1;
+			IPhreeqc.RunResult r = q.run(feed.toScriptWithKinetics(CURATION, seconds));
+			int last = r.rowCount() - 1;
 			Map<String, Double> totals = new LinkedHashMap<>();
 			Map<String, Double> delta = new LinkedHashMap<>();
 			for (String k : feed.punchColumns(CURATION)) {

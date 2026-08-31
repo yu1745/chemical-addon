@@ -1,0 +1,7 @@
+{
+  "formula": "SO2",
+  "phase": "GAS",
+  "gasSolubility": 0.1,
+  "boilingPointC": -10,
+  "meltingPointC": -73
+}

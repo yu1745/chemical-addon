@@ -2,10 +2,17 @@ package com.yu1745.chemicaladdon.reactor;
 
 import javax.annotation.Nullable;
 
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import com.simibubi.create.api.equipment.goggles.IHaveGoggleInformation;
 import com.simibubi.create.content.fluids.transfer.GenericItemEmptying;
 import com.simibubi.create.content.fluids.transfer.GenericItemFilling;
 import com.simibubi.create.foundation.fluid.FluidHelper;
+import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.composition.Chemistry;
+import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
 import com.yu1745.chemicaladdon.vessel.VesselBlockEntity;
 
@@ -13,10 +20,13 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.ChatFormatting;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
@@ -31,6 +41,7 @@ import net.minecraftforge.common.util.LazyOptional;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.capability.IFluidHandler;
 import net.minecraftforge.fluids.capability.IFluidHandler.FluidAction;
+import net.minecraftforge.registries.ForgeRegistries;
 
 /**
  * Settling basin (M2 → 施工包 C): pool-shaped instance of the vessel template —
@@ -44,8 +55,9 @@ import net.minecraftforge.fluids.capability.IFluidHandler.FluidAction;
  *   <li><b>churn</b> — a surface draw beyond the standing supernatant
  *       ({@code clearCreditMb}) is an overdraw: the violence kicks the settled
  *       bed back into suspension (turbidity rises — S17 sees it);</li>
- *   <li><b>gravity settling</b> — up to {@code area × FLUX_MB_PER_BLOCK_STEP}
- *       mB of suspended solids migrate Suspended → Sediment (the sludge bed),
+	 *   <li><b>gravity settling</b> — up to {@code area × FLUX_MB_PER_BLOCK_STEP}
+	 *       mB of slurry is clarified, moving that slice's proportional share of
+	 *       suspended solids into Sediment (the sludge bed),
  *       bounded by the bed capacity; a full bed stalls settling (nothing can
  *       leave suspension — withdraw the underflow);</li>
  *   <li>the freed volume grows the clear supernatant credit.</li>
@@ -58,7 +70,7 @@ import net.minecraftforge.fluids.capability.IFluidHandler.FluidAction;
  * splits it again). The basin deliberately does not output dry cake
  * (plans/05 §1) — the item slot is vestigial.
  */
-public class SettlingBasinBlockEntity extends VesselBlockEntity {
+public class SettlingBasinBlockEntity extends VesselBlockEntity implements IHaveGoggleInformation {
 
 	/** ticks per gravity-settling step */
 	public static final int SETTLE_INTERVAL = 10;
@@ -78,6 +90,10 @@ public class SettlingBasinBlockEntity extends VesselBlockEntity {
 	private int clearCreditMb = 0;
 	/** overdraw recorded since the last settle step (mB) — churned back up next step */
 	private int overdrawMb = 0;
+	/** slurry volume which has not yet passed through the clarification flux */
+	private int unclarifiedMb = 0;
+	/** last observed tank volume, used to add newly filled slurry to the work queue */
+	private int observedTankMb = 0;
 
 	private final LazyOptional<IFluidHandler> overflowCap;
 	private final LazyOptional<IFluidHandler> underflowCap;
@@ -219,6 +235,8 @@ public class SettlingBasinBlockEntity extends VesselBlockEntity {
 	protected void onStructureInvalidated() {
 		clearCreditMb = 0;
 		overdrawMb = 0;
+		unclarifiedMb = 0;
+		observedTankMb = tank.getTotalAmount();
 	}
 
 	// ------------------------------------------------------------------ ports
@@ -286,19 +304,50 @@ public class SettlingBasinBlockEntity extends VesselBlockEntity {
 			return;
 		}
 		long upmb = Chemistry.UNIT_PER_MB;
+		int currentTankMb = tank.getTotalAmount();
+		int volumeDelta = currentTankMb - observedTankMb;
+		if (volumeDelta > 0) {
+			unclarifiedMb = Math.min(currentTankMb, unclarifiedMb + volumeDelta);
+		} else if (volumeDelta < 0) {
+			unclarifiedMb = Math.min(unclarifiedMb, currentTankMb);
+		}
+		observedTankMb = currentTankMb;
 		// 1) churn: the overdraw recorded since the last step kicks the bed back up
+		boolean changed = overdrawMb > 0;
 		if (overdrawMb > 0) {
-			tank.resuspendSediment(Math.round(overdrawMb * RESUSPEND_RATE) * upmb, FluidAction.EXECUTE);
+			long resuspended = tank.resuspendSediment(Math.round(overdrawMb * RESUSPEND_RATE) * upmb,
+				FluidAction.EXECUTE);
+			unclarifiedMb = Math.min(currentTankMb,
+				Math.max(unclarifiedMb, (int) Math.ceil(resuspended / (double) upmb)));
 			overdrawMb = 0;
 		}
-		// 2) gravity settling at the area flux, bounded by the sludge bed's capacity
-		long flux = (long) interiorArea() * FLUX_MB_PER_BLOCK_STEP * upmb;
+		// 2) Process an area-scaled volume of slurry. Move only the proportional
+		// suspended-solid share of that volume; flux is not a solid-volume rate.
+		int slurryBatchMb = Math.min(unclarifiedMb, clarificationPerStepMb());
 		long bedCap = (long) interiorArea() * getHeight() * SLUDGE_MB_PER_BLOCK_RING * upmb;
 		long room = Math.max(0, bedCap - tank.sedimentUnits());
-		long moved = tank.settleSuspended(Math.min(flux, room), FluidAction.EXECUTE);
-		clearCreditMb += (int) (moved / upmb);
-		// 3) the supernatant can never exceed the clear liquid actually drawable
-		clearCreditMb = Math.min(clearCreditMb, tank.clearLiquidAvailable());
+		long suspendedBefore = tank.suspendedUnits();
+		long requestedMove = slurryBatchMb <= 0 || suspendedBefore <= 0 ? 0
+			: slurryBatchMb >= unclarifiedMb ? suspendedBefore
+				: Math.max(1, Math.round(suspendedBefore * (double) slurryBatchMb / unclarifiedMb));
+		long moved = tank.settleSuspended(Math.min(requestedMove, room), FluidAction.EXECUTE);
+		int processedMb = requestedMove <= 0 ? slurryBatchMb
+			: (int) Math.floor(slurryBatchMb * (double) moved / requestedMove);
+		unclarifiedMb = Math.max(0, unclarifiedMb - processedMb);
+		changed |= moved > 0;
+		int oldClearCredit = clearCreditMb;
+		int drawableClearLiquid = tank.clearLiquidAvailable();
+		// 3) Once no suspended solid remains, all physically drawable liquor above
+		// the bed is supernatant.  The old model added the volume of settled solids
+		// to this credit, making e.g. 91 mB of settled solid look like only 91 mB
+		// of clear liquor even though the whole liquid layer had clarified.
+		if (tank.suspendedUnits() == 0) {
+			clearCreditMb = drawableClearLiquid;
+		} else {
+			clearCreditMb = Math.min(drawableClearLiquid, clearCreditMb + processedMb);
+		}
+		changed |= clearCreditMb != oldClearCredit;
+		if (changed) sync();
 	}
 
 	/** Interior footprint in blocks ((W-2)² — the settling area). */
@@ -321,6 +370,63 @@ public class SettlingBasinBlockEntity extends VesselBlockEntity {
 		return clearCreditMb;
 	}
 
+	public int clarificationPerStepMb() {
+		return interiorArea() * FLUX_MB_PER_BLOCK_STEP;
+	}
+
+	public int sludgeCapacityMb() {
+		return interiorArea() * getHeight() * SLUDGE_MB_PER_BLOCK_RING;
+	}
+
+	@Override
+	public boolean addToGoggleTooltip(List<Component> tooltip, boolean isPlayerSneaking) {
+		String space = " ";
+		tooltip.add(Component.literal(space).append(Component.translatable("block.chemicaladdon.settling_basin")));
+		if (!isAssembled()) {
+			tooltip.add(Component.literal(space).append(Component.translatable("goggles.chemicaladdon.basin_not_assembled"))
+				.withStyle(ChatFormatting.RED));
+			return true;
+		}
+		tooltip.add(Component.literal(space).append(Component.translatable("goggles.chemicaladdon.basin_volume",
+			tank.getTotalAmount(), tank.getTankCapacity(0))).withStyle(ChatFormatting.GOLD));
+		tooltip.add(Component.literal(space).append(Component.translatable("goggles.chemicaladdon.basin_clarification",
+			clarificationPerStepMb())).withStyle(ChatFormatting.AQUA));
+		tooltip.add(Component.literal(space).append(Component.translatable("goggles.chemicaladdon.basin_clear_credit",
+			clearCreditMb)).withStyle(clearCreditMb > 0 ? ChatFormatting.GREEN : ChatFormatting.GRAY));
+		tooltip.add(Component.literal(space).append(Component.translatable("goggles.chemicaladdon.basin_suspended",
+			suspendedMb())).withStyle(suspendedMb() > 0 ? ChatFormatting.YELLOW : ChatFormatting.GRAY));
+		tooltip.add(Component.literal(space).append(Component.translatable("goggles.chemicaladdon.basin_sludge",
+			sedimentMb(), sludgeCapacityMb())).withStyle(
+				sedimentMb() >= sludgeCapacityMb() && sludgeCapacityMb() > 0 ? ChatFormatting.RED : ChatFormatting.GOLD));
+		if (ChemicalAddon.ASSAY_ON) {
+			Map<ResourceLocation, Integer> sediment = new LinkedHashMap<>();
+			for (FluidStack stack : tank.getFluids()) {
+				for (Map.Entry<ResourceLocation, Integer> entry : Mixture.deriveSedimentAmounts(stack).entrySet()) {
+					sediment.merge(entry.getKey(), entry.getValue(), Integer::sum);
+				}
+			}
+			if (!sediment.isEmpty()) {
+				tooltip.add(Component.literal(space + " ")
+					.append(Component.translatable("goggles.chemicaladdon.basin_sludge_contents"))
+					.withStyle(ChatFormatting.DARK_GRAY));
+				for (Map.Entry<ResourceLocation, Integer> entry : sediment.entrySet()) {
+					var item = ForgeRegistries.ITEMS.getValue(entry.getKey());
+					String name = item != null && item != Items.AIR
+						? new ItemStack(item).getHoverName().getString() : entry.getKey().toString();
+					tooltip.add(Component.literal(space + "   • " + name + "  " + entry.getValue() + " mB")
+						.withStyle(ChatFormatting.DARK_GRAY));
+				}
+			}
+		}
+		if (overdrawMb > 0) {
+			tooltip.add(Component.literal(space).append(Component.translatable("goggles.chemicaladdon.basin_overdraw",
+				overdrawMb)).withStyle(ChatFormatting.RED));
+		}
+		tooltip.add(Component.literal(space).append(Component.translatable("goggles.chemicaladdon.basin_ports"))
+			.withStyle(ChatFormatting.DARK_GRAY));
+		return true;
+	}
+
 	// ---------------------------------------------------------- serialization
 
 	@Override
@@ -328,6 +434,8 @@ public class SettlingBasinBlockEntity extends VesselBlockEntity {
 		super.write(tag, clientPacket);
 		tag.putInt("clearCredit", clearCreditMb);
 		tag.putInt("overdraw", overdrawMb);
+		tag.putInt("unclarified", unclarifiedMb);
+		tag.putInt("observedTank", observedTankMb);
 	}
 
 	@Override
@@ -335,6 +443,8 @@ public class SettlingBasinBlockEntity extends VesselBlockEntity {
 		super.read(tag, clientPacket);
 		clearCreditMb = Math.max(0, tag.getInt("clearCredit"));
 		overdrawMb = Math.max(0, tag.getInt("overdraw"));
+		unclarifiedMb = Math.max(0, tag.getInt("unclarified"));
+		observedTankMb = Math.max(0, tag.getInt("observedTank"));
 	}
 
 	/** Controller block of the settling basin. */

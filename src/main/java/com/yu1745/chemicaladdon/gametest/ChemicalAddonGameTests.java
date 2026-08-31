@@ -113,7 +113,6 @@ public class ChemicalAddonGameTests {
 	public static void registerTests(RegisterGameTestsEvent event) {
 		event.register(ChemicalAddonGameTests.class);
 		event.register(SupportMachineGameTests.class);
-		event.register(TowerGameTests.class);
 		event.register(FurnaceGameTests.class);
 		event.register(BasinGameTests.class);
 		event.register(CompositionGameTests.class);
@@ -805,8 +804,29 @@ public class ChemicalAddonGameTests {
 	public static void filterPressFiltersSlurry(GameTestHelper helper) {
 		// a slurry = mixture with a Suspended solid; the filter press separates it:
 		// the solid becomes a cake item, the liquid (water) passes to the output
-		helper.setBlock(new BlockPos(2, 1, 2), AllBlocks.FILTER_PRESS.get().defaultBlockState());
+		helper.setBlock(new BlockPos(2, 1, 2), AllBlocks.FILTER_PRESS.get().defaultBlockState()
+			.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING, Direction.EAST));
+		helper.setBlock(new BlockPos(3, 1, 2), AllBlocks.FILTER_PRESS_PLATE.get().defaultBlockState()
+			.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING, Direction.EAST));
+		helper.setBlock(new BlockPos(4, 1, 2), AllBlocks.FILTER_PRESS_MANIFOLD.get().defaultBlockState()
+			.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING, Direction.EAST));
 		FilterPressBlockEntity be = (FilterPressBlockEntity) helper.getBlockEntity(new BlockPos(2, 1, 2));
+		be.pinSpeedForTest(0);
+		helper.assertTrue(be.isStructureValid(), "drive, plate pack and manifold form a fixed press");
+		IFluidHandler feed = be.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.WEST).orElse(null);
+		helper.assertTrue(feed != null, "every drive face exposes the slurry-only input");
+		BlockEntity plate = helper.getBlockEntity(new BlockPos(3, 1, 2));
+		IFluidHandler washPort = plate.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH).orElse(null);
+		BlockEntity manifold = helper.getBlockEntity(new BlockPos(4, 1, 2));
+		IFluidHandler filtratePort = manifold.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.UP).orElse(null);
+		helper.assertTrue(washPort != null && filtratePort != null,
+			"every plate face is wash input and every manifold face is filtrate output");
+		helper.assertTrue(washPort.fill(new FluidStack(Fluids.WATER, 1000), FluidAction.SIMULATE) == 1000,
+			"wash port accepts plain water");
+		helper.assertTrue(filtratePort.fill(new FluidStack(Fluids.WATER, 1000), FluidAction.SIMULATE) == 0,
+			"the manifold remains drain-only on every face");
+		helper.assertTrue(plate.getCapability(ForgeCapabilities.ITEM_HANDLER, Direction.DOWN).isPresent(),
+			"plate pack bottom exposes cake extraction");
 		ResourceLocation water = Solution.WATER;
 		ResourceLocation bicarbonate = new ResourceLocation(ChemicalAddon.MODID, "sodium_bicarbonate");
 		FluidStack slurry = Mixture.create(
@@ -814,9 +834,14 @@ public class ChemicalAddonGameTests {
 			Map.of(),
 			Map.of(bicarbonate, 1000),
 			2000);
-		be.getInput().fill(slurry, FluidAction.EXECUTE);
-		waitFor(helper.startSequence()
-				.thenIdle(TICKS), // the press works on its own interval
+		feed.fill(slurry, FluidAction.EXECUTE);
+		GameTestSequence pressSequence = helper.startSequence()
+			.thenIdle(TICKS)
+			.thenExecute(() -> {
+				helper.assertTrue(be.getItems().getStackInSlot(0).isEmpty(), "an unpowered press must not filter");
+				be.pinSpeedForTest(64);
+			});
+		waitFor(pressSequence,
 			() -> !be.getItems().getStackInSlot(0).isEmpty()
 				&& be.getItems().getStackInSlot(0).is(AllItems.SODIUM_BICARBONATE.get())
 				&& hasSpecies(be.getOutput(), "water", 700))
@@ -857,9 +882,8 @@ public class ChemicalAddonGameTests {
 		helper.assertFalse(be.tryAssemble().ok(),
 			"a solid block in the interior must block assembly (INTERIOR_BLOCKED)");
 		try {
-			// the U3 internals allowlist (production entries stay: the tower packing
-			// registers itself there — clearing wholesale would break the tower tests
-			// running concurrently in other structure instances)
+			// Remove only this test's temporary override; the allowlist is shared
+			// process-wide and may contain production internals.
 			VesselBlockEntity.INTERIOR_OVERRIDES.add(Blocks.STONE);
 			helper.assertTrue(be.tryAssemble().ok(), "an allowlisted internal may occupy the interior");
 			helper.assertTrue(be.isAssembled(), "vessel should be assembled with the allowlisted internal");

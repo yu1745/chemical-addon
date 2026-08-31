@@ -265,7 +265,7 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 		// geometry, the submerged item fragments — already in the framebuffer —
 		// show through the translucent fluid instead of being depth-culled. ---
 		if (levelHeight > 1 / 1024f) {
-			renderFluid(reactor, x1, z1, x2, z2, levelHeight, ms, buffer, light);
+			VesselFluidRenderer.render(reactor, x1, z1, x2, z2, levelHeight, ms, buffer, light);
 		}
 		ms.popPose();
 	}
@@ -379,106 +379,6 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 		return levelHeight * liquidAmount / total;
 	}
 
-	/**
-	 * Renders the layered fluid body from the interior floor up to {@code levelHeight}
-	 * (local y). Non-gas fluids build the bottom layers, gases hang from the top of
-	 * the level (the lighter-than-air layer of the "soup"). Returns the top of the
-	 * liquid (non-gas) region — the surface items float on.
-	 */
-	private float renderFluid(ReactorControllerBlockEntity reactor, float x1, float z1, float x2, float z2,
-		float levelHeight, PoseStack ms, MultiBufferSource buffer, int light) {
-		List<FluidStack> fluids = reactor.getTank().getFluids();
-		int total = reactor.getTank().getTotalAmount();
-		if (fluids.isEmpty() || total <= 0) {
-			return 0;
-		}
-
-		// inset 1/32 from the shell walls
-		float ix1 = x1 + 1 / 32f;
-		float ix2 = x2 - 1 / 32f;
-		float iz1 = z1 + 1 / 32f;
-		float iz2 = z2 - 1 / 32f;
-
-		// settled solids (sediment): a textured bottom layer tinted by the solid's
-		// colour (the same "decolorised texture × tint" pipeline as fluids), height
-		// proportional to the amount (levelHeight × sediment/total).
-		Map<ResourceLocation, Long> sedParts = new LinkedHashMap<>();
-		int sedimentAmount = 0;
-		for (FluidStack f : fluids) {
-			if (!Mixture.isMixture(f)) {
-				continue;
-			}
-			for (Map.Entry<ResourceLocation, Long> e : Mixture.getSediment(f).entrySet()) {
-				sedParts.merge(e.getKey(), e.getValue(), Long::sum);
-			}
-			for (int v : Mixture.deriveSedimentAmounts(f).values()) {
-				sedimentAmount += v;
-			}
-		}
-		float sedimentHeight = levelHeight * sedimentAmount / total;
-		if (sedimentHeight > 1 / 1024f) {
-			renderTintedBox(Mixture.blendColorLong(Map.<ResourceLocation, Long>of(), Map.<String, Long>of(), sedParts),
-				ix1, 0, iz1, ix2, sedimentHeight, iz2, ms, buffer, light);
-		}
-
-		// liquids: bottom-up, above the sediment (the mixture's sediment share is
-		// already drawn as the bottom layer, so subtract it from the liquid height)
-		float y = sedimentHeight;
-		for (FluidStack f : fluids) {
-			if (isGas(f)) {
-				continue;
-			}
-			float h = levelHeight * liquidAmountOf(f) / total;
-			renderBox(f, ix1, y, iz1, ix2, y + h, iz2, ms, buffer, light);
-			y += h;
-		}
-		// gases: hang from the level top downward
-		float gasTop = levelHeight;
-		for (FluidStack f : fluids) {
-			if (!isGas(f)) {
-				continue;
-			}
-			float h = levelHeight * f.getAmount() / total;
-			renderBox(f, ix1, gasTop - h, iz1, ix2, gasTop, iz2, ms, buffer, light);
-			gasTop -= h;
-		}
-		return y; // top of the liquid region (above the sediment, below the gases)
-	}
-
-	/** Liquid (non-gas, non-sediment) mB of a stack — the sediment share is drawn separately. */
-	private static int liquidAmountOf(FluidStack f) {
-		int amount = f.getAmount();
-		if (Mixture.isMixture(f)) {
-			for (int v : Mixture.deriveSedimentAmounts(f).values()) {
-				amount -= v;
-			}
-		}
-		return amount;
-	}
-
-	private void renderBox(FluidStack fluid, float x1, float y1, float z1, float x2, float y2, float z2,
-		PoseStack ms, MultiBufferSource buffer, int light) {
-		// water (the aqueous solvent) renders colourless in the vessel (plans/03 §6
-		// "釜内清水"): vanilla's water sprite is blue, so swap in the neutral mixture
-		// sprite (white tint) instead. Aqueous mixtures already render colourless via
-		// MixtureFluidType.getTintColor → blendColor (the solvent contributes no colour).
-		FluidStack render;
-		if (isWater(fluid)) {
-			render = new FluidStack(Mixture.fluid(), fluid.getAmount());
-		} else if (Mixture.isMixture(fluid) && !Mixture.getSuspended(fluid).isEmpty()) {
-			// a turbid suspension: render the fluid body opaque, tinted by the suspended
-			// solid's colour (CaCO3 → white). Reuses the neutral texture + tint pipeline;
-			// only the tint is forced opaque so it reads as milky, not clear.
-			int turbid = Mixture.blendColorLong(Map.<ResourceLocation, Long>of(), Map.<String, Long>of(), Mixture.getSuspended(fluid)) | 0xFF000000;
-			render = new FluidStack(Mixture.fluid(), fluid.getAmount());
-			render.getOrCreateTag().putInt(Mixture.KEY_COLOR, turbid);
-		} else {
-			render = fluid;
-		}
-		// no bottom face (the vessel floor is brick), no gas flipping (we layer gases on top ourselves)
-		ForgeCatnipServices.FLUID_RENDERER.renderFluidBox(render, x1, y1, z1, x2, y2, z2, buffer, ms, light, false, false);
-	}
-
 	/** Render a neutral-texture box tinted by {@code color} (decolorised texture × tint). */
 	private void renderTintedBox(int color, float x1, float y1, float z1, float x2, float y2, float z2,
 		PoseStack ms, MultiBufferSource buffer, int light) {
@@ -489,11 +389,6 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 
 	private static boolean isGas(FluidStack fluid) {
 		return Miscibility.isGas(fluid);
-	}
-
-	/** True when this stack is the aqueous solvent (vanilla water). */
-	private static boolean isWater(FluidStack fluid) {
-		return fluid.getFluid() == Fluids.WATER;
 	}
 
 	@Override

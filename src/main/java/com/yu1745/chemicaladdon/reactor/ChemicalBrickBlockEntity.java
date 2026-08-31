@@ -92,9 +92,6 @@ public class ChemicalBrickBlockEntity extends BlockEntity implements IMasterBoun
 	@Override
 	public <T> LazyOptional<T> getCapability(Capability<T> cap, @Nullable Direction side) {
 		BlockEntity master = getValidMaster();
-		if (cap == ForgeCapabilities.FLUID_HANDLER && master instanceof TowerControllerBlockEntity tower) {
-			return tower.getShellFluidCapability(worldPosition, side);
-		}
 		if (cap == ForgeCapabilities.ITEM_HANDLER && master instanceof FurnaceControllerBlockEntity furnace) {
 			return furnace.getShellItemCapability(worldPosition, side);
 		}

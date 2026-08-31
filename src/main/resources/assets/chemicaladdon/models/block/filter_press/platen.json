@@ -1,0 +1,25 @@
+{
+  "textures": {
+    "particle": "chemicaladdon:block/filter_press_plate",
+    "plate": "create:block/copper_underside",
+    "rod": "create:block/copper_underside"
+  },
+  "elements": [
+    {
+      "from": [6, 6, 10], "to": [10, 10, 16],
+      "faces": {
+        "north": { "texture": "#rod" }, "south": { "texture": "#rod" },
+        "east": { "texture": "#rod" }, "west": { "texture": "#rod" },
+        "up": { "texture": "#rod" }, "down": { "texture": "#rod" }
+      }
+    },
+    {
+      "from": [2, 2, 8], "to": [14, 14, 10],
+      "faces": {
+        "north": { "texture": "#plate" }, "south": { "texture": "#plate" },
+        "east": { "texture": "#plate" }, "west": { "texture": "#plate" },
+        "up": { "texture": "#plate" }, "down": { "texture": "#plate" }
+      }
+    }
+  ]
+}

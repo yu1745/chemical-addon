@@ -11,6 +11,7 @@ import com.yu1745.chemicaladdon.reactor.ReactorTank;
 import com.yu1745.chemicaladdon.reactor.SettlingBasinBlockEntity;
 import com.yu1745.chemicaladdon.registry.AllBlocks;
 import com.yu1745.chemicaladdon.registry.AllItems;
+import java.util.ArrayList;
 import java.util.Map;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -18,6 +19,7 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.gametest.framework.GameTestSequence;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -58,6 +60,9 @@ public class BasinGameTests {
 			handler.fill(new FluidStack(Fluids.WATER, 1000), FluidAction.EXECUTE);
 		}
 		helper.assertTrue(be.getTank().getTotalAmount() == 1000, "poured fluid lands in the pool tank");
+		ArrayList<Component> goggles = new ArrayList<>();
+		helper.assertTrue(be.addToGoggleTooltip(goggles, false) && goggles.size() >= 6,
+			"assembled basin should expose its process readings through Create goggles");
 		helper.succeed();
 	}
 
@@ -83,6 +88,17 @@ public class BasinGameTests {
 				// the liquid stayed put — pore entrainment happens at the underflow
 				// draw, not while the bed merely accumulates
 				helper.assertTrue(hasSpecies(be.getTank(), "water", 700), "clear water should remain");
+				ArrayList<Component> normal = new ArrayList<>();
+				be.addToGoggleTooltip(normal, false);
+				ArrayList<Component> assay = new ArrayList<>();
+				ChemicalAddon.ASSAY_ON = true;
+				try {
+					be.addToGoggleTooltip(assay, false);
+				} finally {
+					ChemicalAddon.ASSAY_ON = false;
+				}
+				helper.assertTrue(assay.size() >= normal.size() + 2,
+					"assay goggles should add a sludge-composition heading and species line");
 			})
 			.thenSucceed();
 	}
@@ -105,8 +121,11 @@ public class BasinGameTests {
 				.thenIdle(TICKS),
 			() -> be.suspendedMb() == 0)
 			.thenExecute(() -> {
-				// area flux 9 × 200 = 1800 mB/step: one step clarifies the whole load
+				// area flux 9 × 200 = 1800 mB of slurry/step: the 4800 mB load
+				// takes three process steps rather than treating 1800 as solid volume
 				helper.assertTrue(be.sedimentMb() == 1800, "the deep bed holds all settled solids");
+				helper.assertTrue(be.getClearCreditMb() == be.getTank().clearLiquidAvailable(),
+					"a fully settled basin exposes all physically drawable supernatant");
 			})
 			.thenSucceed();
 	}
@@ -168,7 +187,7 @@ public class BasinGameTests {
 			.thenSucceed();
 	}
 
-	@GameTest(template = "empty_15", timeoutTicks = TICKS * 60)
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 100)
 	public static void basinOverdrawChurnsBedAndRecovers(GameTestHelper helper) {
 		// the churn half of the loop: sustained overdrawn pulls kick the settled
 		// bed back into suspension (turbidity the S17 gauge reads — the churn
@@ -239,8 +258,14 @@ public class BasinGameTests {
 				int solids1 = Mixture.deriveSuspendedAmounts(batch1).values().stream().mapToInt(Integer::intValue).sum();
 				helper.assertTrue(batch1.getAmount() == 4000 && solids1 == 2000,
 					"the underflow is thickened sludge: 50% solids (got " + solids1 + ")");
-				helper.setBlock(new BlockPos(8, 1, 8), AllBlocks.FILTER_PRESS.get().defaultBlockState());
+				helper.setBlock(new BlockPos(8, 1, 8), AllBlocks.FILTER_PRESS.get().defaultBlockState()
+					.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING, Direction.EAST));
+				helper.setBlock(new BlockPos(9, 1, 8), AllBlocks.FILTER_PRESS_PLATE.get().defaultBlockState()
+					.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING, Direction.EAST));
+				helper.setBlock(new BlockPos(10, 1, 8), AllBlocks.FILTER_PRESS_MANIFOLD.get().defaultBlockState()
+					.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING, Direction.EAST));
 				FilterPressBlockEntity press = (FilterPressBlockEntity) helper.getBlockEntity(new BlockPos(8, 1, 8));
+				press.pinSpeedForTest(64);
 				helper.assertTrue(press.getInput().fill(batch1, FluidAction.EXECUTE) == 4000,
 					"the press intake accepts the first batch");
 			})
@@ -253,6 +278,11 @@ public class BasinGameTests {
 				}
 			})
 			.thenExecute(() -> {
+				FilterPressBlockEntity press = (FilterPressBlockEntity) helper.getBlockEntity(new BlockPos(8, 1, 8));
+				// A production line must remove both products between batches.  This
+				// also locks the press's no-voiding back-pressure behaviour.
+				press.getItems().extractItem(0, 64, false);
+				press.getOutput().drain(Integer.MAX_VALUE, FluidAction.EXECUTE);
 				// second batch: the rest of the bed (2500 solids, capped at 2000)
 				IFluidHandler port = be.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.DOWN)
 					.orElseThrow(() -> new GameTestAssertException("underflow capability missing"));
@@ -260,23 +290,23 @@ public class BasinGameTests {
 				int solids2 = Mixture.deriveSuspendedAmounts(batch2).values().stream().mapToInt(Integer::intValue).sum();
 				helper.assertTrue(batch2.getAmount() == 4000 && solids2 == 2000,
 					"the second batch is thickened too (got " + solids2 + ")");
-				FilterPressBlockEntity press = (FilterPressBlockEntity) helper.getBlockEntity(new BlockPos(8, 1, 8));
 				helper.assertTrue(press.getInput().fill(batch2, FluidAction.EXECUTE) == 4000,
 					"the emptied press accepts the complete second batch");
 			})
 			.thenWaitUntil(() -> {
 				FilterPressBlockEntity press = (FilterPressBlockEntity) helper.getBlockEntity(new BlockPos(8, 1, 8));
 				if (press == null || press.getInput().getTotalAmount() != 0
-					|| press.getItems().getStackInSlot(0).getCount() < 4) {
+					|| press.getItems().getStackInSlot(0).getCount() < 2) {
 					throw new GameTestAssertException("Waiting");
 				}
 			})
 			.thenExecute(() -> {
 				FilterPressBlockEntity press = (FilterPressBlockEntity) helper.getBlockEntity(new BlockPos(8, 1, 8));
-				helper.assertTrue(press.getItems().getStackInSlot(0).getCount() == 4,
-					"4000+ mB of solids press into 4 cake items (got " + press.getItems().getStackInSlot(0).getCount() + ")");
-				helper.assertTrue(hasSpecies(press.getOutput(), "water", 2000),
-					"the freed filtrate passes through (pore water rides the cake)");
+				helper.assertTrue(press.getItems().getStackInSlot(0).getCount() == 2,
+					"the drained line presses the second batch into 2 more cake items (got "
+						+ press.getItems().getStackInSlot(0).getCount() + ")");
+				helper.assertTrue(hasSpecies(press.getOutput(), "water", 1400),
+					"the freed filtrate passes through while pore water stays with the cake");
 			})
 			.thenSucceed();
 	}

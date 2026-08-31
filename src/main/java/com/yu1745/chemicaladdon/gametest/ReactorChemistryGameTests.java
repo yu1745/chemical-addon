@@ -106,6 +106,7 @@ import net.minecraftforge.gametest.PrefixGameTestTemplate;
 
 import static com.yu1745.chemicaladdon.gametest.GameTestFixtures.buildReactor;
 import static com.yu1745.chemicaladdon.gametest.GameTestFixtures.buildReactor5x5x5;
+import static com.yu1745.chemicaladdon.gametest.GameTestFixtures.buildReactor5x5x5WithGasAt;
 import static com.yu1745.chemicaladdon.gametest.GameTestFixtures.hasFluid;
 import static com.yu1745.chemicaladdon.gametest.GameTestFixtures.hasIon;
 import static com.yu1745.chemicaladdon.gametest.GameTestFixtures.ionAmount;
@@ -167,18 +168,48 @@ public class ReactorChemistryGameTests {
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 40)
 	public static void reactorAbsorbsSulfurDioxide(GameTestHelper helper) {
-		// SO2 + water -> dilute sulfuric acid (100 formula units → 200 H+ + 100 SO4-- + 2000 water)
-		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
-		be.getTank().fill(new FluidStack(AllFluids.SULFUR_DIOXIDE.get().getSource(), 1000), FluidAction.EXECUTE);
-		be.getTank().fill(new FluidStack(Fluids.WATER, 1000), FluidAction.EXECUTE);
+		// SO2 + water -> dilute sulfuric acid; the side distributor is the
+		// required gas-dispersed capability now that absorption belongs to the pot.
+		ReactorControllerBlockEntity be = buildReactor5x5x5WithGasAt(
+			helper, 0, 0, 1, 2, 0, Direction.SOUTH);
+		be.getTank().fill(new FluidStack(Fluids.WATER, 10000), FluidAction.EXECUTE);
+		GasDistributorBlockEntity distributor = (GasDistributorBlockEntity)
+			helper.getBlockEntity(new BlockPos(1, 2, 0));
+		IFluidHandler inlet = distributor.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH)
+			.orElseThrow(() -> new AssertionError("gas distributor inlet capability missing"));
+		int accepted = inlet.fill(new FluidStack(AllFluids.SULFUR_DIOXIDE.get().getSource(), 250), FluidAction.EXECUTE);
+		helper.assertTrue(accepted == 250, "the submerged distributor should accept sulfur dioxide");
 		waitFor(helper.startSequence()
 				.thenIdle(TICKS * 10), // so2_absorption: 200 ticks processingTime
-			() -> hasIon(be.getTank(), "H+1", 200) && hasIon(be.getTank(), "SO4-2", 100)
-				&& hasSpecies(be.getTank(), "water", 2000))
+			() -> hasIon(be.getTank(), "H+1", 200) && hasIon(be.getTank(), "SO4-2", 100))
 			.thenExecute(() -> {
 				helper.assertTrue(hasIon(be.getTank(), "H+1", 200), "sulfuric acid should expand to 200 H+ ions");
 				helper.assertTrue(hasIon(be.getTank(), "SO4-2", 100), "sulfuric acid should expand to 100 SO4-- ions");
-				helper.assertTrue(hasSpecies(be.getTank(), "water", 2000), "water should be the solvent");
+				helper.assertTrue(!hasFluid(be, AllFluids.SULFUR_DIOXIDE.get().getSource(), 1),
+					"absorbed sulfur dioxide must leave the separate gas phase");
+			})
+			.thenSucceed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
+	public static void gasDistributorDissolvesAmmoniaIntoWater(GameTestHelper helper) {
+		ReactorControllerBlockEntity be = buildReactor5x5x5WithGasAt(
+			helper, 0, 0, 1, 2, 0, Direction.SOUTH);
+		be.getTank().fill(new FluidStack(Fluids.WATER, 10000), FluidAction.EXECUTE);
+		GasDistributorBlockEntity distributor = (GasDistributorBlockEntity)
+			helper.getBlockEntity(new BlockPos(1, 2, 0));
+		IFluidHandler inlet = distributor.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH)
+			.orElseThrow(() -> new AssertionError("gas distributor inlet capability missing"));
+		int accepted = inlet.fill(new FluidStack(AllFluids.AMMONIA.get().getSource(), 250), FluidAction.EXECUTE);
+		helper.assertTrue(accepted == 250, "the submerged distributor should accept 250 mB ammonia");
+
+		waitFor(helper.startSequence().thenIdle(TICKS * 4),
+			() -> hasIon(be.getTank(), "NH4+1", 1) && hasIon(be.getTank(), "OH-1", 1))
+			.thenExecute(() -> {
+				helper.assertTrue(!hasFluid(be, AllFluids.AMMONIA.get().getSource(), 1),
+					"absorbed ammonia must leave the separate gas phase");
+				helper.assertTrue(hasIon(be.getTank(), "NH4+1", 1) && hasIon(be.getTank(), "OH-1", 1),
+					"aqueous ammonia must reach its hydrolysed storage state");
 			})
 			.thenSucceed();
 	}

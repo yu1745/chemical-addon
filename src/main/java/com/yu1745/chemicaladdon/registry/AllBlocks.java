@@ -11,7 +11,6 @@ import com.yu1745.chemicaladdon.reactor.FurnaceControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ElectrolyzerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.HeatExchangerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.CompressorBlock;
-import com.yu1745.chemicaladdon.reactor.TowerControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.BaumeGaugeBlock;
 import com.yu1745.chemicaladdon.reactor.BaumeGaugePanelBlock;
 import com.yu1745.chemicaladdon.reactor.LiquidLevelGaugePanelBlock;
@@ -24,6 +23,7 @@ import com.yu1745.chemicaladdon.reactor.CrystallizerControllerBlock;
 import com.yu1745.chemicaladdon.reactor.DecantHoseBlock;
 import com.yu1745.chemicaladdon.reactor.DecantPortBlock;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlock;
+import com.yu1745.chemicaladdon.reactor.FilterPressPartBlock;
 import com.yu1745.chemicaladdon.reactor.GasDistributorBlock;
 import com.yu1745.chemicaladdon.reactor.PhGaugeBlock;
 import com.yu1745.chemicaladdon.reactor.PhGaugePanelBlock;
@@ -123,12 +123,24 @@ public class AllBlocks {
 
 	public static final BlockEntry<FilterPressBlock> FILTER_PRESS =
 		REGISTRATE.block("filter_press", FilterPressBlock::new)
-			.properties(p -> p.mapColor(MapColor.METAL).strength(3.0f, 6.0f))
+			.properties(p -> p.mapColor(MapColor.COLOR_ORANGE).strength(3.0f, 6.0f).noOcclusion())
 			.lang("Filter Press")
-			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
-				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
+			.blockstate((ctx, prov) -> prov.horizontalBlock(ctx.get(),
+				prov.models().getExistingFile(prov.modLoc("block/filter_press"))))
 			.simpleItem()
 			.register();
+
+	public static final BlockEntry<FilterPressPartBlock> FILTER_PRESS_PLATE = filterPressPart("filter_press_plate", "Filter Press Plate Pack");
+	public static final BlockEntry<FilterPressPartBlock> FILTER_PRESS_MANIFOLD = filterPressPart("filter_press_manifold", "Filter Press Manifold");
+
+	private static BlockEntry<FilterPressPartBlock> filterPressPart(String id, String lang) {
+		return REGISTRATE.block(id, FilterPressPartBlock::new)
+			.properties(p -> p.mapColor(MapColor.COLOR_ORANGE).strength(3.0f, 6.0f).noOcclusion())
+			.lang(lang)
+			.blockstate((ctx, prov) -> prov.horizontalBlock(ctx.get(),
+				prov.models().getExistingFile(prov.modLoc("block/" + id))))
+			.simpleItem().register();
+	}
 
 	public static final BlockEntry<SettlingBasinBlock> SETTLING_BASIN =
 		REGISTRATE.block("settling_basin", SettlingBasinBlock::new)
@@ -176,27 +188,6 @@ public class AllBlocks {
 			.lang("Electrolyzer")
 			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
 				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
-			.simpleItem()
-			.register();
-
-	/** 施工包 E：吸收塔控制器（塔式拓扑）。 */
-	public static final BlockEntry<TowerControllerBlockEntity.TowerControllerBlock> TOWER_CONTROLLER =
-		REGISTRATE.block("tower_controller", TowerControllerBlockEntity.TowerControllerBlock::new)
-			.properties(p -> p.mapColor(MapColor.COLOR_LIGHT_BLUE).strength(4.0f, 8.0f))
-			.lang("Tower Controller")
-			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
-				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
-			.simpleItem()
-			.register();
-
-	/** 施工包 E：塔填料（内部件，填满内腔一层计一段）。 */
-	public static final BlockEntry<TowerControllerBlockEntity.TowerPackingBlock> TOWER_PACKING =
-		REGISTRATE.block("tower_packing", TowerControllerBlockEntity.TowerPackingBlock::new)
-			.properties(p -> p.mapColor(MapColor.COLOR_BROWN).strength(2.0f, 4.0f))
-			.lang("Tower Packing")
-			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
-				.cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
-			.onRegister(entry -> VesselBlockEntity.INTERIOR_OVERRIDES.add(entry))
 			.simpleItem()
 			.register();
 

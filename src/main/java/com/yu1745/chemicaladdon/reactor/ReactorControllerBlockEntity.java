@@ -389,10 +389,8 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity
 	 * @return 本拍开口蒸发的蒸汽量（mB；密封/未沸腾 = 0——M08 冷凝罐回收为馏出水）
 	 */
 	protected long stepKernelChemistry() {
-		var parms = com.yu1745.chemicaladdon.composition.parity.PressureFeed.of(
-				tank.getFluids(), tank.getTankCapacity(0), getTemperature());
-		var step = com.yu1745.chemicaladdon.composition.parity.TickDriver.stepWithPressure(
-				tank.getFluids(), parms,
+		var step = com.yu1745.chemicaladdon.composition.parity.TickDriver.step(
+				tank.getFluids(),
 				com.yu1745.chemicaladdon.composition.parity.TickDriver.SECONDS_PER_STEP,
 				getTemperature());
 		if (step.valid) {

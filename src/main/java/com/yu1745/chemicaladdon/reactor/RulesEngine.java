@@ -29,7 +29,8 @@ import net.minecraftforge.registries.ForgeRegistries;
 
 /**
  * <b>已退役（2026-08-20）</b>：运行时化学权威已全量切换到 IPhreeqc 内核
- * （{@code composition.parity} 包，PressureFeed→TickDriver→WriteBack 主循环）。
+ * （{@code composition.parity} 包，TickDriver→WriteBack 主循环；气液传质在
+ * {@link PhysicalSteps} 中先按实际库存守恒结算）。
  * 本类不再被反应釜/M08 的 tick 调用；保留原因：①物流常量（MB_PER_ITEM/
  * ITEM_UNITS/GRAIN_* /CAKE_LIQUOR_FRACTION/WASH_*）仍是 ReactorTank/ReactionLogic
  * 的生产依赖；②GameTest 直接调用验证其行为（作为退役引擎的回归锁，待内核侧
