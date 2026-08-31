@@ -27,7 +27,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.common.util.LazyOptional;
-import net.minecraftforge.energy.EnergyStorage;
 
 /**
  * Compressor (施工包 F3 / plans/07 §2.4): a side-wall shell part that holds a
@@ -59,13 +58,18 @@ public class CompressorBlockEntity extends BlockEntity
 	@Nullable
 	private BlockPos masterPos;
 	private Status status = Status.UNBOUND;
-	private final EnergyStorage energy = new EnergyStorage(ENERGY_CAPACITY, ENERGY_TRANSFER, ENERGY_CAPACITY);
-	private final LazyOptional<net.minecraftforge.energy.IEnergyStorage> energyCap =
-		LazyOptional.of(() -> energy);
+	private final DirtyEnergyStorage energy = new DirtyEnergyStorage(ENERGY_CAPACITY, ENERGY_TRANSFER,
+		ENERGY_CAPACITY, this::onEnergyChanged);
+	private LazyOptional<net.minecraftforge.energy.IEnergyStorage> energyCap = LazyOptional.of(() -> energy);
 	private int tickCounter = 0;
 
 	public CompressorBlockEntity(BlockPos pos, BlockState state) {
 		super(AllBlockEntities.COMPRESSOR.get(), pos, state);
+	}
+
+	private void onEnergyChanged() {
+		setChanged();
+		sync();
 	}
 
 	@Override
@@ -189,7 +193,7 @@ public class CompressorBlockEntity extends BlockEntity
 		return masterPos;
 	}
 
-	public EnergyStorage getEnergy() {
+	public DirtyEnergyStorage getEnergy() {
 		return energy;
 	}
 
@@ -209,6 +213,12 @@ public class CompressorBlockEntity extends BlockEntity
 		energyCap.invalidate();
 	}
 
+	@Override
+	public void reviveCaps() {
+		super.reviveCaps();
+		energyCap = LazyOptional.of(() -> energy);
+	}
+
 	// ---------------------------------------------------------- serialization
 
 	@Override
@@ -226,7 +236,7 @@ public class CompressorBlockEntity extends BlockEntity
 		super.load(tag);
 		masterPos = tag.contains("master") ? BlockPos.of(tag.getLong("master")) : null;
 		if (tag.contains("energy")) {
-			energy.receiveEnergy(tag.getInt("energy"), false);
+			energy.setEnergyStored(tag.getInt("energy"));
 		}
 		if (tag.contains("status")) {
 			try {

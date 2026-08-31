@@ -30,4 +30,13 @@ public final class GasDistributorMath {
 		int used = fresh ? 0 : Math.max(0, Math.min(WINDOW_LIMIT_MB, acceptedInWindow));
 		return Math.min(requestMb, Math.max(0, WINDOW_LIMIT_MB - used));
 	}
+
+	/** Client particles generated per tick for the latest executed transfer. */
+	public static double particleRate(int acceptedMb) {
+		if (acceptedMb <= 0) {
+			return 0d;
+		}
+		double normalized = Math.min(1d, acceptedMb / (double) WINDOW_LIMIT_MB);
+		return 0.15d + 2.85d * normalized;
+	}
 }

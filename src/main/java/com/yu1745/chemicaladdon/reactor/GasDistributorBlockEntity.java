@@ -7,6 +7,7 @@ import javax.annotation.Nullable;
 
 import com.simibubi.create.api.equipment.goggles.IHaveGoggleInformation;
 import com.yu1745.chemicaladdon.ChemicalAddon;
+import com.yu1745.chemicaladdon.fluid.Miscibility;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
 import com.yu1745.chemicaladdon.vessel.IMasterBound;
 import com.yu1745.chemicaladdon.vessel.ProcessCapability;
@@ -51,6 +52,9 @@ public class GasDistributorBlockEntity extends BlockEntity implements IMasterBou
 	private Status status = Status.UNBOUND;
 	private long windowStart = Long.MIN_VALUE;
 	private int acceptedInWindow;
+	private long recentFlowTick = Long.MIN_VALUE;
+	private int recentFlowMb;
+	private long lastFlowSyncTick = Long.MIN_VALUE;
 	private final LazyOptional<IFluidHandler> fluidCap = LazyOptional.of(() -> new InletHandler());
 
 	public GasDistributorBlockEntity(BlockPos pos, BlockState state) {
@@ -70,9 +74,25 @@ public class GasDistributorBlockEntity extends BlockEntity implements IMasterBou
 	}
 
 	public void tick() {
-		if (level != null && !level.isClientSide && level.getGameTime() % GasDistributorMath.WINDOW_TICKS == 0) {
+		if (level == null) {
+			return;
+		}
+		if (!level.isClientSide && level.getGameTime() % GasDistributorMath.WINDOW_TICKS == 0) {
 			setStatus(evaluate(null));
 		}
+	}
+
+	public boolean hasRecentFlow() {
+		if (level == null || recentFlowMb <= 0) {
+			return false;
+		}
+		long age = level.getGameTime() - recentFlowTick;
+		VesselBlockEntity vessel = validVessel();
+		return age >= 0 && age <= 4 && vessel != null && isSubmerged(vessel);
+	}
+
+	public int getRecentFlowMb() {
+		return recentFlowMb;
 	}
 
 	@Override
@@ -180,9 +200,7 @@ public class GasDistributorBlockEntity extends BlockEntity implements IMasterBou
 	}
 
 	private boolean isGas(FluidStack stack) {
-		// The project-wide gas classification is FluidType lighter-than-air. This
-		// deliberately does not inspect a fluid id or maintain a whitelist.
-		return !stack.isEmpty() && stack.getFluid().getFluidType().isLighterThanAir();
+		return Miscibility.isGas(stack);
 	}
 
 	private Status evaluate(@Nullable FluidStack resource) {
@@ -303,13 +321,23 @@ public class GasDistributorBlockEntity extends BlockEntity implements IMasterBou
 					acceptedInWindow = 0;
 				}
 				acceptedInWindow = Math.min(GasDistributorMath.WINDOW_LIMIT_MB, acceptedInWindow + accepted);
+				if (recentFlowTick == time) {
+					recentFlowMb = Math.min(GasDistributorMath.WINDOW_LIMIT_MB, recentFlowMb + accepted);
+				} else {
+					recentFlowTick = time;
+					recentFlowMb = Math.min(GasDistributorMath.WINDOW_LIMIT_MB, accepted);
+				}
 				setChanged();
 			}
 			Status after = accepted < allowed ? Status.NO_CAPACITY
 				: allowed < resource.getAmount() ? Status.RATE_LIMITED : Status.ACCEPTING;
+			Status before = status;
 			setStatus(after);
-			if (time % GasDistributorMath.WINDOW_TICKS == 0) {
-				sync(); // low-frequency replication of the persistent safety window
+			if (accepted > 0 && (lastFlowSyncTick == Long.MIN_VALUE || time - lastFlowSyncTick >= 2)) {
+				lastFlowSyncTick = time;
+				if (before == after) {
+					sync(); // status changes already carry the updated flow fields
+				}
 			}
 			return accepted;
 		}
@@ -334,6 +362,8 @@ public class GasDistributorBlockEntity extends BlockEntity implements IMasterBou
 		tag.putString("status", status.name());
 		tag.putLong("gasWindowStart", windowStart);
 		tag.putInt("gasAcceptedInWindow", acceptedInWindow);
+		tag.putLong("recentGasFlowTick", recentFlowTick);
+		tag.putInt("recentGasFlowMb", recentFlowMb);
 	}
 
 	@Override
@@ -348,6 +378,8 @@ public class GasDistributorBlockEntity extends BlockEntity implements IMasterBou
 		windowStart = tag.contains("gasWindowStart") ? tag.getLong("gasWindowStart") : Long.MIN_VALUE;
 		acceptedInWindow = Math.max(0, Math.min(GasDistributorMath.WINDOW_LIMIT_MB,
 			tag.getInt("gasAcceptedInWindow")));
+		recentFlowTick = tag.contains("recentGasFlowTick") ? tag.getLong("recentGasFlowTick") : Long.MIN_VALUE;
+		recentFlowMb = Math.max(0, Math.min(GasDistributorMath.WINDOW_LIMIT_MB, tag.getInt("recentGasFlowMb")));
 	}
 
 	@Override

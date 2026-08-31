@@ -83,7 +83,7 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 
 	/** Why the column is (not) absorbing; goggles HUD / status port. */
 	public enum TowerStatus {
-		NOT_ASSEMBLED, NO_STAGES, IDLE, ABSORBING, FLOODED
+		NOT_ASSEMBLED, NO_STAGES, NEEDS_LIQUID, NEEDS_GAS, ABSORBING, FLOODED
 	}
 
 	private int tickCounter = 0;
@@ -94,8 +94,13 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 	/** gas fed through the gas port since the last step (flooding watch). */
 	private int gasFedThisStep = 0;
 	private boolean flooded = false;
+	/** Independent gas holdup. The inherited tank is the liquid inventory. */
+	private final ReactorTank gasTank = new ReactorTank(1000, () -> {
+		setChanged();
+		sync();
+	});
 
-	private final LazyOptional<IFluidHandler> sprayPort = LazyOptional.of(() -> new IFluidHandler() {
+	private final IFluidHandler sprayHandler = new IFluidHandler() {
 		@Override
 		public int getTanks() {
 			return 1;
@@ -103,7 +108,8 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 
 		@Override
 		public FluidStack getFluidInTank(int tank) {
-			return TowerControllerBlockEntity.this.tank.getFluidInTank(0);
+			return TowerControllerBlockEntity.this.tank.getFluids().isEmpty()
+				? FluidStack.EMPTY : TowerControllerBlockEntity.this.tank.getFluids().get(0);
 		}
 
 		@Override
@@ -133,9 +139,10 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 		public FluidStack drain(int maxDrain, FluidAction action) {
 			return FluidStack.EMPTY; // inlet only
 		}
-	});
+	};
+	private LazyOptional<IFluidHandler> sprayPort = LazyOptional.of(() -> sprayHandler);
 
-	private final LazyOptional<IFluidHandler> gasPort = LazyOptional.of(() -> new IFluidHandler() {
+	private final IFluidHandler gasHandler = new IFluidHandler() {
 		@Override
 		public int getTanks() {
 			return 1;
@@ -143,17 +150,12 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 
 		@Override
 		public FluidStack getFluidInTank(int tank) {
-			for (FluidStack stack : TowerControllerBlockEntity.this.tank.getFluids()) {
-				if (Miscibility.isGas(stack)) {
-					return stack;
-				}
-			}
-			return FluidStack.EMPTY;
+			return gasTank.getFluids().isEmpty() ? FluidStack.EMPTY : gasTank.getFluids().get(0);
 		}
 
 		@Override
 		public int getTankCapacity(int tank) {
-			return TowerControllerBlockEntity.this.tank.getTankCapacity(0);
+			return gasTank.getTankCapacity(0);
 		}
 
 		@Override
@@ -166,7 +168,7 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 			if (!Miscibility.isGas(resource)) {
 				return 0; // the gas port carries GAS; spray liquid goes in the top
 			}
-			int filled = TowerControllerBlockEntity.this.tank.fill(resource, action);
+			int filled = gasTank.fill(resource, action);
 			if (action.execute() && filled > 0) {
 				gasFedThisStep += filled;
 			}
@@ -178,17 +180,18 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 			if (!Miscibility.isGas(resource)) {
 				return FluidStack.EMPTY;
 			}
-			return TowerControllerBlockEntity.this.tank.drain(resource, action);
+			return gasTank.drain(resource, action);
 		}
 
 		@Override
 		public FluidStack drain(int maxDrain, FluidAction action) {
 			// tail gas leaves gas-first (unabsorbed species exit the top of the bed)
-			return TowerControllerBlockEntity.this.tank.drainLightest(maxDrain, action);
+			return gasTank.drainLightest(maxDrain, action);
 		}
-	});
+	};
+	private LazyOptional<IFluidHandler> gasPort = LazyOptional.of(() -> gasHandler);
 
-	private final LazyOptional<IFluidHandler> bottomsPort = LazyOptional.of(() -> new IFluidHandler() {
+	private final IFluidHandler bottomsHandler = new IFluidHandler() {
 		@Override
 		public int getTanks() {
 			return 1;
@@ -196,7 +199,8 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 
 		@Override
 		public FluidStack getFluidInTank(int tank) {
-			return TowerControllerBlockEntity.this.tank.getFluidInTank(0);
+			return TowerControllerBlockEntity.this.tank.getFluids().isEmpty()
+				? FluidStack.EMPTY : TowerControllerBlockEntity.this.tank.getFluids().get(0);
 		}
 
 		@Override
@@ -227,7 +231,8 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 			// bottoms: the densest liquid leaves first (gases last)
 			return TowerControllerBlockEntity.this.tank.drain(maxDrain, action);
 		}
-	});
+	};
+	private LazyOptional<IFluidHandler> bottomsPort = LazyOptional.of(() -> bottomsHandler);
 
 	public TowerControllerBlockEntity(BlockPos pos, BlockState state) {
 		super(AllBlockEntities.TOWER_CONTROLLER.get(), pos, state, 1000, 0);
@@ -257,7 +262,7 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 
 	@Override
 	protected RoofMode roofMode() {
-		return RoofMode.OPTIONAL; // a column is sealed in operation; open top = disassembling state
+		return RoofMode.REQUIRED;
 	}
 
 	@Override
@@ -267,12 +272,16 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 
 	@Override
 	protected void onAssembled() {
+		// VesselBlockEntity invokes this hook before it resizes the inherited tank.
+		// Derive our parallel capacity from the newly adopted geometry directly.
+		gasTank.setCapacity(capacityFor(getSize(), getHeight()));
 		stagesDirty = true;
 		setStatus(TowerStatus.NO_STAGES);
 	}
 
 	@Override
 	protected void onStructureInvalidated() {
+		gasTank.ventGases();
 		setStatus(TowerStatus.NOT_ASSEMBLED);
 	}
 
@@ -347,8 +356,12 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 		}
 		int gasTotal = gasTotalMb();
 		int liquidTotal = liquidTotalMb();
-		if (gasTotal <= 0 || liquidTotal <= 0) {
-			setStatus(TowerStatus.IDLE); // dry column passes gas; no spray = no absorption
+		if (liquidTotal <= 0) {
+			setStatus(TowerStatus.NEEDS_LIQUID);
+			return;
+		}
+		if (gasTotal <= 0) {
+			setStatus(TowerStatus.NEEDS_GAS);
 			return;
 		}
 		setStatus(TowerStatus.ABSORBING);
@@ -374,13 +387,6 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 		for (FluidStack stack : tank.getFluids()) {
 			totalMb += stack.getAmount();
 			weightedTemp += (long) Temperature.get(stack) * stack.getAmount();
-			if (Miscibility.isGas(stack)) {
-				ResourceLocation id = ForgeRegistries.FLUIDS.getKey(stack.getFluid());
-				if (id != null) {
-					gasUnits.merge(id, stack.getAmount(), Integer::sum);
-				}
-				continue; // gas stays gas unless transferred this step
-			}
 			liquidMb += stack.getAmount();
 			if (Mixture.isMixture(stack)) {
 				mergeInto(molecules, Mixture.deriveUnitAmounts(stack));
@@ -394,6 +400,14 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 				}
 			}
 		}
+		for (FluidStack stack : gasTank.getFluids()) {
+			totalMb += stack.getAmount();
+			weightedTemp += (long) Temperature.get(stack) * stack.getAmount();
+			ResourceLocation id = ForgeRegistries.FLUIDS.getKey(stack.getFluid());
+			if (id != null) {
+				gasUnits.merge(id, stack.getAmount(), Integer::sum);
+			}
+		}
 		if (totalMb <= 0 || gasUnits.isEmpty()) {
 			return;
 		}
@@ -404,18 +418,24 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 		// proportional largest-remainder split of the transfer over the gas species
 		Map<ResourceLocation, Integer> gasTake = new LinkedHashMap<>();
 		long assigned = 0;
-		ResourceLocation largest = null;
 		for (Map.Entry<ResourceLocation, Integer> e : gasUnits.entrySet()) {
 			long share = (long) transferMb * e.getValue() / gasTotalMb;
 			gasTake.put(e.getKey(), (int) share);
 			assigned += share;
-			if (largest == null || share > gasTake.get(largest)) {
-				largest = e.getKey();
-			}
 		}
-		if (largest != null) {
-			gasTake.merge(largest, (int) Math.min(transferMb - assigned, gasUnits.get(largest) - gasTake.get(largest)),
-				Integer::sum);
+		int remainder = (int) Math.min(transferMb - assigned, gasTotalMb - assigned);
+		for (Map.Entry<ResourceLocation, Integer> e : gasUnits.entrySet()) {
+			if (remainder <= 0) {
+				break;
+			}
+			int room = e.getValue() - gasTake.getOrDefault(e.getKey(), 0);
+			int add = Math.min(remainder, room);
+			gasTake.merge(e.getKey(), add, Integer::sum);
+			remainder -= add;
+		}
+		int actualTransferMb = 0;
+		for (int value : gasTake.values()) {
+			actualTransferMb += value;
 		}
 		// the absorbed share joins the liquid as dissolved molecules
 		for (Map.Entry<ResourceLocation, Integer> e : gasTake.entrySet()) {
@@ -426,7 +446,9 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 		int temperature = Temperature.fromWeightedSum(weightedTemp, totalMb);
 		List<FluidStack> rebuilt = new ArrayList<>();
 		// liquid phase (mixture or pure) — gases never merge into it implicitly
-		int liquidNow = liquidMb + transferMb;
+		// Dissolution changes concentration, not the spray-liquid inventory volume.
+		// This lets a full liquid holdup absorb from its independent gas holdup.
+		int liquidNow = liquidMb;
 		if (molecules.size() == 1 && ions.isEmpty() && suspended.isEmpty() && sediment.isEmpty()) {
 			Fluid pure = ForgeRegistries.FLUIDS.getValue(molecules.keySet().iterator().next());
 			if (pure != null && pure != net.minecraft.world.level.material.Fluids.EMPTY) {
@@ -439,7 +461,8 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 			Temperature.set(mix, temperature);
 			rebuilt.add(mix);
 		}
-		// remaining gas stays pure gas
+		List<FluidStack> remainingGas = new ArrayList<>();
+		// remaining gas stays in the independent gas inventory
 		for (Map.Entry<ResourceLocation, Integer> e : gasUnits.entrySet()) {
 			int remaining = e.getValue() - gasTake.getOrDefault(e.getKey(), 0);
 			if (remaining <= 0) {
@@ -449,10 +472,11 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 			if (gas != null && gas != net.minecraft.world.level.material.Fluids.EMPTY) {
 				FluidStack stack = new FluidStack(gas, remaining);
 				Temperature.set(stack, temperature);
-				rebuilt.add(stack);
+				remainingGas.add(stack);
 			}
 		}
 		tank.setFluids(rebuilt);
+		gasTank.setFluids(remainingGas);
 	}
 	private static void mergeInto(Map<ResourceLocation, Integer> into, Map<ResourceLocation, Integer> from) {
 		for (Map.Entry<ResourceLocation, Integer> e : from.entrySet()) {
@@ -468,22 +492,12 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 
 	private int gasTotalMb() {
 		int total = 0;
-		for (FluidStack stack : tank.getFluids()) {
-			if (Miscibility.isGas(stack)) {
-				total += stack.getAmount();
-			}
-		}
-		return total;
+		return gasTank.getTotalAmount();
 	}
 
 	private int liquidTotalMb() {
 		int total = 0;
-		for (FluidStack stack : tank.getFluids()) {
-			if (!Miscibility.isGas(stack)) {
-				total += stack.getAmount();
-			}
-		}
-		return total;
+		return tank.getTotalAmount();
 	}
 
 	private void setStatus(TowerStatus value) {
@@ -502,6 +516,18 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 	/** Gas-phase volume in the column (mB; test/diagnostic view). */
 	public int gasMb() {
 		return gasTotalMb();
+	}
+
+	public ReactorTank getGasTank() {
+		return gasTank;
+	}
+
+	public int gasCapacityMb() {
+		return gasTank.getTankCapacity(0);
+	}
+
+	public int liquidCapacityMb() {
+		return tank.getTankCapacity(0);
 	}
 
 	/** Liquid-phase volume in the column (mB; test/diagnostic view). */
@@ -528,6 +554,10 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 		long weighted = 0;
 		int total = 0;
 		for (FluidStack stack : tank.getFluids()) {
+			weighted += (long) Temperature.get(stack) * stack.getAmount();
+			total += stack.getAmount();
+		}
+		for (FluidStack stack : gasTank.getFluids()) {
 			weighted += (long) Temperature.get(stack) * stack.getAmount();
 			total += stack.getAmount();
 		}
@@ -564,15 +594,36 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 	@Override
 	public <T> LazyOptional<T> getCapability(Capability<T> cap, @Nullable Direction side) {
 		if (cap == ForgeCapabilities.FLUID_HANDLER) {
-			if (side == Direction.UP) {
-				return sprayPort.cast(); // spray inlet: liquid only, never drains
+			if (!isAssembled()) {
+				return LazyOptional.empty();
 			}
-			if (side == Direction.DOWN) {
-				return bottomsPort.cast(); // bottoms: densest liquid first
+			// The controller occupies the lowest wall ring, so only its outward
+			// horizontal face is a gas connection. Roof/floor ports are exposed by
+			// their bound shell bricks through getShellFluidCapability.
+			if (side != null && side.getAxis().isHorizontal()) {
+				return gasPort.cast();
 			}
-			return gasPort.cast(); // sides: gas only (counterflow diagnostic)
+			return LazyOptional.empty();
 		}
 		return super.getCapability(cap, side);
+	}
+
+	/** Resolve a pipe attached to a bound shell brick using position, not controller face. */
+	public <T> LazyOptional<T> getShellFluidCapability(BlockPos shellPos, @Nullable Direction side) {
+		if (!isAssembled() || side == null) {
+			return LazyOptional.empty();
+		}
+		int relY = shellPos.getY() - worldPosition.getY();
+		if (relY == getRoofRelY() && side == Direction.UP) {
+			return sprayPort.cast();
+		}
+		if (relY == getInteriorBottomRelY() - 1 && side == Direction.DOWN) {
+			return bottomsPort.cast();
+		}
+		if (relY == getInteriorBottomRelY() && side.getAxis().isHorizontal()) {
+			return gasPort.cast();
+		}
+		return LazyOptional.empty();
 	}
 
 	@Override
@@ -583,6 +634,14 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 		bottomsPort.invalidate();
 	}
 
+	@Override
+	public void reviveCaps() {
+		super.reviveCaps();
+		sprayPort = LazyOptional.of(() -> sprayHandler);
+		gasPort = LazyOptional.of(() -> gasHandler);
+		bottomsPort = LazyOptional.of(() -> bottomsHandler);
+	}
+
 	// ---------------------------------------------------------- serialization
 
 	@Override
@@ -591,14 +650,32 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 		tag.putString("status", status.name());
 		tag.putInt("stages", stages);
 		tag.putBoolean("stagesDirty", true);
+		tag.put("gasTank", gasTank.serializeNBT());
 	}
 
 	@Override
 	protected void read(CompoundTag tag, boolean clientPacket) {
 		super.read(tag, clientPacket);
+		if (tag.contains("gasTank")) {
+			gasTank.deserializeNBT(tag.getCompound("gasTank"));
+		} else {
+			// One-time migration from the old shared gas/liquid inventory.
+			List<FluidStack> liquids = new ArrayList<>();
+			List<FluidStack> gases = new ArrayList<>();
+			for (FluidStack stack : tank.getFluids()) {
+				(Miscibility.isGas(stack) ? gases : liquids).add(stack.copy());
+			}
+			tank.setFluids(liquids);
+			gasTank.setFluids(gases);
+		}
+		gasTank.setCapacity(tank.getTankCapacity(0));
 		if (tag.contains("status")) {
 			try {
-				status = TowerStatus.valueOf(tag.getString("status"));
+				String savedStatus = tag.getString("status");
+				// Compatibility with the former ambiguous IDLE diagnostic.
+				status = "IDLE".equals(savedStatus)
+					? (tank.getTotalAmount() <= 0 ? TowerStatus.NEEDS_LIQUID : TowerStatus.NEEDS_GAS)
+					: TowerStatus.valueOf(savedStatus);
 			} catch (IllegalArgumentException ignored) {
 				status = TowerStatus.NOT_ASSEMBLED;
 			}
@@ -623,7 +700,7 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 			case FLOODED -> ChatFormatting.RED;
 			case NO_STAGES -> ChatFormatting.GOLD;
 			case NOT_ASSEMBLED -> ChatFormatting.RED;
-			case IDLE -> ChatFormatting.GRAY;
+			case NEEDS_LIQUID, NEEDS_GAS -> ChatFormatting.GRAY;
 		};
 		tooltip.add(Component.literal(spacing)
 			.append(Component.translatable("goggles.chemicaladdon.status"))
@@ -632,11 +709,11 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 
 		tooltip.add(Component.literal(spacing).append(Component.translatable("goggles.chemicaladdon.contents")));
 		tooltip.add(Component.literal(spacing + " ")
-			.append(Component.literal(liquidTotalMb() + " mB " + Component
+			.append(Component.literal(liquidTotalMb() + " / " + liquidCapacityMb() + " mB " + Component
 				.translatable("goggles.chemicaladdon.tower_liquid").getString()))
 			.withStyle(ChatFormatting.AQUA));
 		tooltip.add(Component.literal(spacing + " ")
-			.append(Component.literal(gasTotalMb() + " mB " + Component
+			.append(Component.literal(gasTotalMb() + " / " + gasCapacityMb() + " mB " + Component
 				.translatable("goggles.chemicaladdon.tower_gas").getString()))
 			.withStyle(ChatFormatting.GOLD));
 		return true;
@@ -683,8 +760,9 @@ public class TowerControllerBlockEntity extends VesselBlockEntity
 						false);
 				} else {
 					player.displayClientMessage(Component.literal(String.format(
-						"§7吸收塔（%s，有效段 %d，液 %d mB / 气 %d mB）—— 顶喷淋进液、侧口进出气、底采出",
-						tower.getStatus(), tower.getStages(), tower.liquidMb(), tower.gasMb())), false);
+						"§7吸收塔（%s，有效段 %d，液 %d/%d mB，气 %d/%d mB）—— 顶喷淋进液、侧口进出气、底采出",
+						tower.getStatus(), tower.getStages(), tower.liquidMb(), tower.liquidCapacityMb(),
+						tower.gasMb(), tower.gasCapacityMb())), false);
 				}
 			}
 			return InteractionResult.sidedSuccess(level.isClientSide);

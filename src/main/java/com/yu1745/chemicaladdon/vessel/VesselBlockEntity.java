@@ -14,6 +14,7 @@ import javax.annotation.Nullable;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
 import com.yu1745.chemicaladdon.ChemicalAddon;
+import com.yu1745.chemicaladdon.fluid.Miscibility;
 import com.yu1745.chemicaladdon.reactor.ReactorTank;
 import com.yu1745.chemicaladdon.reactor.SpillLogic;
 
@@ -79,14 +80,16 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 	protected enum RoofMode {
 		/** Full brick layer = sealed vessel, empty = open-topped, partial = error. */
 		OPTIONAL,
+		/** Full brick layer required; an empty or partial top is invalid. */
+		REQUIRED,
 		/** Roofless shape: the layer above the rings is not part of the structure. */
 		FORBIDDEN
 	}
 
 	protected final ReactorTank tank;
 	protected final ItemStackHandler items;
-	private final LazyOptional<IFluidHandler> fluidCap;
-	private final LazyOptional<IItemHandler> itemCap;
+	private LazyOptional<IFluidHandler> fluidCap;
+	private LazyOptional<IItemHandler> itemCap;
 
 	/**
 	 * Installed shell parts (B1): part id → bound block positions. Recorded
@@ -135,7 +138,7 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 				VesselBlockEntity.this.onContentsChanged();
 			}
 		};
-		this.fluidCap = LazyOptional.of(() -> tank);
+		this.fluidCap = LazyOptional.of(this::externalFluidHandler);
 		this.itemCap = LazyOptional.of(() -> items);
 	}
 
@@ -386,6 +389,13 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 								}
 								if (topBricks == 0) {
 									topOpen = true;
+									if (roofMode() == RoofMode.REQUIRED) {
+										ok = false;
+										if (firstIssue == null) {
+											firstIssue = AssembleIssue.PARTIAL_TOP;
+											firstIssuePos = cell(sStart, 0, topY, side, inward);
+										}
+									}
 								} else if (topBricks != w * w) {
 									ok = false; // partially sealed top
 								}
@@ -419,6 +429,7 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 								return AssembleResult.success(); // placement must never shrink
 							}
 							boolean wasAssembled = assembled;
+							boolean wasOpen = open;
 							int oldSize = size;
 							int oldHeight = height;
 							assembled = true;
@@ -429,6 +440,13 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 							this.ringLayer = k;
 							onAssembled();
 							tank.setCapacity(capacityFor(w, rings));
+							if (wasAssembled && !wasOpen && topOpen) {
+								// Losing the lid is still a pressure-boundary failure even when
+								// the remaining shell is a valid open vessel. Gas cannot survive
+								// this sealed -> open re-adoption; liquids remain governed by the
+								// normal capacity/overflow rules below.
+								tank.ventGases();
+							}
 							if (wasAssembled) {
 								// re-bind: clear old-shell masters first so bricks that fell OUT
 								// of the (shrunk) shell stop proxying capabilities — bindBricks
@@ -717,6 +735,7 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 
 	public void invalidateStructure(@Nullable BlockPos leakPos) {
 		if (assembled) {
+			boolean wasSealed = !open;
 			assembled = false;
 			int oldSize = size;
 			shellParts.clear(); // B1/B2: parts leave with the structure
@@ -737,6 +756,9 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 			BlockPos breach = leakPos != null ? leakPos : worldPosition;
 			SpillLogic.spillItems(level, breach, items);
 			pendingSpill.clear();
+			if (wasSealed) {
+				tank.ventGases(); // a broken pressure boundary cannot retain a gas inventory
+			}
 			int total = tank.getTotalAmount();
 			if (total <= 0 || height <= 0 || breach.equals(worldPosition)) {
 				// full spill: empty tank, no interior, or the controller itself broke
@@ -1164,7 +1186,7 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 		}
 		int liquidAmount = 0;
 		for (FluidStack f : fluids) {
-			if (!f.getFluid().getFluidType().isLighterThanAir()) {
+			if (!Miscibility.isGas(f)) {
 				liquidAmount += f.getAmount();
 			}
 		}
@@ -1183,8 +1205,55 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 
 	// --------------------------------------------- capability + serialization
 
+	/** Subclasses may reserve selected inputs for a dedicated physical port. */
+	protected boolean allowsExternalFill(FluidStack stack) {
+		return true;
+	}
+
+	private IFluidHandler externalFluidHandler() {
+		return new IFluidHandler() {
+			@Override
+			public int getTanks() {
+				return tank.getTanks();
+			}
+
+			@Override
+			public FluidStack getFluidInTank(int tankIndex) {
+				return tank.getFluidInTank(tankIndex);
+			}
+
+			@Override
+			public int getTankCapacity(int tankIndex) {
+				return tank.getTankCapacity(tankIndex);
+			}
+
+			@Override
+			public boolean isFluidValid(int tankIndex, FluidStack stack) {
+				return allowsExternalFill(stack) && tank.isFluidValid(tankIndex, stack);
+			}
+
+			@Override
+			public int fill(FluidStack resource, FluidAction action) {
+				return allowsExternalFill(resource) ? tank.fill(resource, action) : 0;
+			}
+
+			@Override
+			public FluidStack drain(FluidStack resource, FluidAction action) {
+				return tank.drain(resource, action);
+			}
+
+			@Override
+			public FluidStack drain(int maxDrain, FluidAction action) {
+				return tank.drain(maxDrain, action);
+			}
+		};
+	}
+
 	@Override
 	public <T> LazyOptional<T> getCapability(Capability<T> cap, @Nullable Direction side) {
+		if (!assembled && (cap == ForgeCapabilities.FLUID_HANDLER || cap == ForgeCapabilities.ITEM_HANDLER)) {
+			return LazyOptional.empty();
+		}
 		if (cap == ForgeCapabilities.FLUID_HANDLER) {
 			if (side == Direction.UP) {
 				return LazyOptional.empty(); // vessel top never accepts a pipe (side + bottom only)
@@ -1202,6 +1271,13 @@ public abstract class VesselBlockEntity extends SmartBlockEntity
 		super.invalidateCaps();
 		fluidCap.invalidate();
 		itemCap.invalidate();
+	}
+
+	@Override
+	public void reviveCaps() {
+		super.reviveCaps();
+		fluidCap = LazyOptional.of(this::externalFluidHandler);
+		itemCap = LazyOptional.of(() -> items);
 	}
 
 	@Override

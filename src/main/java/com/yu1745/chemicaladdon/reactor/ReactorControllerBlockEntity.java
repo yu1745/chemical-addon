@@ -49,6 +49,13 @@ import net.minecraftforge.items.ItemHandlerHelper;
 public class ReactorControllerBlockEntity extends VesselBlockEntity
 	implements IHaveGoggleInformation, ProcessReadings {
 
+	@Override
+	protected boolean allowsExternalFill(FluidStack stack) {
+		// External gas must enter through a submerged gas distributor. Internal
+		// recipe/physical outputs write to ReactorTank directly and remain valid.
+		return stack.isEmpty() || !Miscibility.isGas(stack);
+	}
+
 	/** P3b：最近一次读档的内核态 dump（DUMP SOLUTION_RAW 文本；null = 此档无内核态）。 */
 	@Nullable
 	private String chemengineDump;

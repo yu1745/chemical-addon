@@ -84,7 +84,7 @@ public class FurnaceControllerBlockEntity extends VesselBlockEntity
 	/** Debug/dev temperature pin (-1 = unpinned; the GameTests' fast-forward). */
 	private int pinnedTemperature = -1;
 
-	private final LazyOptional<IItemHandler> bedPort = LazyOptional.of(() -> new IItemHandler() {
+	private final IItemHandler bedHandler = new IItemHandler() {
 		@Override
 		public int getSlots() {
 			return 2;
@@ -98,11 +98,15 @@ public class FurnaceControllerBlockEntity extends VesselBlockEntity
 		@Override
 		public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
 			// inserts always land in the charge bed
-			if (slot != 0) {
+			if (slot != 0 || stack.isEmpty()) {
 				return stack;
 			}
 			ItemStack bed = items.getStackInSlot(0);
-			int space = bed.isEmpty() ? 64 : Math.min(bed.getMaxStackSize() - bed.getCount(), stack.getMaxStackSize());
+			if (!bed.isEmpty() && !ItemStack.isSameItemSameTags(bed, stack)) {
+				return stack;
+			}
+			int limit = Math.min(getSlotLimit(0), stack.getMaxStackSize());
+			int space = bed.isEmpty() ? limit : Math.min(limit, bed.getMaxStackSize()) - bed.getCount();
 			int take = Math.min(space, stack.getCount());
 			if (take <= 0) {
 				return stack;
@@ -150,9 +154,36 @@ public class FurnaceControllerBlockEntity extends VesselBlockEntity
 
 		@Override
 		public boolean isItemValid(int slot, ItemStack stack) {
-			return slot == 0;
+			if (slot != 0 || stack.isEmpty()) {
+				return false;
+			}
+			ItemStack bed = items.getStackInSlot(0);
+			return bed.isEmpty() || ItemStack.isSameItemSameTags(bed, stack);
 		}
-	});
+	};
+	private LazyOptional<IItemHandler> bedPort = LazyOptional.of(() -> bedHandler);
+	private final IItemHandler feedHandler = new IItemHandler() {
+		@Override public int getSlots() { return 1; }
+		@Override public ItemStack getStackInSlot(int slot) { return slot == 0 ? bedHandler.getStackInSlot(0) : ItemStack.EMPTY; }
+		@Override public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
+			return slot == 0 ? bedHandler.insertItem(0, stack, simulate) : stack;
+		}
+		@Override public ItemStack extractItem(int slot, int amount, boolean simulate) { return ItemStack.EMPTY; }
+		@Override public int getSlotLimit(int slot) { return slot == 0 ? bedHandler.getSlotLimit(0) : 0; }
+		@Override public boolean isItemValid(int slot, ItemStack stack) { return slot == 0 && bedHandler.isItemValid(0, stack); }
+	};
+	private final IItemHandler productHandler = new IItemHandler() {
+		@Override public int getSlots() { return 1; }
+		@Override public ItemStack getStackInSlot(int slot) { return slot == 0 ? bedHandler.getStackInSlot(1) : ItemStack.EMPTY; }
+		@Override public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) { return stack; }
+		@Override public ItemStack extractItem(int slot, int amount, boolean simulate) {
+			return slot == 0 ? bedHandler.extractItem(1, amount, simulate) : ItemStack.EMPTY;
+		}
+		@Override public int getSlotLimit(int slot) { return slot == 0 ? bedHandler.getSlotLimit(1) : 0; }
+		@Override public boolean isItemValid(int slot, ItemStack stack) { return false; }
+	};
+	private LazyOptional<IItemHandler> feedPort = LazyOptional.of(() -> feedHandler);
+	private LazyOptional<IItemHandler> productPort = LazyOptional.of(() -> productHandler);
 
 	public FurnaceControllerBlockEntity(BlockPos pos, BlockState state) {
 		super(AllBlockEntities.FURNACE_CONTROLLER.get(), pos, state, 1000, 2);
@@ -522,15 +553,40 @@ public class FurnaceControllerBlockEntity extends VesselBlockEntity
 	@Override
 	public <T> LazyOptional<T> getCapability(Capability<T> cap, @Nullable Direction side) {
 		if (cap == ForgeCapabilities.ITEM_HANDLER) {
-			return bedPort.cast(); // feed in / product out — the bed is never extractable
+			return side == null && isAssembled() ? bedPort.cast() : LazyOptional.empty();
 		}
 		return super.getCapability(cap, side);
+	}
+
+	/** Top roof is feed-only; bottom hearth is product-only. */
+	public <T> LazyOptional<T> getShellItemCapability(BlockPos shellPos, @Nullable Direction side) {
+		if (!isAssembled() || side == null) {
+			return LazyOptional.empty();
+		}
+		int relY = shellPos.getY() - worldPosition.getY();
+		if (relY == getRoofRelY() && side == Direction.UP) {
+			return feedPort.cast();
+		}
+		if (relY == getInteriorBottomRelY() - 1 && side == Direction.DOWN) {
+			return productPort.cast();
+		}
+		return LazyOptional.empty();
 	}
 
 	@Override
 	public void invalidateCaps() {
 		super.invalidateCaps();
 		bedPort.invalidate();
+		feedPort.invalidate();
+		productPort.invalidate();
+	}
+
+	@Override
+	public void reviveCaps() {
+		super.reviveCaps();
+		bedPort = LazyOptional.of(() -> bedHandler);
+		feedPort = LazyOptional.of(() -> feedHandler);
+		productPort = LazyOptional.of(() -> productHandler);
 	}
 
 	// ---------------------------------------------------------- serialization

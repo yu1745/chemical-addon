@@ -12,6 +12,14 @@ archivesBaseName = 'chemicaladdon'
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(17)
 
+// javac fork 出的编译器 JVM 统一用英文输出诊断消息，彻底避免 Windows 中文控制台编码乱码
+// （javac 的本地化消息编码跟随 fork JVM 的 file.encoding/user.language，与其在 UTF-8/GBK 间猜，不如固定英文）
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.fork = true
+    options.forkOptions.jvmArgs += ['-Duser.language=en', '-Duser.country=US']
+}
+
 println "Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}"
 
 minecraft {

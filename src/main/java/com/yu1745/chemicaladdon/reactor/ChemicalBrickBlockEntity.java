@@ -91,12 +91,18 @@ public class ChemicalBrickBlockEntity extends BlockEntity implements IMasterBoun
 
 	@Override
 	public <T> LazyOptional<T> getCapability(Capability<T> cap, @Nullable Direction side) {
+		BlockEntity master = getValidMaster();
+		if (cap == ForgeCapabilities.FLUID_HANDLER && master instanceof TowerControllerBlockEntity tower) {
+			return tower.getShellFluidCapability(worldPosition, side);
+		}
+		if (cap == ForgeCapabilities.ITEM_HANDLER && master instanceof FurnaceControllerBlockEntity furnace) {
+			return furnace.getShellItemCapability(worldPosition, side);
+		}
 		// The vessel's top face never accepts a pipe: expose no FLUID_HANDLER on UP
 		// (side + bottom only). A null side is a generic query and still proxies.
 		if (cap == ForgeCapabilities.FLUID_HANDLER && side == Direction.UP) {
 			return LazyOptional.empty();
 		}
-		BlockEntity master = getValidMaster();
 		if (master != null && (cap == ForgeCapabilities.FLUID_HANDLER || cap == ForgeCapabilities.ITEM_HANDLER)) {
 			return master.getCapability(cap, side);
 		}

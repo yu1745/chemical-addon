@@ -9,6 +9,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import com.simibubi.create.foundation.blockEntity.renderer.SmartBlockEntityRenderer;
 import com.yu1745.chemicaladdon.fluid.Mixture;
+import com.yu1745.chemicaladdon.fluid.Miscibility;
 
 import net.createmod.catnip.animation.AnimationTickHolder;
 import net.createmod.catnip.math.VecHelper;
@@ -254,6 +255,11 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 			ms.popPose();
 		}
 
+		// Bubble geometry is submitted before the translucent fluid, exactly like
+		// submerged items. The later fluid pass blends over it; a normal particle
+		// batch drawn after the fluid would fail its depth test and disappear.
+		renderGasBubbles(reactor, floorY, liquidSurface, renderTime, ms, buffer, light);
+
 		// --- fluid pass: drawn AFTER the items. Because the fluid renders in the
 		// translucent pass (which writes depth) and is flushed after the item
 		// geometry, the submerged item fragments — already in the framebuffer —
@@ -262,6 +268,57 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 			renderFluid(reactor, x1, z1, x2, z2, levelHeight, ms, buffer, light);
 		}
 		ms.popPose();
+	}
+
+	private void renderGasBubbles(ReactorControllerBlockEntity reactor, float floorY, float liquidSurface,
+		float renderTime, PoseStack ms, MultiBufferSource buffer, int light) {
+		if (!reactor.isAssembled() || liquidSurface <= 0f) {
+			return;
+		}
+		Direction inward = reactor.getInward();
+		Direction side = inward.getAxis() == Direction.Axis.X ? Direction.NORTH : Direction.EAST;
+		BlockPos origin = reactor.getBlockPos();
+		int half = (reactor.getSize() - 1) / 2;
+		int floorRel = reactor.getInteriorBottomRelY() - 1;
+		int roofRel = reactor.getRoofRelY();
+		for (int s = -half; s <= half; s++) {
+			for (int d = 0; d < reactor.getSize(); d++) {
+				for (int y = floorRel; y <= roofRel; y++) {
+					boolean shell = y == floorRel || y == roofRel || s == -half || s == half
+						|| d == 0 || d == reactor.getSize() - 1;
+					if (!shell) {
+						continue;
+					}
+					BlockPos pos = origin.offset(side.getStepX() * s + inward.getStepX() * d, y,
+						side.getStepZ() * s + inward.getStepZ() * d);
+					BlockEntity entity = reactor.getLevel().getBlockEntity(pos);
+					if (!(entity instanceof GasDistributorBlockEntity distributor) || !distributor.hasRecentFlow()) {
+						continue;
+					}
+					Direction facing = distributor.getBlockState().getValue(GasDistributorBlock.FACING);
+					double outletX = pos.getX() - origin.getX() + 0.5d + facing.getStepX() * 0.55d;
+					double outletY = pos.getY() - origin.getY() - floorY + 0.5d + facing.getStepY() * 0.55d;
+					double outletZ = pos.getZ() - origin.getZ() + 0.5d + facing.getStepZ() * 0.55d;
+					if (outletY >= liquidSurface) {
+						continue;
+					}
+					int count = Mth.ceil(GasDistributorMath.particleRate(distributor.getRecentFlowMb()) * 4d);
+					RandomSource random = RandomSource.create(pos.asLong());
+					for (int i = 0; i < count; i++) {
+						float phaseSeed = random.nextFloat();
+						float phase = Mth.frac(renderTime * 0.055f + phaseSeed);
+						float radius = 0.035f + random.nextFloat() * 0.035f;
+						double driftX = Mth.sin(phase * Mth.TWO_PI + i) * 0.08d;
+						double driftZ = Mth.cos(phase * Mth.TWO_PI + i * 1.7f) * 0.08d;
+						float bx = (float) (outletX + driftX);
+						float by = (float) Mth.lerp(phase, outletY, liquidSurface - radius);
+						float bz = (float) (outletZ + driftZ);
+						renderTintedBox(0xB0FFFFFF, bx - radius, by - radius, bz - radius,
+							bx + radius, by + radius, bz + radius, ms, buffer, light);
+					}
+				}
+			}
+		}
 	}
 
 	/**
@@ -315,7 +372,7 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 		}
 		int liquidAmount = 0;
 		for (FluidStack f : fluids) {
-			if (!isLighterThanAir(f)) {
+			if (!isGas(f)) {
 				liquidAmount += f.getAmount();
 			}
 		}
@@ -368,7 +425,7 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 		// already drawn as the bottom layer, so subtract it from the liquid height)
 		float y = sedimentHeight;
 		for (FluidStack f : fluids) {
-			if (isLighterThanAir(f)) {
+			if (isGas(f)) {
 				continue;
 			}
 			float h = levelHeight * liquidAmountOf(f) / total;
@@ -378,7 +435,7 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 		// gases: hang from the level top downward
 		float gasTop = levelHeight;
 		for (FluidStack f : fluids) {
-			if (!isLighterThanAir(f)) {
+			if (!isGas(f)) {
 				continue;
 			}
 			float h = levelHeight * f.getAmount() / total;
@@ -430,8 +487,8 @@ public class ReactorControllerRenderer extends SmartBlockEntityRenderer<ReactorC
 		ForgeCatnipServices.FLUID_RENDERER.renderFluidBox(render, x1, y1, z1, x2, y2, z2, buffer, ms, light, false, false);
 	}
 
-	private static boolean isLighterThanAir(FluidStack fluid) {
-		return fluid.getFluid().getFluidType().isLighterThanAir();
+	private static boolean isGas(FluidStack fluid) {
+		return Miscibility.isGas(fluid);
 	}
 
 	/** True when this stack is the aqueous solvent (vanilla water). */

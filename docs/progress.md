@@ -1,6 +1,6 @@
 # 开发进度
 
-> 最后更新：2026-08（M0–M2.5 + U1/U3 + U13–U19 + P6–P7.4；施工包 A 统一能力地基完成验收；**施工包 B1 搅拌头与 B2 气体分布器已完成；B3 催化托盘代码完成（GameTest 149 跑、B3 9/9 全过、既有 pH 测试两次同失败见 B3 节，判为基线/环境问题未修）+ JUnit 385（12 skip）**；B1 视觉层与 B2 放置/绑定/方向贴图均已完成客户端实机验收；**S11 液位计（双形态）已落地（GameTest 150 全过，phGauge 保持禁用）**；**B 状态口（墙体单形态）已落地**；两条内核混沌哨兵测试因耗时暂时禁用，见施工包 A 节）
+> 最后更新：2026-08-31。最近提交审查发现的 C1/C2、D1、E1、F1–F3 阻断/高严重度问题已整改并补回归；拆分后的服务端 GameTest **182/182** 通过。E1 选择性吸收与 F2 整数温度舍入仍是明确限制，不能据此宣称完整产业闭环完成。
 > 本文件只记录代码完成态与历史单元；未来设计与新开发路线见 `plans/README.md` 和 `plans/10-development.md`。旧计划编号不再定义未来里程碑。
 
 ## 状态总览
@@ -26,17 +26,31 @@
 | **施工包 B1** | 搅拌头：Create 动能顶盖部件 + 结构快照部件/搅拌 + 配方强制 + 反应速率接线（顶盖位放置规则）+ 视觉层（动态轴/放大叶轮/液位跟随，纯客户端） | ✅ 完成（130/130） |
 | **施工包 B2** | 气体分布器：侧壁/底部壳格、浸没门禁、单侧 Forge 输入、气体限流、GAS_DISPERSED 快照与诊断 | ✅ 完成（140/140） |
 | **施工包 B3** | 催化托盘：侧壁壳格、朝内放置、单槽催化剂库存（catalysts 标签）、仅外侧面 ITEM_HANDLER、世界存取无 GUI、catalyst_tray 部件 + CATALYST_BED 快照、每件 100 批成功后才消耗、多托盘确定性首选、诊断+护目镜 | ✅ 代码完成（B3 9/9 过；整套 149 跑中既有 pH 测试基线失败，见下） |
-| M3+ 其余 | FE 接线 / 竖窑 / 索尔维 / 连续流 / 高压 / 零排放 | ⏳ 未开始（顺序见 `plans/10-development.md`） |
+| M3+ 其余 | FE 接线 / 炉 / 塔 / 索尔维 / 连续流 / 高压 / 零排放 | 🚧 C–F 审查整改完成；产业闭环与下列模型限制仍待后续 |
 | **B 状态口（墙体）** | 固定功能状态口：vessel_walls 壳块、IMasterBound 绑定、仅经 ProcessReadings 读 master、右键状态播报、护目镜状态+进度、固定红石编码（未绑定沉默；REACTING 强 0/比较器 4；非运行强 15 + NOT_ASSEMBLED=0/TEMPERATURE=8/OUTPUT_FULL=12/NO_RECIPE=15）、仅编码态变化才更新邻居 | ✅ 代码完成（见下节） |
 | **B4 计量投料口** | 朝内侧壁液体入口、外侧唯一 FLUID_HANDLER、世界滚轮剂量 100–16000mB、实收截断、空手重置、DONE 红石/比较器 | ✅ 完成（合并总回归 159/159） |
-| **施工包 C1/C2 池式工程化** | 池几何 3×3~15×15×深 1~4 真实化、面积通量沉降、底泥床容量、溢流/底泥双口、超抽夹带+扰动回悬反馈环、底泥再浆化联过滤机 | ✅ 完成（GameTest 164/164） |
-| **施工包 D1 炉式垂直切片** | furnace_controller 多方块（3×3~7×7×高至 12 环密闭）、料床/产品分口、Blaze Burner 炉底供热、calcination 配方管线（石灰/重碱/氢氧化铝三线+炉气回收）、欠烧/过热诊断 | ✅ 完成（GameTest 168/168） |
-| **施工包 E1 塔式垂直切片** | tower_controller（3×3/5×5×高至 16 环密闭）+ tower_packing 内部件（分层计级，空塔无收益）、顶喷淋/侧气口/底采出三向端口、段数限速气液传质、液泛可测可恢复 | ✅ 完成（GameTest 171/171） |
-| **施工包 F1 电解槽** | electrolyzer 单方块：chemical_reaction 能力门禁（electrolysis）+ energyFe 字段，FE 驱动氯碱（盐水→烧碱液+H₂+Cl₂）与水电解（H₂+O₂）双线，断电诊断/恢复 | ✅ 完成（GameTest 173/173） |
-| **施工包 F2 换热器** | heat_exchanger 单方块：南北面热流/东西面冷流双罐，只交换能量不交换组成，焦耳守恒+回收计量+ΔT 瓶颈读数 | ✅ 完成（GameTest 175/175） |
-| **施工包 F3 压缩机** | compressor 壁挂壳件（vessel_walls/IShellPartEntity）：FE 400/步保压，有效即发布 pressurized 能力，配方能力门禁；氨合成预演配方 | ✅ 完成（GameTest 176/176） |
+| **施工包 C1/C2 池式工程化** | 几何、沉降、溢流/底流 | ✅ 审查整改：多域抽取守恒、实排扰动、尾批固含率、端口方向已修并回归 |
+| **施工包 D1 炉式垂直切片** | 炉结构、供热、三条 calcination 配方 | ✅ 审查整改：拒绝异种栈；真实壳体顶进/底出分口 |
+| **施工包 E1 塔式垂直切片** | 塔结构、填料段、吸收与液泛 | ⚠️ 阻断项已修：强制顶盖、真实三向壳体端口、多气体守恒、能力生命周期；选择性吸收仍为占位模型 |
+| **施工包 F1 电解槽** | FE 电解与两条配方 | ✅ 审查整改：完整条件门禁、事务提交、满槽净零反应、能力/FE/同步生命周期 |
+| **施工包 F2 换热器** | 双罐换热 | ⚠️ 生命周期与同步已修；整数温度回写的舍入误差仍是已知限制 |
+| **施工包 F3 压缩机** | 壁挂保压能力 | ✅ 审查整改：FE 变更持久化、能力重建、绝对电量同步 |
 
-**自动化测试**：施工包 F3 后：`./gradlew runGameTestServer` → **176/176 必测通过**（148 基线 + S11 2 + 状态口 3 + 计量投料口 6 + 池式 5 + 炉式 4 + 塔式 3 + 电解槽 2 + 换热器 2 + 压缩机 1；`phGaugeReadsTitrationEndpoint` 保持注释禁用）；JUnit 分组见「JUnit 测试分组」节。
+**自动化测试现状**：2026-08-31 拆分 GameTest 巨型类并补齐审查回归后，`./gradlew runGameTestServer` **182/182 必测通过**（`phGaugeReadsTitrationEndpoint` 仍保持注释禁用）。测试按 composition、reactor、vessel、basin、tower、furnace、support machines 等领域分类，共用夹具收敛到 `GameTestFixtures`；原主类由约 5800 行降至约 1240 行。
+
+## 2026-08-31 · 最近提交审查（C1/C2–F3）
+
+审查范围：`8a74b93`、`25b427f`、`ff12041`、`0fdf254`、`dfed84c`、`435a11b`、`7a9767e`。以下阻断/高严重度项已于同日整改；条目保留为审查记录。
+
+- **共同测试结论**：已补多域守恒、异种物品、真实壳体端口、能力重建、绝对 FE 加载和异常配方条件回归。客户端包流转仍不能由服务端 GameTest 完全替代。
+- **C1/C2（已修）**：多域曾各自占用完整抽取预算；超抽扰动曾按请求量计算；尾批固含率与端口方向错误均已修复并补回归。
+- **D1（已修）**：异种进料无声转换和所有面共用物品能力已修为同栈校验、真实顶进/底出。
+- **E1（阻断已修）**：强制密闭顶盖、真实三向壳体端口、多气体余数守恒、成型门禁和空罐探测均已修。吸收塔进一步拆为等容量的独立液相/气相库存，满喷淋液不再挤占进气空间；吸收气体写入液相组成而不虚增喷淋液体积，旧共用罐存档按相自动迁移；诊断细分为缺液与缺气。吸收模型仍不区分气体溶解选择性，只能称占位模型。
+- **F1（已修）**：完整配方条件已接入，完成过程改为克隆罐事务提交，满槽净零/净减反应不再误报 `OUTPUT_FULL`。
+- **F1–F3 生命周期（已修）**：capability 可在 `reviveCaps` 重建；FE 变更标脏；机器补齐更新 tag/packet；绝对电量加载不再累加。
+- **F2（部分保留）**：能力生命周期和同步已修；整数温度回写在少量/不等量流体时仍可能产生舍入误差，累计回收量与实际温升的严格一致性待后续能量账重构。
+
+复验结果：上述阻断项已先补回归再修实现；`runGameTestServer` 182/182 通过。涉及客户端同步和真实 Create 管线的项目仍需客户端实机验收，不能只凭服务端 GameTest 关闭；E1/F2 两项模型限制继续保留。
 
 ## 施工包 F3 · 压缩机（2026-08）
 
@@ -71,8 +85,8 @@
 **第三拓扑落地**（plans/04 §2/§4/§7 步 1+2）：`tower_controller` + `tower_packing` 内部件——分段逆流传质塔，内腔按高度缓存为离散段（填料层计段，空壳高度无收益）。
 
 - **结构/分段**：3×3 或 5×5 密闭壳、环高 2~16；`tower_packing` 经 `INTERIOR_OVERRIDES`（Registrate `onRegister` 注册——静态块在注册前取方块会炸 mod 构造）占内腔不破壳；有效段 = 含填料的内腔层数，放/拆填料事件驱重扫（惰性，永不逐拍扫描）。
-- **端口高度语义（按面）**：UP = 喷淋口（只收液体、永不抽出——反接气被拒）；侧面 = 气口（只收气体，液被拒 = 反接可诊断；抽出气相优先）；DOWN = 底采出（最重相优先）。
-- **传质模型**（每 10 tick 一步）：气→液传质 = min(50 mB×段数, 气量)；吸收物种入液相分子域（塔不跑化学引擎——化学归下游反应釜的内核）；**首版真 bug**：聚合时把气相并入分子域整体回写 = 一步吸光全部气体（段数限流失效）——重写为气/液两相分别重建（`ReactorTank.setFluids` 新原语）。
+- **端口高度语义（按面）**：UP = 喷淋口（只收液体、永不抽出——反接气被拒）；侧面 = 气口（只收气体，液被拒 = 反接可诊断）；DOWN = 底采出。液相与气相各有一套等额容量，互不抢占；护目镜与右键均显示 `当前/容量`。
+- **传质模型**（每 10 tick 一步）：气→液传质 = min(50 mB×段数, 气量)；吸收物种入液相分子域但不增加喷淋液名义体积（浓度上升），塔不跑化学引擎——化学归下游反应釜的内核；**首版真 bug**：聚合时把气相并入分子域整体回写 = 一步吸光全部气体（段数限流失效）——现以独立气液库存重建并保存，旧共用库存加载时自动按相迁移。
 - **液泛**：气口进料超截面阈值（3×3 400 / 5×5 1200 mB/步）→ FLOODED 停摆一步可测，降负荷自动恢复；气口 fill 记录进料量（直灌 tank 不计）。
 - **GameTest +3（171/171）**：`towerAssemblesCountsStagesAndPorts`（成型/段数/三向端口拒收）、`towerStagesDriveAbsorption`（三塔对照：空塔高 8 环零吸收、2 段/4 段速率差）、`towerFloodingStallsAndRecovers`（洪峰停摆→恢复）。**踩坑**：①旧 U3 测试 `INTERIOR_OVERRIDES.clear()` 把生产注册的塔填料清掉（并发实例交叉污染）→ 改 remove 本测试项；②结构放置与测试启动有几秒滞后，投料必须放进序列内，否则瞬态窗口早过。
 - **待做（E 剩余）**：蒸氨/分馏（再沸+塔板+冷凝）、接触法固定床（催化床+层间换热）、回流/侧线/除雾。
@@ -132,7 +146,7 @@
 
 **S11 液位计（液位计 / Liquid Level Gauge）照 S03/S04/S17 仪表族范本落地双形态**：墙块形态（入 `vessel_walls` 标签、填壁位、绑 master、代理能力、UP 不代理）+ 薄板形态（贴面读身后壳块/控制器）。
 
-- **语义：液相填充百分比 0–100**，气体分类沿用全项目统一规则（FluidStack 的 FluidType lighter-than-air 即气体，`Miscibility.isGas`）——气相是气垫不抬液位；分母为釜容量（每内部块 1000 mB）。
+- **语义：液相填充百分比 0–100**，气体分类沿用 `ChemFluidType.isGas()` 显式相态标记（`Miscibility.isGas`）——气相是气垫不抬液位；分母为釜容量（每内部块 1000 mB）。
 - **仪表族参数**：阈值 1%/格、0–100 格、里程碑每 10%、默认 80%（留气垫）；报警 = 读数≥阈值；比较器/表盘动态量程照基类（0..阈值 → 0..15，12 点钟 = 0%）。
 - **文件**：`reactor/AbstractLiquidLevelGaugeBlockEntity` + 墙/板四类 + 注册（AllBlocks/AllBlockEntities/ChemicalAddonClient 渲染器）；资源经 `tools/gen_species.py`（表盘贴图青色指针、双语 lang）+ `runData`（blockstate/item model/loot）；面板手写模型 JSON；`vessel_walls.json` 入墙形态。
 - **GameTest +2（150/150）**：`liquidLevelGaugeReadsLiquidOnlyFill`（50% 读数/比较器 9、气垫不抬液位、达 80% 报警 15+比较器 15、排空归零、拆控制器脱离后零红石）；`liquidLevelGaugePanelReadsAndAlarms`（贴面经壳块 master 读书、阈值/报警/红石）。首跑揭了测试自身一个容量算错（气垫占用容量使二次补液不足），修正后全绿。
@@ -322,10 +336,10 @@
 ### D18 · 互溶性分相（按密度抽相）
 
 - **互溶模型**：声明式溶剂族标签（`Species.miscibilityGroup`），非结构推导——`Miscibility.groupOf()`：mixture 恒 aqueous、原版水 aqueous、纯液体查物种 JSON、无声明回退 `unknown`（fail-closed，与万物不互溶）。当前 2 组：`aqueous`（水+全部溶液/浆料）+ `nonpolar`（导热油，补 `thermal_oil.json`）。
-- **`collapseIfNeeded` 按组合并**：气体（lighter-than-air）独立相、跨组液体独立相，只合并同互溶组；输出按密度排序（重相在前、气体最后）。
+- **`collapseIfNeeded` 按组合并**：显式气相独立、跨组液体独立，只合并同互溶组；输出按密度排序。
 - **`drain` 按密度抽相**：通用 `drain(int)` 取最重相先抽（底口），气体（负密度）最后——`Miscibility.densityOf` 排序。
 - **规则引擎相位化**：`RulesEngine.apply` 只求解 aqueous 相，气体/非极液体作为旁观相不读入也不写回（离子不跨相界，plans/03 §8）；`setContents` 写回后重新 append 旁观相。
-- **渲染**：气体相独立后，renderer 的「气体挂顶」分支（`isLighterThanAir`）成为活代码。
+- **渲染**：气体相独立后，renderer 按显式气相标记执行「气体挂顶」。
 - **GameTest +3（45/45）**：新增 `immiscibleLiquidsStaySeparate`/`drainPullsDenserPhaseFirst`/`gasStaysSeparateFromLiquid`/`miscibleAqueousMerge`；3 个旧 water+oil「混合物」测试改写为离子混合物。
 
 ### S02 · 温度计（两种形式：墙块 + 薄板，世界内化）
@@ -547,15 +561,18 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 
 ### 施工包 B2 · 气体分布器（2026-08）
 
-`gas_distributor` 是带方向的釜壳块：`FACING` 指向釜内，侧壁和底部壳格可安装，顶盖及错误朝向仅保留壳块绑定生命周期，不成为有效部件。有效分布器只在其唯一外侧面发布 Forge `FLUID_HANDLER`，实现单向 `fill`、无 `drain`，直接把真实气体 `FluidStack` 写入现有 `ReactorTank`；气体判定沿用项目 `FluidType.isLighterThanAir()`，不维护流体 ID 白名单。
+`gas_distributor` 是带方向的釜壳块：`FACING` 指向釜内，侧壁和底部壳格可安装，顶盖及错误朝向仅保留壳块绑定生命周期，不成为有效部件。有效分布器只在其唯一外侧面发布 Forge `FLUID_HANDLER`，实现单向 `fill`、无 `drain`，直接把真实气体 `FluidStack` 写入现有 `ReactorTank`；气体判定读取 `ChemFluidType.isGas()` 的显式相态标记，不以相对空气密度代替相态（NO₂ 等重气体仍是气体）。
 
 - **过程门禁**：侧壁出口按 outlet 中心高度计算液面覆盖，至少 `0.25` 格才接受；底部出口从底板上表面计算。未浸没、顶盖或错误朝向不会把气体送入顶空气相，也不会发布 `GAS_DISPERSED`。
 - **限流与同步**：每个分布器服务端独立维护持久化的 `250 mB / 10 tick` 窗口；多个分布器自然叠加。`SIMULATE` 只调用底层 tank 的模拟路径，不修改液量、窗口或诊断状态；窗口数据按低频/状态变化同步。
+- **不可绕过的物流语义**：反应釜通用 `FLUID_HANDLER` 只接受液体，外部气体必须经过正确朝向且浸没的分布器；配方/物理步骤在釜内自产气仍直接写内部 `ReactorTank`，不受外部端口限制。未来顶部气相口应只负责加压/置换，不发布 `GAS_DISPERSED`。
+- **流量气泡反馈**：服务端按实际执行成功的通气量同步短时流量脉冲（最多每 2 tick 一包）；气泡由反应釜 BER 在液体 translucent pass **之前**提交，再由半透明液体覆盖，避免普通粒子在液体写深度后被完全遮挡。密度随实收流量连续增加并封顶；未通气、未浸没或结构失效时立即停止。
+- **破坏泄气**：密闭釜结构正式失效，或因拆除顶盖从密闭结构重新采纳为合法开口结构时，所有带显式 gas 相态的库存直接逸散，不进入世界液体洒漏队列；是否逸散与相对空气密度无关，NO₂ 等重气体同样清除。拆盖不损失液体，墙体破口以下液体仍按既有高度规则保留。
 - **结构快照**：`IShellPartEntity` 增加有效过程能力钩子；B2 有效时发布 `chemicaladdon:gas_distributor` 与 `ProcessCapability.GAS_DISPERSED`。`StructureCapabilities` 增加 `boundParts`，因此未浸没/错误安装仍可诊断为已绑定，而不冒充有效部件。簿记仍复用 Vessel 的装配事件/重载懒重扫，不逐 tick 扫描整釜。
 - **诊断**：护目镜和右键消息覆盖 `UNBOUND`、`WRONG_POSITION_OR_FACING`、`NOT_SUBMERGED`、`NON_GAS`、`NO_CAPACITY`、`RATE_LIMITED`、`ACCEPTING`。
 - **本次回归根因与修复**：原 `getStateForPlacement` 直接采用 `clickedFace`，不能表达玩家从釜外看向釜内的自然安装方向；现在按玩家 `getNearestLookingDirection()` 放置：水平视线本身就是朝釜内的喷口方向，垂直视线取反，使从上方向下放置的釜底分布器得到 `FACING=UP`。另外 `LevelChunk` 的真实顺序是旧块 `onRemove` → 新块 `onPlace` → 创建/注册新 BE；同尺寸重验证原先只返回 success、不重新绑定，导致新分布器 BE 的 `masterPos` 留空。Vessel 仅保留事件式同尺寸 shell rebind；只给 `GasDistributorBlockEntity.onLoad` 增加新 BE 注册后的补偿重组，未给普通墙砖或控制器增加加载邻域扫描，正常 tick 不扫结构。合法壳格始终绑定，位置/朝向和浸没只影响有效性与诊断。
 - **资源/注册**：`AllBlocks`、`AllBlockEntities`、`vessel_walls` 标签、生成器 BLOCKS/纹理/语言、Registrate blockstate/item model/loot 已接入。外观使用独立的 `front/back/side` 纹理：FACING 面是多孔布气喷口，FACING.opposite 面是管道接头，其余四面是金属壳体；六向状态按 SOUTH 基准正确旋转，UP/DOWN 分别使用 X=270°/90°。
-- **测试/实机**：新增 `GasDistributorMathTest` 4 例；新增 10 个带 `@GameTestHolder(chemicaladdon)` 的 B2 GameTest，覆盖侧壁/底部有效安装、外侧 capability、SIMULATE、非气体、未浸没、气相守恒、PressureFeed 可见性、能力门禁、墙砖替换后绑定、首次成型、错误朝向绑定诊断、拆除重组和真实 `BlockPlaceContext` 四向/底部 `UP`。实测 `./gradlew runGameTestServer` 为 **140/140 必测通过，0 optional**；`./gradlew test` 为 **379 用例，0 失败，12 skip**。客户端复验确认方向贴图可辨、侧壁放置朝向、结构绑定与诊断均正常。
+- **测试/实机**：`GasDistributorMathTest` 覆盖浸没、窗口和粒子密度单调/封顶；B2 GameTest 覆盖侧壁/底部安装、外侧 capability、SIMULATE、非气体、未浸没、通用端口拒绝气体、PressureFeed、能力门禁、重绑定与真实放置方向。方向贴图与既有绑定已完成客户端复验；新增流量粒子仍需客户端观感验收。
 
 ### 施工包 B3 · 催化托盘（2026-08，代码完成；客户端实机验收未做）
 
@@ -608,11 +625,11 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 
 1. **客户端实机验证**（用户）：护目镜 HUD 显示、釜内物品渲染（开口釜）、成型失败提示、开口/闭口切换、quickPlay 自动进档
 2. **贴面仪表**：✅ S02 温度计、✅ S03 压力表（U1，仪表族基类 `AbstractVesselGaugeBlockEntity` 就位）、✅ S04 波美计（U17）、✅ S16 pH 计、✅ S17 浊度计、✅ S18 电导率计、✅ S11 液位计（2026-08）——仪表族全部落地
-3. **M3**：电解槽（FE）、吸收塔（塔式实例）、换热器、压缩机——氯碱 + 硫酸厂。电解槽拟要求**去离子水（纯净水）**投料（避免杂质副反应）；纯净水是**未来新物质**，判定在「浓度/杂质」层（非再注册一个 H₂O 流体物种），届时再落地
+3. **C–F 后续复验**：审查阻断项已整改；下一步补客户端实机验收、E1 选择性吸收和 F2 舍入能量账，再推进氯碱/吸收/换热/保压闭环；电解槽的去离子水约束仍未落地
 4. **M4 旗舰**：索尔维制碱闭环（吸收塔氨盐水 → 碳化 → 煅烧 → 氨回收）
 5. **基础设施**：流体桶（S08）、GUI 美化、datagen 接入（配方/模型 provider）、Jade 集成（流体显示/温度/进度 tooltip）、JEI 配方展示
 6. **混合物流体系统（Mixture）**：✅ 互溶性（D18）已落地——`miscibilityGroup` 声明式溶剂族、按组合并、按密度分相抽出。**剩余**：液-液分离手段见新增 **D18.5 分液软管** 条目；给 M9 加「不互溶共管=混液炸管」的输送约束
-7. **已知限制**：沉淀池/过滤机无 GUI；方块纹理为程序生成色块；砖无连接纹理（多变体方案待做）；压力/相态/催化未实现（计划 M3+）。（~~反应热集总常数~~ ✅ U16 已改能量记账；底面尺寸已参数化为任意 W×W×H 3..7；轻相抽出已由 D18.5 分液软管落地）
+7. **已知限制**：沉淀池/过滤机无 GUI；方块纹理为程序生成色块；砖无连接纹理（多变体方案待做）；压力设备与催化托盘只有初版能力，尚无完整产业闭环。（~~反应热集总常数~~ ✅ U16 已改能量记账；底面尺寸已参数化；轻相抽出已由 D18.5 分液软管落地）
 8. **设计定案待实施（2026-08 讨论批，plans/11 §2.1）**：~~**U15 晶粒、投种与混合固体物品**~~（✅ 已完成，见「已完成明细」；~~MgCl₂/CaCl₂ 苦卤盐数据首位~~ 一并落地）；~~**U16 反应热能量记账**~~（✅ 已完成，见「已完成明细」——J/unit 账本 + ΔT=Q/(feedUnits×4.18) + 蒸发潜热自限 + deltaHeat 质量耦合）；~~**U16.5 湿饼夹带与洗涤**~~（✅ 已完成，见「已完成明细」——残液率夹带 + residue 母液相 + 再浆/置换洗涤两路 + 电导率计 S18 落地；否决共沉淀，03 §12）；~~**U17 分析化学层 + 终点控制**~~（✅ 已完成，见「已完成明细」——Kw 读数层常数 + S16/S04/S17 三表 + 试纸族 7 件 + SI 降级 + M08 终点结晶器）；远期弹性条目（rate 数据授权 / 底排口零头打包晶粒 / 萃取独立系统）随旧 plans/11 废止，待按新计划重审。
 9. **D18.5 分液（分液口 + 软管滑轮）**：✅ **已实现**——`decant_port`（壁块，只抽最重相，锁相）+ `decant_hose`（Create 软管滑轮装**开口釜上方** → Forge `EntityPlaceEvent` 转化为分液软管；`FLUID_HANDLER` 只抽最轻相/锁相，扳手切「只抽上层/全部抽」，敲掉/中键掉回原版 `create:hose_pulley`）。**视觉已实现**：`DecantHoseRenderer` 照抄 Create `AbstractPulleyRenderer`（coil 滚动 + 下垂 rope + magnet，复用 Create 的 hose_pulley 部分模型与 `HOSE_PULLEY_COIL` sprite shift），块体直接引用 `create:block/hose_pulley/block` 模型（占位贴图废弃）；软管 `offset`（BE 内 `LerpedFloat`，客户端 tick 用 `Chaser.EXP` 缓动追 `ReactorControllerBlockEntity.getLiquidSurfaceY`）从 0 **慢慢下放**到液面、液面升降自动跟随、无手动收放；转化瞬间播**铁砧放置音**（`SoundEvents.ANVIL_PLACE`）提示。**剩余**：Ponder 提示。详见 plans/05 §M7。
 
@@ -623,7 +640,7 @@ composition 层（Solution/Equilibrium/Species/SpeciesManager/Ion + blendColor �
 ./gradlew modTest            # 方块/资源/玩法改动的快速 JUnit（93 项）
 ./gradlew engineTest         # 引擎分组 JUnit（296 项；仅纯 Java 分组最多双 JVM fork）
 ./gradlew test               # 完整、串行 release-equivalent JUnit（389 项）
-./gradlew runGameTestServer  # 服务端 GameTest（当前 176/176 必测；2026-08-28 起部分用例的固定等待改为逐 tick 轮询（首个有效状态即续行），详见 GameTests 内 waitFor 助手）
+./gradlew runGameTestServer  # 服务端 GameTest（当前 182/182 必测；公共轮询/结构夹具见 gametest/GameTestFixtures）
 ./run-server.sh              # 服务端冒烟（自动关闭）
 ./gradlew runClient          # 客户端（自动进 "New World"，-PquickPlayWorld= 覆盖）
 python3 tools/gen_species.py # 改物种后重新生成资源/注册代码

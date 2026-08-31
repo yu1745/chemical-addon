@@ -234,7 +234,7 @@ public class MeteringInletBlockEntity extends SmartBlockEntity
 	private boolean isLiquid(FluidStack stack) {
 		// project-wide gas classification: FluidType lighter-than-air. The inlet
 		// is the liquid counterpart of the B2 gas distributor on purpose.
-		return !stack.isEmpty() && !stack.getFluid().getFluidType().isLighterThanAir();
+		return !stack.isEmpty() && !com.yu1745.chemicaladdon.fluid.Miscibility.isGas(stack);
 	}
 
 	private Status evaluate(@Nullable FluidStack resource) {

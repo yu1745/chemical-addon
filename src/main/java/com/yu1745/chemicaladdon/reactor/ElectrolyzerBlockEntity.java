@@ -3,12 +3,14 @@ package com.yu1745.chemicaladdon.reactor;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.EnumSet;
 import java.util.Map;
 
 import javax.annotation.Nullable;
 
 import com.simibubi.create.api.equipment.goggles.IHaveGoggleInformation;
 import com.simibubi.create.foundation.fluid.FluidIngredient;
+import com.simibubi.create.content.processing.recipe.HeatCondition;
 import com.yu1745.chemicaladdon.composition.Species;
 import com.yu1745.chemicaladdon.composition.SpeciesManager;
 import com.yu1745.chemicaladdon.fluid.Mixture;
@@ -18,12 +20,15 @@ import com.yu1745.chemicaladdon.recipe.SolutionIngredient;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
 import com.yu1745.chemicaladdon.vessel.ProcessCapability;
 import com.yu1745.chemicaladdon.vessel.ProcessReadings;
+import com.yu1745.chemicaladdon.vessel.StructureAccess;
+import com.yu1745.chemicaladdon.vessel.StructureCapabilities;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -39,7 +44,6 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.common.util.LazyOptional;
-import net.minecraftforge.energy.EnergyStorage;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.capability.IFluidHandler;
 import net.minecraftforge.fluids.capability.IFluidHandler.FluidAction;
@@ -60,7 +64,7 @@ import net.minecraftforge.fluids.capability.IFluidHandler.FluidAction;
  * phases) share the tank until piped out — every product has an outlet.
  */
 public class ElectrolyzerBlockEntity extends BlockEntity
-	implements IHaveGoggleInformation, ProcessReadings {
+	implements IHaveGoggleInformation, ProcessReadings, StructureAccess {
 
 	public static final int TANK_CAPACITY = 4000;
 	public static final int ENERGY_CAPACITY = 20000;
@@ -73,10 +77,10 @@ public class ElectrolyzerBlockEntity extends BlockEntity
 	}
 
 	private final ReactorTank tank = new ReactorTank(TANK_CAPACITY, this::onChanged);
-	private final EnergyStorage energy = new EnergyStorage(ENERGY_CAPACITY, ENERGY_TRANSFER, ENERGY_CAPACITY);
-	private final LazyOptional<IFluidHandler> fluidCap = LazyOptional.of(() -> tank);
-	private final LazyOptional<net.minecraftforge.energy.IEnergyStorage> energyCap =
-		LazyOptional.of(() -> energy);
+	private final DirtyEnergyStorage energy = new DirtyEnergyStorage(ENERGY_CAPACITY, ENERGY_TRANSFER,
+		ENERGY_CAPACITY, this::onChanged);
+	private LazyOptional<IFluidHandler> fluidCap = LazyOptional.of(() -> tank);
+	private LazyOptional<net.minecraftforge.energy.IEnergyStorage> energyCap = LazyOptional.of(() -> energy);
 
 	private int tickCounter = 0;
 	private float progress = 0;
@@ -93,6 +97,17 @@ public class ElectrolyzerBlockEntity extends BlockEntity
 		if (level != null && !level.isClientSide) {
 			level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), Block.UPDATE_CLIENTS);
 		}
+	}
+
+	@Override
+	public CompoundTag getUpdateTag() {
+		return saveWithoutMetadata();
+	}
+
+	@Nullable
+	@Override
+	public ClientboundBlockEntityDataPacket getUpdatePacket() {
+		return ClientboundBlockEntityDataPacket.create(this);
 	}
 
 	// ------------------------------------------------------------------ ticker
@@ -120,7 +135,8 @@ public class ElectrolyzerBlockEntity extends BlockEntity
 			activeRecipe = null;
 			return;
 		}
-		if (!canFitOutputs(recipe)) {
+		ReactorTank completed = completedTank(recipe);
+		if (completed == null) {
 			setStatus(CellStatus.OUTPUT_FULL);
 			progress = 0;
 			activeRecipe = null;
@@ -136,10 +152,10 @@ public class ElectrolyzerBlockEntity extends BlockEntity
 		progress += (float) CELL_TICK / recipe.getProcessingDuration();
 		if (progress >= 1.0f) {
 			energy.extractEnergy(recipe.getEnergyFe(), false);
-			complete(recipe);
+			tank.deserializeNBT(completed.serializeNBT());
 			progress = 0;
 		}
-		setChanged();
+		onChanged();
 	}
 
 	/** The first electrolysis recipe whose inputs the cell holds (power ignored). */
@@ -150,27 +166,10 @@ public class ElectrolyzerBlockEntity extends BlockEntity
 		}
 		for (ChemicalReactionRecipe recipe : level.getRecipeManager()
 			.getAllRecipesFor(ReactionLogic.chemicalReactionType())) {
-			if (!recipe.getRequiredCapabilities().contains(ProcessCapability.ELECTROLYSIS)) {
+			if (!matchesRecipe(recipe)) {
 				continue; // not a cell recipe — the vessel's business
 			}
-			boolean ok = true;
-			for (FluidIngredient fluid : recipe.getFluidIngredients()) {
-				if (tank.countIngredient(fluid) < fluid.getRequiredAmount()) {
-					ok = false;
-					break;
-				}
-			}
-			if (ok) {
-				for (SolutionIngredient sol : recipe.getSolutions()) {
-					if (tank.countSolution(sol.speciesId()) < sol.amount()) {
-						ok = false;
-						break;
-					}
-				}
-			}
-			if (ok) {
-				return recipe;
-			}
+			return recipe;
 		}
 		return null;
 	}
@@ -181,62 +180,68 @@ public class ElectrolyzerBlockEntity extends BlockEntity
 		}
 		for (ChemicalReactionRecipe recipe : level.getRecipeManager()
 			.getAllRecipesFor(ReactionLogic.chemicalReactionType())) {
-			if (!recipe.getRequiredCapabilities().contains(ProcessCapability.ELECTROLYSIS)) {
+			if (!matchesRecipe(recipe)) {
 				continue;
 			}
-			boolean ok = true;
-			for (FluidIngredient fluid : recipe.getFluidIngredients()) {
-				if (tank.countIngredient(fluid) < fluid.getRequiredAmount()) {
-					ok = false;
-					break;
-				}
-			}
-			if (ok) {
-				for (SolutionIngredient sol : recipe.getSolutions()) {
-					if (tank.countSolution(sol.speciesId()) < sol.amount()) {
-						ok = false;
-						break;
-					}
-				}
-			}
-			if (ok && energy.getEnergyStored() < recipe.getEnergyFe()) {
+			if (energy.getEnergyStored() < recipe.getEnergyFe()) {
 				return true;
 			}
 		}
 		return false;
 	}
 
-	private boolean canFitOutputs(ChemicalReactionRecipe recipe) {
-		int fluidOut = 0;
-		for (FluidStack out : recipe.getFluidResults()) {
-			fluidOut += out.getAmount();
+	private boolean matchesRecipe(ChemicalReactionRecipe recipe) {
+		if (!recipe.getRequiredCapabilities().contains(ProcessCapability.ELECTROLYSIS)
+			|| !recipe.matchesStructureRequirements(this, this) || !recipe.getIngredients().isEmpty()) {
+			return false;
 		}
-		for (SolutionIngredient out : recipe.getSolutionOutputs()) {
-			fluidOut += createSolutionOutput(out, getTemperature()).getAmount();
+		HeatCondition heat = recipe.getRequiredHeat();
+		if ((heat == HeatCondition.HEATED && getTemperature() < 400)
+			|| (heat == HeatCondition.SUPERHEATED && getTemperature() < 800)) {
+			return false;
 		}
-		return fluidOut <= tank.getTankCapacity(0) - tank.getTotalAmount();
-	}
-
-	private void complete(ChemicalReactionRecipe recipe) {
-		int temp = getTemperature();
 		for (FluidIngredient fluid : recipe.getFluidIngredients()) {
-			tank.drainIngredient(fluid, fluid.getRequiredAmount(), FluidAction.EXECUTE);
+			if (tank.countIngredient(fluid) < fluid.getRequiredAmount()) {
+				return false;
+			}
 		}
 		for (SolutionIngredient sol : recipe.getSolutions()) {
-			tank.drainSolution(sol.speciesId(), sol.amount(), FluidAction.EXECUTE);
+			if (tank.countSolution(sol.speciesId()) < sol.amount()) {
+				return false;
+			}
+			if (sol.hasConcentrationRange()) {
+				double concentration = tank.concentrationOf(sol.speciesId());
+				if (concentration < sol.minConcentration() || concentration > sol.maxConcentration()) {
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
+	@Nullable
+	private ReactorTank completedTank(ChemicalReactionRecipe recipe) {
+		ReactorTank result = new ReactorTank(TANK_CAPACITY, () -> {});
+		result.deserializeNBT(tank.serializeNBT());
+		int temp = getTemperature();
+		for (FluidIngredient fluid : recipe.getFluidIngredients()) {
+			if (result.drainIngredient(fluid, fluid.getRequiredAmount(), FluidAction.EXECUTE)
+				!= fluid.getRequiredAmount()) return null;
+		}
+		for (SolutionIngredient sol : recipe.getSolutions()) {
+			if (result.drainSolution(sol.speciesId(), sol.amount(), FluidAction.EXECUTE) != sol.amount()) return null;
 		}
 		for (FluidStack out : recipe.getFluidResults()) {
 			FluidStack copy = out.copy();
 			Temperature.set(copy, temp);
-			tank.fill(copy, FluidAction.EXECUTE);
+			if (result.fill(copy, FluidAction.EXECUTE) != copy.getAmount()) return null;
 		}
 		for (SolutionIngredient out : recipe.getSolutionOutputs()) {
 			FluidStack mix = createSolutionOutput(out, temp);
-			if (!mix.isEmpty()) {
-				tank.fill(mix, FluidAction.EXECUTE);
-			}
+			if (mix.isEmpty() || result.fill(mix, FluidAction.EXECUTE) != mix.getAmount()) return null;
 		}
-		tank.collapseIfNeeded();
+		result.collapseIfNeeded();
+		return result;
 	}
 
 	private FluidStack createSolutionOutput(SolutionIngredient out, int temperature) {
@@ -262,7 +267,7 @@ public class ElectrolyzerBlockEntity extends BlockEntity
 	private void setStatus(CellStatus value) {
 		if (status != value) {
 			status = value;
-			setChanged();
+			onChanged();
 		}
 	}
 
@@ -280,7 +285,7 @@ public class ElectrolyzerBlockEntity extends BlockEntity
 		return tank;
 	}
 
-	public EnergyStorage getEnergy() {
+	public DirtyEnergyStorage getEnergy() {
 		return energy;
 	}
 
@@ -330,6 +335,17 @@ public class ElectrolyzerBlockEntity extends BlockEntity
 		return 0;
 	}
 
+	@Override public boolean isAssembled() { return true; }
+	@Override public boolean isOpen() { return false; }
+	@Override public int getSize() { return 1; }
+	@Override public int getHeight() { return 1; }
+	@Override public int getRingLayer() { return 0; }
+	@Override public Direction getInward() { return null; }
+	@Override public BlockPos getStructurePos() { return worldPosition; }
+	@Override public StructureCapabilities getStructureCapabilities() {
+		return StructureCapabilities.of(EnumSet.of(ProcessCapability.ELECTROLYSIS), TANK_CAPACITY, 1, 1, 0);
+	}
+
 	// ------------------------------------------------------------- capability
 
 	@Override
@@ -350,6 +366,13 @@ public class ElectrolyzerBlockEntity extends BlockEntity
 		energyCap.invalidate();
 	}
 
+	@Override
+	public void reviveCaps() {
+		super.reviveCaps();
+		fluidCap = LazyOptional.of(() -> tank);
+		energyCap = LazyOptional.of(() -> energy);
+	}
+
 	// ---------------------------------------------------------- serialization
 
 	@Override
@@ -366,7 +389,7 @@ public class ElectrolyzerBlockEntity extends BlockEntity
 		super.load(tag);
 		tank.deserializeNBT(tag.getCompound("tank"));
 		if (tag.contains("energy")) {
-			energy.receiveEnergy(tag.getInt("energy"), false);
+			energy.setEnergyStored(tag.getInt("energy"));
 		}
 		progress = tag.getFloat("progress");
 		if (tag.contains("status")) {

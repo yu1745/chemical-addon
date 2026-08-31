@@ -33,4 +33,13 @@ class GasDistributorMathTest {
 		assertEquals(250, GasDistributorMath.available(100, 100, -20, 250));
 		assertEquals(0, GasDistributorMath.available(100, 100, 0, 0));
 	}
+
+	@Test
+	void particleRateScalesWithExecutedFlowAndIsCapped() {
+		assertEquals(0d, GasDistributorMath.particleRate(0));
+		assertTrue(GasDistributorMath.particleRate(1) > 0d);
+		assertTrue(GasDistributorMath.particleRate(125) < GasDistributorMath.particleRate(250));
+		assertEquals(3d, GasDistributorMath.particleRate(250), 1.0e-9);
+		assertEquals(3d, GasDistributorMath.particleRate(1000), 1.0e-9);
+	}
 }

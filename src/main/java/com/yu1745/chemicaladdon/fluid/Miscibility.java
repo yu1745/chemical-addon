@@ -29,9 +29,10 @@ public final class Miscibility {
 
 	private Miscibility() {}
 
-	/** True when a stack is a gas phase (lighter-than-air fluid), not a liquid. */
+	/** True when the registered chemical fluid explicitly represents a gas phase. */
 	public static boolean isGas(FluidStack stack) {
-		return stack.getFluid().getFluidType().isLighterThanAir();
+		return !stack.isEmpty() && stack.getFluid().getFluidType() instanceof ChemFluidType chemical
+			&& chemical.isGas();
 	}
 
 	/**
@@ -57,7 +58,7 @@ public final class Miscibility {
 			: UNKNOWN;
 	}
 
-	/** Density used for phase ordering: denser sinks, gases (negative density) float. */
+	/** Density used for ordering within a phase; gas identity does not depend on density. */
 	public static int densityOf(FluidStack stack) {
 		return stack.getFluid().getFluidType().getDensity();
 	}

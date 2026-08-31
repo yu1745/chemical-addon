@@ -12,6 +12,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
@@ -54,8 +55,8 @@ public class HeatExchangerBlockEntity extends BlockEntity implements IHaveGoggle
 
 	private final ReactorTank hotTank = new ReactorTank(TANK_CAPACITY, this::onChanged);
 	private final ReactorTank coldTank = new ReactorTank(TANK_CAPACITY, this::onChanged);
-	private final LazyOptional<IFluidHandler> hotCap = LazyOptional.of(() -> hotTank);
-	private final LazyOptional<IFluidHandler> coldCap = LazyOptional.of(() -> coldTank);
+	private LazyOptional<IFluidHandler> hotCap = LazyOptional.of(() -> hotTank);
+	private LazyOptional<IFluidHandler> coldCap = LazyOptional.of(() -> coldTank);
 
 	private int tickCounter = 0;
 	/** cumulative joules handed to the cold stream (the recovered-heat meter). */
@@ -70,6 +71,17 @@ public class HeatExchangerBlockEntity extends BlockEntity implements IHaveGoggle
 		if (level != null && !level.isClientSide) {
 			level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), Block.UPDATE_CLIENTS);
 		}
+	}
+
+	@Override
+	public CompoundTag getUpdateTag() {
+		return saveWithoutMetadata();
+	}
+
+	@Nullable
+	@Override
+	public ClientboundBlockEntityDataPacket getUpdatePacket() {
+		return ClientboundBlockEntityDataPacket.create(this);
 	}
 
 	// ------------------------------------------------------------------ ticker
@@ -102,6 +114,7 @@ public class HeatExchangerBlockEntity extends BlockEntity implements IHaveGoggle
 		apply(hotTank, hotNext);
 		apply(coldTank, coldNext);
 		setChanged();
+		level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), Block.UPDATE_CLIENTS);
 	}
 
 	private static int temperatureOf(ReactorTank tank) {
@@ -165,6 +178,13 @@ public class HeatExchangerBlockEntity extends BlockEntity implements IHaveGoggle
 		super.invalidateCaps();
 		hotCap.invalidate();
 		coldCap.invalidate();
+	}
+
+	@Override
+	public void reviveCaps() {
+		super.reviveCaps();
+		hotCap = LazyOptional.of(() -> hotTank);
+		coldCap = LazyOptional.of(() -> coldTank);
 	}
 
 	// ---------------------------------------------------------- serialization

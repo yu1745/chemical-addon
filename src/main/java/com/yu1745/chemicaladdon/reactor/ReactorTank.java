@@ -89,6 +89,17 @@ public class ReactorTank implements IFluidHandler {
 		return total;
 	}
 
+	/** Removes contained gas without producing a world-fluid spill. */
+	public int ventGases() {
+		int before = getTotalAmount();
+		fluids.removeIf(Miscibility::isGas);
+		int removed = before - getTotalAmount();
+		if (removed > 0) {
+			onChanged.run();
+		}
+		return removed;
+	}
+
 	@Override
 	public int getTanks() {
 		return fluids.size();
@@ -1334,6 +1345,14 @@ public class ReactorTank implements IFluidHandler {
 		return out;
 	}
 
+	private static long totalOf(Map<?, Long> values) {
+		long total = 0;
+		for (long value : values.values()) {
+			total += value;
+		}
+		return total;
+	}
+
 	/**
 	 * 施工包 C slurry-zone draw: a proportional sample of the liquid (molecules +
 	 * ions) AND the suspended solids — what a surface lift that punches through
@@ -1372,9 +1391,26 @@ public class ReactorTank implements IFluidHandler {
 			return FluidStack.EMPTY;
 		}
 		long take = Math.min((long) maxDrainMb * Chemistry.UNIT_PER_MB, total);
-		Map<ResourceLocation, Long> molTake = shareOf(liquidMol, take);
-		Map<String, Long> ionTake = shareOf(liquidIons, take);
-		Map<ResourceLocation, Long> suspTake = shareOf(suspended, take);
+		// Allocate the single withdrawal budget across all three domains before
+		// splitting it among species. Giving every domain the full budget would
+		// make a slurry sample contain up to three times what was removed.
+		long molUnits = totalOf(liquidMol);
+		long ionUnits = totalOf(liquidIons);
+		long suspUnits = totalOf(suspended);
+		long molBudget = take * molUnits / total;
+		long ionBudget = take * ionUnits / total;
+		long suspBudget = take * suspUnits / total;
+		long remainder = take - molBudget - ionBudget - suspBudget;
+		long add = Math.min(remainder, molUnits - molBudget);
+		molBudget += add;
+		remainder -= add;
+		add = Math.min(remainder, ionUnits - ionBudget);
+		ionBudget += add;
+		remainder -= add;
+		suspBudget += Math.min(remainder, suspUnits - suspBudget);
+		Map<ResourceLocation, Long> molTake = shareOf(liquidMol, molBudget);
+		Map<String, Long> ionTake = shareOf(liquidIons, ionBudget);
+		Map<ResourceLocation, Long> suspTake = shareOf(suspended, suspBudget);
 		FluidStack out = Mixture.createLong(molTake, ionTake, suspTake, Map.of(),
 			Math.max(1, (int) Math.round((double) take / Chemistry.UNIT_PER_MB)));
 		Temperature.set(out, Temperature.fromWeightedSum(weightedTemp, mixtureMb));
@@ -1424,8 +1460,13 @@ public class ReactorTank implements IFluidHandler {
 		if (bedUnits <= 0) {
 			return FluidStack.EMPTY;
 		}
-		long outUnits = (long) maxDrainMb * Chemistry.UNIT_PER_MB;
-		long solids = Math.min(Math.round(outUnits * solidsFraction), bedUnits);
+		double fraction = Math.max(0.000001, Math.min(1.0, solidsFraction));
+		long requestedUnits = (long) maxDrainMb * Chemistry.UNIT_PER_MB;
+		long byBed = (long) Math.floor(bedUnits / fraction);
+		long byLiquid = fraction >= 1.0 ? Long.MAX_VALUE
+			: (long) Math.floor(liquidUnits / (1.0 - fraction));
+		long outUnits = Math.min(requestedUnits, Math.min(byBed, byLiquid));
+		long solids = Math.min(Math.round(outUnits * fraction), bedUnits);
 		long liquid = Math.min(outUnits - solids, liquidUnits);
 		if (solids <= 0) {
 			return FluidStack.EMPTY;

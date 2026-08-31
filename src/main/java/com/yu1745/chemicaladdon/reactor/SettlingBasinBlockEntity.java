@@ -107,12 +107,16 @@ public class SettlingBasinBlockEntity extends VesselBlockEntity {
 
 			@Override
 			public int fill(FluidStack resource, FluidAction action) {
-				return SettlingBasinBlockEntity.this.tank.fill(resource, action);
+				return 0; // overflow is outlet-only; filling uses the controller's side-less interaction
 			}
 
 			@Override
 			public FluidStack drain(FluidStack resource, FluidAction action) {
 				if (resource.isEmpty()) {
+					return FluidStack.EMPTY;
+				}
+				FluidStack available = overflowDrain(resource.getAmount(), FluidAction.SIMULATE);
+				if (available.isEmpty() || !available.isFluidEqual(resource)) {
 					return FluidStack.EMPTY;
 				}
 				return overflowDrain(resource.getAmount(), action);
@@ -147,12 +151,17 @@ public class SettlingBasinBlockEntity extends VesselBlockEntity {
 
 			@Override
 			public int fill(FluidStack resource, FluidAction action) {
-				return SettlingBasinBlockEntity.this.tank.fill(resource, action);
+				return 0; // underflow is outlet-only
 			}
 
 			@Override
 			public FluidStack drain(FluidStack resource, FluidAction action) {
 				if (resource.isEmpty()) {
+					return FluidStack.EMPTY;
+				}
+				FluidStack available = SettlingBasinBlockEntity.this.tank.drainThickenedUnderflow(
+					resource.getAmount(), UNDERFLOW_SOLIDS_FRACTION, FluidAction.SIMULATE);
+				if (available.isEmpty() || !available.isFluidEqual(resource)) {
 					return FluidStack.EMPTY;
 				}
 				return SettlingBasinBlockEntity.this.tank.drainThickenedUnderflow(resource.getAmount(),
@@ -217,6 +226,12 @@ public class SettlingBasinBlockEntity extends VesselBlockEntity {
 	@Override
 	public <T> LazyOptional<T> getCapability(Capability<T> cap, @Nullable Direction side) {
 		if (cap == ForgeCapabilities.FLUID_HANDLER) {
+			if (!isAssembled()) {
+				return LazyOptional.empty();
+			}
+			if (side == null) {
+				return super.getCapability(cap, null); // hand/container input keeps the generic vessel path
+			}
 			if (side == Direction.UP) {
 				return LazyOptional.empty(); // the open rim never accepts a pipe
 			}
@@ -254,7 +269,7 @@ public class SettlingBasinBlockEntity extends VesselBlockEntity {
 		// bed stays) and kicks the bed — resuspended at the next settle step
 		FluidStack out = tank.drainSlurryZone(maxDrain, action);
 		if (action.execute() && !out.isEmpty()) {
-			overdrawMb += Math.max(0, maxDrain - clearCreditMb);
+			overdrawMb += Math.max(0, out.getAmount() - clearCreditMb);
 			clearCreditMb = 0;
 		}
 		return out;

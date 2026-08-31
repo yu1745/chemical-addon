@@ -167,6 +167,7 @@ public class ChemicalReactionRecipe extends ProcessingRecipe<Container> {
 	public void readAdditional(JsonObject json) {
 		super.readAdditional(json);
 		deltaHeat = 0;
+		energyFe = 0;
 		solutions.clear();
 		solutionOutputs.clear();
 		requiredCapabilities.clear();
@@ -181,6 +182,9 @@ public class ChemicalReactionRecipe extends ProcessingRecipe<Container> {
 		}
 		if (GsonHelper.isValidNode(json, "energyFe")) {
 			energyFe = GsonHelper.getAsInt(json, "energyFe");
+			if (energyFe < 0) {
+				throw new JsonSyntaxException("energyFe must be non-negative");
+			}
 		}
 		if (GsonHelper.isValidNode(json, "solutions")) {
 			solutions.addAll(SolutionIngredient.listFromJson(json.getAsJsonArray("solutions")));
@@ -288,6 +292,9 @@ public class ChemicalReactionRecipe extends ProcessingRecipe<Container> {
 		super.readAdditional(buffer);
 		deltaHeat = buffer.readInt();
 		energyFe = buffer.readInt();
+		if (energyFe < 0) {
+			throw new IllegalArgumentException("energyFe must be non-negative");
+		}
 		solutions.clear();
 		solutionOutputs.clear();
 		requiredCapabilities.clear();
