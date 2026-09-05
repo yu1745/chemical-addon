@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "chemicaladdon:block/test_paper_detector"
+    }
+  }
+}

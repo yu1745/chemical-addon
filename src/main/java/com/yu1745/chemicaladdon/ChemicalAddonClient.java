@@ -11,6 +11,8 @@ import com.yu1745.chemicaladdon.reactor.VesselGaugeRenderer;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
 import com.yu1745.chemicaladdon.registry.AllContainers;
 import com.yu1745.chemicaladdon.registry.AllItems;
+import com.yu1745.chemicaladdon.registry.AllMenus;
+import com.yu1745.chemicaladdon.control.PlcScreen;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderers;
@@ -30,6 +32,7 @@ public class ChemicalAddonClient {
 	}
 
 	public static void init() {
+		net.minecraft.client.gui.screens.MenuScreens.register(AllMenus.PLC.get(), PlcScreen::new);
 		// render the vessel's item buffer + fluid surface inside the hollow interior
 		BlockEntityRenderers.register(AllBlockEntities.REACTOR_CONTROLLER.get(), ReactorControllerRenderer::new);
 		BlockEntityRenderers.register(AllBlockEntities.SETTLING_BASIN.get(), SettlingBasinRenderer::new);
@@ -70,6 +73,11 @@ public class ChemicalAddonClient {
 		// B4 metering inlet: plain SmartBlockEntityRenderer — renders the
 		// world-scroll dose value box on the outward face (no other visuals)
 		BlockEntityRenderers.register(AllBlockEntities.METERING_INLET.get(),
+			com.simibubi.create.foundation.blockEntity.renderer.SmartBlockEntityRenderer::new);
+		BlockEntityRenderers.register(AllBlockEntities.TEST_PAPER_DETECTOR.get(),
+			com.simibubi.create.foundation.blockEntity.renderer.SmartBlockEntityRenderer::new);
+		BlockEntityRenderers.register(AllBlockEntities.ORP_GAUGE.get(), VesselGaugeRenderer::new);
+		BlockEntityRenderers.register(AllBlockEntities.PROCESS_SENSOR.get(),
 			com.simibubi.create.foundation.blockEntity.renderer.SmartBlockEntityRenderer::new);
 
 		// per-stack fluid tint for every DynamicFluidContainerModel item: the sample

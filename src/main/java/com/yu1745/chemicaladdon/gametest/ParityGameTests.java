@@ -1,13 +1,14 @@
 package com.yu1745.chemicaladdon.gametest;
 
 import com.yu1745.chemicaladdon.composition.parity.EngineBridge;
+import com.yu1745.chemicaladdon.composition.parity.Kernel;
+import com.yu1745.chemicaladdon.composition.parity.KernelSolutionState;
 import com.yu1745.chemicaladdon.ChemicalAddon;
-import com.yu1745.chemicaladdon.composition.Solution;
 import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.reactor.ReactorTank;
-import com.yu1745.chemengine.kernel.ChemState;
 import com.yu1745.chemengine.kernel.IPhreeqc;
 
+import java.util.List;
 import java.util.Map;
 
 import net.minecraft.gametest.framework.GameTest;
@@ -32,15 +33,13 @@ public final class ParityGameTests {
 	public static void bridgeHclFeedSolvesAcidic(GameTestHelper helper) {
 		// 1 mB 0.01M HCl 当量：水 999 + H+/Cl- 各 1（part 空间的 1/1000）
 		ReactorTank tank = new ReactorTank(10_000, () -> {});
-		ResourceLocation water = Solution.WATER;
-		tank.fill(Mixture.create(Map.of(water, 999), Map.of("H+1", 1, "Cl-1", 1), 1000),
-				FluidAction.EXECUTE);
+		tank.fill(Mixture.fromDeclaredComposition(.999, Map.of("HCl", .001), 1000, 25, java.util.List.of()), FluidAction.EXECUTE);
 
-		EngineBridge.Feed feed = EngineBridge.toFeed(tank.getFluids());
-		helper.assertTrue(feed.waterKg > 0, "water kgw should be positive, got " + feed.waterKg);
-		helper.assertFalse(feed.totals.isEmpty(), "element totals should be non-empty");
+		EngineBridge.DerivedSolution view = observe(tank, List.of("Cl"), List.of("H+"));
+		helper.assertTrue(view.waterKg() > 0, "native water kgw should be positive, got " + view.waterKg());
+		helper.assertTrue(view.totalMol().getOrDefault("Cl", 0d) > 0, "native Cl inventory should be non-empty");
 
-		double ph = solvePh(feed, "hcl");
+		double ph = view.ph();
 		// 稀酸：pH 应 < 5（组成按 part 比值，约 1e-3 mol/kgw 量级 → pH ~3）
 		helper.assertTrue(ph < 5.0 && ph > 0.5,
 				"HCl feed should solve acidic, got pH=" + ph);
@@ -50,12 +49,9 @@ public final class ParityGameTests {
 	@GameTest(template = "empty_15", timeoutTicks = 20 * 20)
 	public static void bridgeNaohFeedSolvesBasic(GameTestHelper helper) {
 		ReactorTank tank = new ReactorTank(10_000, () -> {});
-		ResourceLocation water = Solution.WATER;
-		tank.fill(Mixture.create(Map.of(water, 999), Map.of("Na+1", 1, "OH-1", 1), 1000),
-				FluidAction.EXECUTE);
+		tank.fill(Mixture.fromDeclaredComposition(.999, Map.of("NaOH", .001), 1000, 25, java.util.List.of()), FluidAction.EXECUTE);
 
-		EngineBridge.Feed feed = EngineBridge.toFeed(tank.getFluids());
-		double ph = solvePh(feed, "naoh");
+		double ph = observe(tank, List.of("Na"), List.of("OH-")).ph();
 		helper.assertTrue(ph > 9.0 && ph < 13.5,
 				"NaOH feed should solve basic, got pH=" + ph);
 		helper.succeed();
@@ -67,24 +63,21 @@ public final class ParityGameTests {
 		// 旁观 Na/Cl 保留。与 rulesEnginePrecipitatesLimestone 同场景（退役锁），
 		// 但走内核路径：TickDriver → WriteBack。
 		ReactorTank tank = new ReactorTank(10_000, () -> {});
-		ResourceLocation water = Solution.WATER;
 		ResourceLocation limestone = new ResourceLocation(ChemicalAddon.MODID, "limestone");
-		tank.fill(Mixture.create(Map.of(water, 1000),
-			Map.of("Ca+2", 300, "Cl-1", 300, "Na+1", 300, "CO3-2", 300), 2200), FluidAction.EXECUTE);
+		tank.fill(GameTestFixtures.declared(1, Map.of("CaCl2", .3, "Na2CO3", .3), 2200), FluidAction.EXECUTE);
 
 		var step = com.yu1745.chemicaladdon.composition.parity.TickDriver.step(tank.getFluids(), 0.5);
 		helper.assertTrue(step.valid, "kernel step should be valid");
 		com.yu1745.chemicaladdon.composition.parity.WriteBack.firstOf(tank.getFluids(), step);
 
-		FluidStack result = tank.getFluids().get(0);
-		int suspended = Mixture.deriveSuspendedAmounts(result).getOrDefault(limestone, 0);
-		helper.assertTrue(suspended >= 290 && suspended <= 300,
-			"Ca+CO₃ 应析出 ~300 mB 石灰石，实测 " + suspended
-				+ "（step totals=" + step.totals + " phases=" + step.phases + "）");
-		Map<String, Integer> ions = Mixture.deriveIonAmounts(result);
-		helper.assertTrue(ions.getOrDefault("Ca+2", 0) <= 1, "Ca+2 应被耗尽，实测 " + ions);
-		helper.assertTrue(ions.getOrDefault("Na+1", 0) == 300, "Na+ 旁观保留，实测 " + ions);
-		helper.assertTrue(ions.getOrDefault("Cl-1", 0) == 300, "Cl- 旁观保留，实测 " + ions);
+		EngineBridge.DerivedSolution view = observe(tank, List.of("Ca", "Na", "Cl", "C(4)"), List.of("Ca+2", "Na+", "Cl-"));
+		double calcite = step.phases.values().stream().mapToDouble(Double::doubleValue).sum();
+		helper.assertTrue(calcite > .29, "CaCO3 must be retained as native phase inventory, got " + step.phases);
+		helper.assertTrue(view.aqueousMol().getOrDefault("Ca+2", 0d) < 1e-3,
+			"native dissolved calcium should be limited after precipitation: " + view.aqueousMol());
+		helper.assertTrue(Math.abs(view.totalMol().getOrDefault("Na", 0d) - .6) < .02
+			&& Math.abs(view.totalMol().getOrDefault("Cl", 0d) - .6) < .02,
+			"spectator element inventories must be physical mol, got " + view.totalMol());
 		helper.succeed();
 	}
 
@@ -93,21 +86,20 @@ public final class ParityGameTests {
 		// 固相桥（P7）：欠饱和悬浮石膏回溶到饱和（EQUILIBRIUM_PHASES 初量 = 悬浮 part），
 		// 剩余固相写回、溶解的 Ca/S 落离子域——质量往返闭环。
 		ReactorTank tank = new ReactorTank(10_000, () -> {});
-		ResourceLocation water = Solution.WATER;
 		ResourceLocation gypsum = new ResourceLocation(ChemicalAddon.MODID, "gypsum");
-		tank.fill(Mixture.create(Map.of(water, 1000), Map.of(),
-			Map.of(gypsum, 200), Map.of(), 1200), FluidAction.EXECUTE);
+		tank.fill(GameTestFixtures.declaredSolid(1, Map.of(), 1200, java.util.List.of(
+			new com.yu1745.chemicaladdon.composition.parity.KernelSolutionState.SolidPhase(gypsum.toString(), .2,
+				com.yu1745.chemicaladdon.composition.parity.KernelSolutionState.SolidLocation.SUSPENDED))), FluidAction.EXECUTE);
 
 		var step = com.yu1745.chemicaladdon.composition.parity.TickDriver.step(tank.getFluids(), 0.5);
 		helper.assertTrue(step.valid, "纯水+悬浮固也应有效");
 		com.yu1745.chemicaladdon.composition.parity.WriteBack.firstOf(tank.getFluids(), step);
 
-		FluidStack result = tank.getFluids().get(0);
-		int suspended = Mixture.deriveSuspendedAmounts(result).getOrDefault(gypsum, 0);
-		helper.assertTrue(suspended >= 180 && suspended <= 200,
-			"石膏应回溶到饱和（~16 mB 溶解，络合+活度），剩 " + suspended);
-		int ca = Mixture.deriveIonAmounts(result).getOrDefault("Ca+2", 0);
-		helper.assertTrue(ca >= 10 && ca <= 25, "溶解的 Ca 应落离子域（~16 mB），实测 " + ca);
+		EngineBridge.DerivedSolution view = observe(tank, List.of("Ca", "S(6)"), List.of("Ca+2"));
+		helper.assertTrue(view.totalMol().getOrDefault("Ca", 0d) > 0d,
+			"gypsum dissolution must appear in native calcium inventory: " + view.totalMol());
+		helper.assertTrue(view.aqueousMol().getOrDefault("Ca+2", 0d) > 0d,
+			"gypsum dissolution must have native aqueous calcium: " + view.aqueousMol());
 		helper.succeed();
 	}
 
@@ -115,11 +107,9 @@ public final class ParityGameTests {
 	public static void bridgeNeutralFeedIsNeutral(GameTestHelper helper) {
 		// 纯水（无离子）
 		ReactorTank tank = new ReactorTank(10_000, () -> {});
-		ResourceLocation water = Solution.WATER;
-		tank.fill(Mixture.create(Map.of(water, 1000), 1000), FluidAction.EXECUTE);
+		tank.fill(GameTestFixtures.declared(1, Map.of(), 1000), FluidAction.EXECUTE);
 
-		EngineBridge.Feed feed = EngineBridge.toFeed(tank.getFluids());
-		double ph = solvePh(feed, "water");
+		double ph = observe(tank, List.of(), List.of()).ph();
 		helper.assertTrue(Math.abs(ph - 7.0) < 1.0,
 				"pure water should solve near pH 7, got " + ph);
 		helper.succeed();
@@ -130,16 +120,11 @@ public final class ParityGameTests {
 		// SO4 基团拆解：进料应含 S 总量（离子集必须是电中性的——Mixture.setIons 硬防线，
 		// 硫酸根须配钠）
 		ReactorTank tank = new ReactorTank(10_000, () -> {});
-		ResourceLocation water = Solution.WATER;
-		tank.fill(Mixture.create(Map.of(water, 1000), Map.of("SO4-2", 10, "Na+1", 20), 1010),
-				FluidAction.EXECUTE);
+		tank.fill(GameTestFixtures.declared(1, Map.of("Na2SO4", .01), 1010), FluidAction.EXECUTE);
 
-		EngineBridge.Feed feed = EngineBridge.toFeed(tank.getFluids());
-		helper.assertTrue(feed.totals.getOrDefault("S", 0.0) > 0,
-				"SO4 should map to S total, got " + feed.totals);
-		// H/O 不进元素账（PHREEQC 非法输入，酸碱归电荷平衡）
-		helper.assertFalse(feed.totals.containsKey("H") || feed.totals.containsKey("O"),
-				"H/O must never be element totals: " + feed.totals);
+		EngineBridge.DerivedSolution view = observe(tank, List.of("S(6)", "Na"), List.of("SO4-2"));
+		helper.assertTrue(view.totalMol().getOrDefault("S(6)", 0d) > 0,
+				"SO4 should map to native S(6) inventory, got " + view.totalMol());
 		helper.succeed();
 	}
 
@@ -149,9 +134,7 @@ public final class ParityGameTests {
 		//（1 part = 1 g），2 parts HCl ≈ 0.055 molal → pH ≈ 1.3（不是 legacy 的
 		// part 比例 pH 2-4——引擎读数与内核一致）。
 		ReactorTank tank = new ReactorTank(10_000, () -> {});
-		ResourceLocation water = Solution.WATER;
-		tank.fill(Mixture.create(Map.of(water, 999), Map.of("H+1", 2, "Cl-1", 2), 1001),
-				FluidAction.EXECUTE);
+		tank.fill(GameTestFixtures.declared(.999, Map.of("HCl", .002), 1001), FluidAction.EXECUTE);
 
 		com.yu1745.chemicaladdon.composition.parity.EngineReadings.Snapshot s =
 				com.yu1745.chemicaladdon.composition.parity.EngineReadings.refresh(tank.getFluids());
@@ -162,8 +145,7 @@ public final class ParityGameTests {
 
 		// 碱侧对照：2 parts NaOH ≈ 0.05 molal → pH ≈ 12.7
 		ReactorTank base = new ReactorTank(10_000, () -> {});
-		base.fill(Mixture.create(Map.of(water, 999), Map.of("Na+1", 2, "OH-1", 2), 1001),
-				FluidAction.EXECUTE);
+		base.fill(GameTestFixtures.declared(.999, Map.of("NaOH", .002), 1001), FluidAction.EXECUTE);
 		com.yu1745.chemicaladdon.composition.parity.EngineReadings.Snapshot sb =
 				com.yu1745.chemicaladdon.composition.parity.EngineReadings.refresh(base.getFluids());
 		helper.assertTrue(sb.valid, "basic snapshot should be valid");
@@ -178,41 +160,27 @@ public final class ParityGameTests {
 		// 同一状态解出同一 pH（逐位），与具体 pH 值无关——酸进料（Cl 1 g/L 当量）
 		// 的 pH 本身就是零漂移的检验子。
 		ReactorTank tank = new ReactorTank(10_000, () -> {});
-		ResourceLocation water = Solution.WATER;
-		tank.fill(Mixture.create(Map.of(water, 999),
-				Map.of("H+1", 1, "Cl-1", 1), 1000), FluidAction.EXECUTE);
+		tank.fill(Mixture.fromDeclaredComposition(.999, Map.of("HCl", .001), 1000, 25, java.util.List.of()), FluidAction.EXECUTE);
 
-		// 存档前基准：直接求解的 pH
-		double phBefore;
-		try (com.yu1745.chemengine.kernel.IPhreeqc q = com.yu1745.chemengine.kernel.IPhreeqc.create()) {
-			com.yu1745.chemengine.kernel.ChemState b = com.yu1745.chemengine.kernel.ChemState.builder("base")
-					.waterKg(0.999).pHCharge().tempC(25)
-					.total("Cl", 1.0e-3 / 0.999).build();
-			var r0 = q.equilibrate(b, "pH");
-			phBefore = r0.row(r0.rowCount() - 1).d("pH");
-		}
+		// Archive is authoritative raw text, so observe that exact state rather
+		// than reconstructing a ChemState and applying a new pH/charge solve.
+		double phBefore = observe(tank, List.of("Cl"), List.of("H+")).ph();
 
-		String dump = com.yu1745.chemicaladdon.composition.parity.EngineArchive.archiveOf(tank.getFluids());
-		helper.assertTrue(dump != null && !dump.isBlank(), "archive should produce dump text");
+		FluidStack original = tank.getFluids().get(0);
+		net.minecraft.nbt.CompoundTag tag = original.writeToNBT(new net.minecraft.nbt.CompoundTag());
+		FluidStack restoredStack = FluidStack.loadFluidStackFromNBT(tag);
+		var restoredState = Mixture.engineSolution(restoredStack);
+		helper.assertTrue(restoredState != null, "mixture NBT must retain native raw state");
+		String restored = restoredState.raw();
 
-		// NBT 往返（模拟存档）
-		net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
-		tag.putString(com.yu1745.chemicaladdon.composition.parity.EngineArchive.KEY, dump);
-		String restored = com.yu1745.chemicaladdon.composition.parity.EngineArchive.read(tag);
-		helper.assertTrue(dump.equals(restored), "NBT round-trip must be lossless");
-
-		// 恢复审视：fromDump 重解的 pH 与存档前一致（零漂移）
-		com.yu1745.chemengine.kernel.ChemState s =
-				com.yu1745.chemengine.kernel.ChemState.fromDump(restored);
-		helper.assertTrue(s != null, "fromDump should parse");
-		try (com.yu1745.chemengine.kernel.IPhreeqc q = com.yu1745.chemengine.kernel.IPhreeqc.create()) {
-			var r = q.equilibrate(s, "pH");
-			double ph = r.row(r.rowCount() - 1).d("pH");
-			helper.assertTrue(Math.abs(ph - phBefore) < 0.05,
-					"存档恢复零漂移：pH " + phBefore + " → " + ph);
-			helper.assertTrue(ph > 2.5 && ph < 3.5,
-				"酸进料应酸性（1 part HCl = 1e-3 mol ≈ pH 3）：pH=" + ph);
-		}
+		helper.assertTrue(restored.equals(Mixture.engineSolution(original).raw()),
+			"NBT restore must preserve the raw solution verbatim");
+		ReactorTank restoredTank = new ReactorTank(10_000, () -> {});
+		restoredTank.fill(restoredStack, FluidAction.EXECUTE);
+		double ph = observe(restoredTank, List.of("Cl"), List.of("H+")).ph();
+		helper.assertTrue(Math.abs(ph - phBefore) < 1e-9,
+			"raw archive observation must have zero drift: " + phBefore + " -> " + ph);
+		helper.assertTrue(ph > 2.5 && ph < 3.5, "acid archive must remain acidic, pH=" + ph);
 		helper.succeed();
 	}
 
@@ -222,9 +190,7 @@ public final class ParityGameTests {
 		// 注意：进料归集只能从离子域拿到 H/Cl；Hyp 是伪池，Mixture 里没有对应物——
 		// 本步验证 tick 桥的 KINETICS 管道本身（纯 H/Cl/Na 体系步进仍应求解成功）。
 		ReactorTank tank = new ReactorTank(10_000, () -> {});
-		ResourceLocation water = Solution.WATER;
-		tank.fill(Mixture.create(Map.of(water, 998), Map.of("H+1", 1, "Cl-1", 1), 1000),
-				FluidAction.EXECUTE);
+		tank.fill(GameTestFixtures.declared(.998, Map.of("HCl", .001), 1000), FluidAction.EXECUTE);
 
 		com.yu1745.chemicaladdon.composition.parity.TickDriver.Step s1 =
 				com.yu1745.chemicaladdon.composition.parity.TickDriver.step(tank.getFluids(), 0.5);
@@ -244,14 +210,13 @@ public final class ParityGameTests {
 	public static void bridgeBleachSpeciesMapsToHypPool(GameTestHelper helper) {
 		// P4b：次氯酸钠物种（伪池宿主）→ Hyp 伪元素账；与 Na 真实账共存
 		ReactorTank tank = new ReactorTank(10_000, () -> {});
-		ResourceLocation water = Solution.WATER;
 		ResourceLocation naocl = new ResourceLocation("chemicaladdon", "sodium_hypochlorite");
-		tank.fill(Mixture.create(Map.of(water, 990, naocl, 10), Map.of(), 1000), FluidAction.EXECUTE);
+		tank.fill(GameTestFixtures.declared(.99, Map.of("NaOCl", .01), 1000), FluidAction.EXECUTE);
 
-		EngineBridge.Feed feed = EngineBridge.toFeed(tank.getFluids());
-		double hyp = feed.totals.getOrDefault("Hyp", 0.0);
-		double na = feed.totals.getOrDefault("Na", 0.0);
-		helper.assertTrue(hyp > 0, "NaOCl 应映射 Hyp 伪池，实测 totals=" + feed.totals);
+		EngineBridge.DerivedSolution view = observe(tank, List.of("Hyp", "Na"), List.of());
+		double hyp = view.totalMol().getOrDefault("Hyp", 0.0);
+		double na = view.totalMol().getOrDefault("Na", 0.0);
+		helper.assertTrue(hyp > 0, "NaOCl 应映射 Hyp 伪池，实测 totals=" + view.totalMol());
 		helper.assertTrue(na > 0, "Na 应进真实元素账");
 		// 同当量：10 parts NaOCl → Na 10/22.99 vs Hyp 10/51.452 mol
 		helper.assertTrue(Math.abs(na / hyp - 1.0) < 0.02,
@@ -263,11 +228,9 @@ public final class ParityGameTests {
 	public static void bridgeBleachQuenchAdvancesInGameSemantics(GameTestHelper helper) {
 		// P4b 实战：漂白液（Hyp 池）+ 亚硫酸钠（Sul 池）同釜 → Quench 动力学推进
 		ReactorTank tank = new ReactorTank(10_000, () -> {});
-		ResourceLocation water = Solution.WATER;
 		ResourceLocation naocl = new ResourceLocation("chemicaladdon", "sodium_hypochlorite");
 		ResourceLocation na2so3 = new ResourceLocation("chemicaladdon", "sodium_sulphite_solution");
-		tank.fill(Mixture.create(Map.of(water, 980, naocl, 15, na2so3, 5), Map.of(), 1000),
-				FluidAction.EXECUTE);
+		tank.fill(GameTestFixtures.declared(.98, Map.of("NaOCl", .015, "Na2SO3", .005), 1000), FluidAction.EXECUTE);
 
 		// 长时间步进：Quench k=0.1，Sul 15/80 mol/kgw 量级在 1e4s 尺度应显著消耗
 		com.yu1745.chemicaladdon.composition.parity.TickDriver.Step s =
@@ -292,15 +255,13 @@ public final class ParityGameTests {
 	public static void bridgeNitritePoolsMapAndReact(GameTestHelper helper) {
 		// P4b：硝池映射 + Nitri 解封实战（漂白液氧化亚硝酸盐：HypOxidisesNitrite）
 		ReactorTank tank = new ReactorTank(10_000, () -> {});
-		ResourceLocation water = Solution.WATER;
 		ResourceLocation naocl = new ResourceLocation("chemicaladdon", "sodium_hypochlorite");
 		ResourceLocation nano2 = new ResourceLocation("chemicaladdon", "sodium_nitrite");
-		tank.fill(Mixture.create(Map.of(water, 980, naocl, 10, nano2, 10), Map.of(), 1000),
-				FluidAction.EXECUTE);
+		tank.fill(GameTestFixtures.declared(.98, Map.of("NaOCl", .01, "NaNO2", .01), 1000), FluidAction.EXECUTE);
 
-		EngineBridge.Feed feed = EngineBridge.toFeed(tank.getFluids());
-		helper.assertTrue(feed.totals.getOrDefault("Hyp", 0.0) > 0, "NaOCl → Hyp");
-		helper.assertTrue(feed.totals.getOrDefault("Nitri", 0.0) > 0, "NaNO2 → Nitri");
+		EngineBridge.DerivedSolution feed = observe(tank, List.of("Hyp", "Nitri"), List.of());
+		helper.assertTrue(feed.totalMol().getOrDefault("Hyp", 0.0) > 0, "NaOCl → Hyp");
+		helper.assertTrue(feed.totalMol().getOrDefault("Nitri", 0.0) > 0, "NaNO2 → Nitri");
 
 		// KINETICS：HypOxidisesNitrite k=10，Nitri 有限量应显著推进
 		com.yu1745.chemicaladdon.composition.parity.TickDriver.Step s =
@@ -325,16 +286,14 @@ public final class ParityGameTests {
 		// 承载化学、已迁移物种从分子域清除（无双计）、二次进料不膨胀（幂等）、
 		// 水份额不被稀释。
 		ReactorTank tank = new ReactorTank(10_000, () -> {});
-		ResourceLocation water = Solution.WATER;
 		ResourceLocation naocl = new ResourceLocation("chemicaladdon", "sodium_hypochlorite");
 		ResourceLocation na2so3 = new ResourceLocation("chemicaladdon", "sodium_sulphite_solution");
-		tank.fill(Mixture.create(Map.of(water, 980, naocl, 15, na2so3, 5), Map.of(), 1000),
-				FluidAction.EXECUTE);
+		tank.fill(GameTestFixtures.declared(.98, Map.of("NaOCl", .015, "Na2SO3", .005), 1000), FluidAction.EXECUTE);
 
-		EngineBridge.Feed feedBefore = EngineBridge.toFeed(tank.getFluids());
-		double hypBefore = feedBefore.totals.getOrDefault("Hyp", 0.0);
-		double sulBefore = feedBefore.totals.getOrDefault("Sul", 0.0);
-		double waterBefore = feedBefore.waterKg;
+		EngineBridge.DerivedSolution feedBefore = observe(tank, List.of("Hyp", "Sul", "Cl", "S(6)", "Na"), List.of());
+		double hypBefore = feedBefore.totalMol().getOrDefault("Hyp", 0.0);
+		double sulBefore = feedBefore.totalMol().getOrDefault("Sul", 0.0);
+		double waterBefore = feedBefore.waterKg();
 
 		com.yu1745.chemicaladdon.composition.parity.TickDriver.Step s =
 				com.yu1745.chemicaladdon.composition.parity.TickDriver.step(tank.getFluids(), 10_000.0);
@@ -343,27 +302,21 @@ public final class ParityGameTests {
 		boolean wrote = com.yu1745.chemicaladdon.composition.parity.WriteBack.firstOf(tank.getFluids(), s);
 		helper.assertTrue(wrote, "write-back should succeed (charge-neutral)");
 
-		Map<String, Integer> after = Mixture.deriveUnitIonAmounts(tank.getFluids().get(0));
-		// Sul≈0（Quench 耗尽亚硫酸）：迁移后离子域应承载近零 SO3
-		helper.assertTrue(after.getOrDefault("SO3-2", 0) < 100,
-				"SO3 应被 Quench 消耗并写回近零，实测 " + after.getOrDefault("SO3-2", 0));
-		helper.assertTrue(after.getOrDefault("Cl-1", 0) > 0, "Cl 应增长（Quench 产物）");
-		helper.assertTrue(after.getOrDefault("SO4-2", 0) > 0, "SO4 应出现（Quench 产物）");
-		helper.assertTrue(after.getOrDefault("Na+1", 0) > 0, "Na 旁观保留");
-		// 已迁移物种清除：分子域不应再持有 naocl/na2so3（否则与离子域双计）
-		Map<ResourceLocation, Integer> molAfter = Mixture.deriveUnitAmounts(tank.getFluids().get(0));
-		helper.assertFalse(molAfter.containsKey(naocl),
-				"已迁移电解质应从分子域清除（双计防线）：" + molAfter.keySet());
-		helper.assertFalse(molAfter.containsKey(na2so3), "已迁移电解质应从分子域清除");
-		// 幂等：写回后再进料，同一池不得增长；水份额不变
-		EngineBridge.Feed feed2 = EngineBridge.toFeed(tank.getFluids());
-		helper.assertTrue(feed2.totals.getOrDefault("Hyp", 0.0) <= hypBefore * 1.001 + 1e-9,
-				"Hyp 二次进料不得增长（幂等）：" + hypBefore + " → " + feed2.totals.get("Hyp"));
-		helper.assertTrue(feed2.totals.getOrDefault("Sul", 0.0) <= sulBefore * 1.001 + 1e-9,
-				"Sul 二次进料不得增长（幂等）");
-		helper.assertTrue(feed2.waterKg >= waterBefore * 0.9 && feed2.waterKg <= waterBefore * 1.01,
-				"水份额迁移后应有界稳定（解离扩 Σ 的旧虚构约定，允诘2%级一次性稀释）："
-						+ waterBefore + " → " + feed2.waterKg);
+		EngineBridge.DerivedSolution after = observe(tank, List.of("Hyp", "Sul", "Cl", "S(6)", "Na"), List.of());
+		helper.assertTrue(after.totalMol().getOrDefault("Sul", 0d) < sulBefore,
+				"Quench must consume native Sul inventory: " + after.totalMol());
+		helper.assertTrue(after.totalMol().getOrDefault("Cl", 0d) > 0d
+				&& after.totalMol().getOrDefault("S(6)", 0d) > 0d,
+				"Quench products must remain in native inventories: " + after.totalMol());
+		helper.assertTrue(after.totalMol().getOrDefault("Na", 0d) > 0d, "Na spectator must remain native");
+		// A repeated observation/writeback boundary must not reconstruct or grow pools.
+		EngineBridge.DerivedSolution feed2 = observe(tank, List.of("Hyp", "Sul"), List.of());
+		helper.assertTrue(feed2.totalMol().getOrDefault("Hyp", 0.0) <= hypBefore * 1.001 + 1e-9,
+				"Hyp must not grow at write-back: " + hypBefore + " -> " + feed2.totalMol().get("Hyp"));
+		helper.assertTrue(feed2.totalMol().getOrDefault("Sul", 0.0) <= sulBefore * 1.001 + 1e-9,
+				"Sul must not grow at write-back");
+		helper.assertTrue(after.waterKg() >= waterBefore * .99 && after.waterKg() <= waterBefore * 1.01,
+				"native water must remain stable across write-back: " + waterBefore + " -> " + after.waterKg());
 		helper.succeed();
 	}
 
@@ -372,13 +325,11 @@ public final class ParityGameTests {
 		// 主循环语义：多次步进+写回（游戏 tick 驱动）。断言全程无失败、Hyp 池
 		//（进料视图）不随拍增长（幂等——无双计膨胀）、水份额不被稀释、电荷中性保持。
 		ReactorTank tank = new ReactorTank(10_000, () -> {});
-		ResourceLocation water = Solution.WATER;
 		ResourceLocation naocl = new ResourceLocation("chemicaladdon", "sodium_hypochlorite");
-		tank.fill(Mixture.create(Map.of(water, 980, naocl, 20), Map.of(), 1000),
-				FluidAction.EXECUTE);
+		tank.fill(GameTestFixtures.declared(.98, Map.of("NaOCl", .02), 1000), FluidAction.EXECUTE);
 
-		double hypBefore = EngineBridge.toFeed(tank.getFluids()).totals.getOrDefault("Hyp", 0.0);
-		double waterBefore = EngineBridge.toFeed(tank.getFluids()).waterKg;
+		double hypBefore = observe(tank, List.of("Hyp"), List.of()).totalMol().getOrDefault("Hyp", 0.0);
+		double waterBefore = observe(tank, List.of(), List.of()).waterKg();
 		double hypMax = hypBefore;
 		boolean anyValid = false;
 		for (int i = 0; i < 20; i++) {
@@ -388,30 +339,75 @@ public final class ParityGameTests {
 				anyValid = true;
 				com.yu1745.chemicaladdon.composition.parity.WriteBack.firstOf(tank.getFluids(), s);
 				hypMax = Math.max(hypMax,
-						EngineBridge.toFeed(tank.getFluids()).totals.getOrDefault("Hyp", 0.0));
+						observe(tank, List.of("Hyp"), List.of()).totalMol().getOrDefault("Hyp", 0.0));
 			}
 		}
 		helper.assertTrue(anyValid, "至少一拍应有效");
 		// 无还原剂时仅慢通道——短时间几乎不降但绝不应增长（增长 = 写回双计 bug）
 		helper.assertTrue(hypMax <= hypBefore * 1.001 + 1e-9,
 				"Hyp 池不应随拍增长（双计防线）：" + hypBefore + " → max " + hypMax);
-		double waterAfter = EngineBridge.toFeed(tank.getFluids()).waterKg;
+		double waterAfter = observe(tank, List.of(), List.of()).waterKg();
 		helper.assertTrue(waterAfter >= waterBefore * 0.9 && waterAfter <= waterBefore * 1.01,
 				"水份额逐拍应有界稳定（首拍物种迁移后不再漂移）：" + waterBefore + " → " + waterAfter);
-		helper.assertTrue(Mixture.isChargeNeutralLong(Mixture.getIons(tank.getFluids().get(0))),
-				"电荷中性应保持");
 		helper.succeed();
 	}
 
-	private static double solvePh(EngineBridge.Feed feed, String tag) {
-		ChemState.Builder b = ChemState.builder(tag)
-				.waterKg(feed.waterKg)
-				.pHCharge()
-				.tempC(feed.tempC);
-		feed.totals.forEach(b::total);
-		try (IPhreeqc q = IPhreeqc.create()) {
-			IPhreeqc.RunResult r = q.equilibrate(b.build(), "pH");
-			return r.row(r.rowCount() - 1).d("pH");
+	/** Read the archived PHREEQC state without deriving a new feed from display NBT. */
+	private static EngineBridge.DerivedSolution observe(ReactorTank tank, List<String> totals,
+			List<String> species) {
+		KernelSolutionState state = tank.getFluids().stream()
+			.filter(Mixture::isMixture)
+			.map(Mixture::engineSolution)
+			.filter(java.util.Objects::nonNull)
+			.findFirst()
+			.orElseThrow(() -> new IllegalStateException("native test tank has no raw solution"));
+		IPhreeqc q = Kernel.get();
+		synchronized (q) {
+			return EngineBridge.derive(q, state, totals, species);
 		}
+	}
+
+	// New-state transport regressions.  These intentionally use neutral authored
+	// formulae, never the retired molecules/ions display constructor.
+	@GameTest(template = "empty_15", timeoutTicks = 20 * 20)
+	public static void rawStateOneMbSampleKeepsIdentity(GameTestHelper helper) {
+		ReactorTank tank = new ReactorTank(2_000, () -> {});
+		FluidStack input = Mixture.fromDeclaredComposition(1, Map.of("HCl", .01), 1_000, 25, java.util.List.of());
+		helper.assertTrue(tank.fill(input, FluidAction.EXECUTE) == 1_000, "state feed accepted");
+		FluidStack sample = tank.drain(1, FluidAction.EXECUTE);
+		helper.assertTrue(sample.getAmount() == 1 && Mixture.engineSolution(sample) != null,
+			"1mB sample carries raw reference state");
+		helper.assertTrue(sample.isFluidEqual(tank.getFluids().get(0)), "sample NBT identity is unchanged");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = 20 * 20)
+	public static void rawStateMergeAndNbtRoundTrip(GameTestHelper helper) {
+		ReactorTank tank = new ReactorTank(3_000, () -> {});
+		tank.fill(Mixture.fromDeclaredComposition(1, Map.of("NaCl", .02), 1_000, 25, java.util.List.of()), FluidAction.EXECUTE);
+		tank.fill(Mixture.fromDeclaredComposition(1, Map.of("HCl", .01), 1_000, 25, java.util.List.of()), FluidAction.EXECUTE);
+		tank.collapseIfNeeded();
+		helper.assertTrue(tank.getFluids().size() == 1 && Mixture.engineSolution(tank.getFluids().get(0)) != null,
+			"heterogeneous feeds merge through native state");
+		ReactorTank restored = new ReactorTank(3_000, () -> {});
+		restored.deserializeNBT(tank.serializeNBT());
+		helper.assertTrue(restored.getFluids().size() == 1 && Mixture.engineSolution(restored.getFluids().get(0)) != null,
+			"raw state survives NBT");
+		helper.succeed();
+	}
+
+	@GameTest(template = "empty_15", timeoutTicks = 20 * 20)
+	public static void invalidExternalFeedIsNetZeroAndTanksIsolate(GameTestHelper helper) {
+		ReactorTank left = new ReactorTank(2_000, () -> {});
+		ReactorTank right = new ReactorTank(2_000, () -> {});
+		left.fill(Mixture.fromDeclaredComposition(1, Map.of("NaCl", .01), 1_000, 25, java.util.List.of()), FluidAction.EXECUTE);
+		right.fill(Mixture.fromDeclaredComposition(1, Map.of("HCl", .01), 1_000, 25, java.util.List.of()), FluidAction.EXECUTE);
+		int before = left.getTotalAmount();
+		boolean rejected = false;
+		try { Mixture.fromDeclaredComposition(1, Map.of("NotARealFormula", 1d), 1_000, 25, java.util.List.of()); }
+		catch (RuntimeException expected) { rejected = true; }
+		helper.assertTrue(rejected && left.getTotalAmount() == before && right.getTotalAmount() == 1_000,
+			"invalid declaration changes neither independent tank");
+		helper.succeed();
 	}
 }

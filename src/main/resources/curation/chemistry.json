@@ -1,12 +1,13 @@
 {
-  "_doc": "策展表（G2）：介稳伪元素 + 动力学白名单反应 + 平衡相补丁。手工内容的边界 = 本文件（与 sit.dat 同性质的数据，非逐场景脚本）。rateExpression 为 PHREEQC BASIC 表达式（r 的单位 mol/kgw/s），可引用 PARM(n)（取自 parms，游戏侧可经 Curation.kineticsBlock 覆盖）；formula 的 value 为元素系数（负=消耗，正=生成）；capacity 为反应物可用量上限 mol（防失控）。k 值是游戏节奏旋钮，不是查证常数。。反应分两类：kind=bulk（液内反应，默认全量发射时包含，自门控兜底）；kind=interface（界面/储库交换反应，如气体吸收——必须在 kineticsBlock 的 include 里显式 opt-in 并由场景供 PARM，否则\"虚拟大气\"会污染场景）。",
-  "_doc2": "设计笔记：伪气相做不成（相方程按元素配平，伪物种名不含真实 S/O token 则无法平衡；含了则向真实账本缴税）。介稳气体吸收的正确通道 = 策展动力学反应（已落地：SulAbsorb，r = kLa*(H*P_SO2 - TOT(Sul))，自限于亨利溶解度，P_SO2 游戏侧供压；P→0 时逆向解吸）。代价：伪池无 pKa1 分子态分级，pH 粗糙但守恒（实测 1.24 molal Sul → pH 0.12，平衡参考 0.28，同量级）。。引擎边界（2026-08-17 探针链实证）：①-formula 价态 token 结构性不可能（get_elts_in_species 只解析化学式；早前 k1 的\"成功\"是零速率跳过解析的假象）；②KINETICS 销毁溶液中不存在的池会触发无限 negative-mole 恢复循环（挂死非报错）——一切销毁池的反应必须以 TOT(该池) 做速率门；③伪元素名不得是\"前缀+数字\"（Nit2 会解析成 Nit×2，故用 Nitra/Nitri）；④伪物种名不得含真实元素 token（HNO3/HNO2 会进 N/O 账本，故用 HNitra/HNitri）；⑤interface 反应的气源不入液账（Cl2 吸收=创建 Hyp+Cl，不存在\"Dichl 液内销毁\"）。",
+  "_doc": "策展表（G2）：介稳伪元素 + 动力学白名单反应 + 平衡相补丁。手工内容的边界 = 本文件（与 sit.dat 同性质的数据，非逐场景脚本）。rateExpression 为 PHREEQC BASIC 表达式（r 的单位 mol/kgw/s）；RATES 以 TOT(\"water\") 将其转换为本体系的 mol。formula 的 value 为元素源项（负=消耗，正=生成），不是离子方程式；伪元素会按 pseudoElements.atoms 展开。bulk 反应展开后必须真实原子守恒；interface 反应的展开原子流必须等于 reservoirAtoms（外部气/液储库输入）。capacity 为反应物可用量上限 mol（防失控）。k 值是游戏节奏旋钮，不是查证常数。反应分两类：kind=bulk（液内反应，默认全量发射时包含，自门控兜底）；kind=interface（界面/储库交换反应，如气体吸收——必须在 kineticsBlock 的 include 里显式 opt-in 并由场景供 PARM，否则\"虚拟大气\"会污染场景）。",
+  "_doc2": "设计笔记：伪气相做不成（相方程按元素配平，伪物种名不含真实 S/O token 则无法平衡；含了则向真实账本缴税）。介稳气体吸收走策展 interface 动力学（SulAbsorb：r = kLa*(H*P_SO2 - TOT(Sul))，P→0 时逆向解吸）；其 formula 展开后的原子流必须显式等于外部储库 SO2。伪池无 pKa1 分子态分级；先前 1.24 molal Sul/pH 0.12 是旧水消耗模型记录，不能作为当前模型数值承诺。引擎边界（2026-08-17 探针链实证）：①-formula 价态 token 结构性不可能（get_elts_in_species 只解析化学式；早前 k1 的“成功”是零速率跳过解析的假象）；②KINETICS 销毁溶液中不存在的池会触发无限 negative-mole 恢复循环（挂死非报错）——一切销毁池的反应必须以 TOT(该池) 做速率门；③伪元素名不得是“前缀+数字”（Nit2 会解析成 Nit×2，故用 Nitra/Nitri）；④伪物种名不得含真实元素 token（HNO3/HNO2 会进 N/O 账本，故用 HNitra/HNitri）；⑤当前 interface 仅记录气源真实原子流，不承诺有限气相库存、Cl2 逸出或 S(cr) 产物已建模。",
   "pseudoElements": [
     {
       "element": "Hyp",
       "label": "次氯酸根池（OCl-，介稳）",
       "molarMass": 51.452,
       "master": "Hyp-",
+      "atoms": { "Cl": 1, "O": 1 },
       "species": [
         {
           "equation": "Hyp- = Hyp-",
@@ -30,6 +31,7 @@
       "label": "亚硫酸根池（SO3^2-，介稳）",
       "molarMass": 80.064,
       "master": "Sul-2",
+      "atoms": { "S": 1, "O": 3 },
       "species": [
         {
           "equation": "Sul-2 = Sul-2",
@@ -48,6 +50,7 @@
       "label": "硝酸根池（NO3-，介稳）",
       "molarMass": 62.004,
       "master": "Nitra-",
+      "atoms": { "N": 1, "O": 3 },
       "species": [
         {
           "equation": "Nitra- = Nitra-",
@@ -66,6 +69,7 @@
       "label": "亚硝酸根池（NO2-，介稳）",
       "molarMass": 46.0055,
       "master": "Nitri-",
+      "atoms": { "N": 1, "O": 2 },
       "species": [
         {
           "equation": "Nitri- = Nitri-",
@@ -78,9 +82,68 @@
           "note": "HNitri = HNO2，pKa=3.3"
         }
       ]
+    },
+    {
+      "element": "Mnvii",
+      "label": "高锰酸根池（MnO4-，介稳）",
+      "molarMass": 118.935,
+      "master": "Mnvii-",
+      "atoms": { "Mn": 1, "O": 4 },
+      "species": [
+        {
+          "equation": "Mnvii- = Mnvii-",
+          "logK": 0.0,
+          "note": "master 恒等式；避免批式续算把 Mn(VII) 预先坍缩为 Mn(II)/MnO2"
+        }
+      ]
+    },
+    {
+      "element": "Sulfide",
+      "label": "硫化物池（S2-/HS-/H2S，介稳）",
+      "molarMass": 32.066,
+      "master": "Sulfide-2",
+      "atoms": { "S": 1 },
+      "species": [
+        {
+          "equation": "Sulfide-2 = Sulfide-2",
+          "logK": 0.0,
+          "note": "master 恒等式"
+        },
+        {
+          "equation": "Sulfide-2 + H+ = HSulfide-",
+          "logK": 17.1,
+          "note": "HSulfide- = HS-；沿 sit.dat HS- = H+ + S-2 的 log_k -17.1（04CHI），25°C"
+        },
+        {
+          "equation": "HSulfide- + H+ = H2Sulfide",
+          "logK": 6.99,
+          "note": "H2Sulfide = H2S；沿 sit.dat H+ + HS- = H2S 的 log_k 6.99，25°C"
+        }
+      ]
+    },
+    {
+      "element": "Szero",
+      "label": "元素硫池（S0，以 S8 溶解度为相平衡参考）",
+      "molarMass": 32.066,
+      "master": "Szero8",
+      "atoms": { "S": 1 },
+      "species": [
+        {
+          "equation": "Szero8 = Szero8",
+          "logK": 0.0,
+          "note": "master 恒等式；Szero8 的公式含 8 个 Szero 单元"
+        }
+      ]
     }
   ],
-  "phases": [],
+  "phases": [
+    {
+      "name": "EngineSulfur",
+      "equation": "Szero = 0.125 Szero8",
+      "logK": -0.9651558,
+      "note": "S8(s) = 0.125 S8(aq)：298 K 水中 S8 溶解度 1.9e-8 mol/kg（Boulegue 1978）；相量按 S 原子 mol 记账。"
+    }
+  ],
   "reactions": [
     {
       "name": "Quench",
@@ -98,12 +161,11 @@
     },
     {
       "name": "AcidActivatesBleach",
-      "note": "OCl- + Cl- + 2H+ -> Cl2 + H2O 的净元素流（Hyp 池 -> 真实 Cl 池）：pH 门控，酸活化漂白液破坏 OCl-。Cl2(aq) 的相分布由 pe 控制（pe~4 下全为 Cl-）；气相氯逸出建模需要 Dichl 伪元素 + Cl2(g)，待后续策展",
+      "note": "酸门控的 OCl- 失效：Hyp 池以守恒元素源项转入真实 Cl/O。真实 Cl2(g) 逸出尚未有独立气相库存，故不得从 bulk 公式删除 H/O 或 Cl；该路径只表示酸触发的氧化力损失，气相转移待专门储库实现。",
       "formula": {
         "Hyp": -1,
         "Cl": 1,
-        "H": -2,
-        "O": -1
+        "O": 1
       },
       "rateExpression": "0.5 * TOT(\"Hyp\") * MOL(\"H+\")",
       "capacity": 1000.0,
@@ -111,12 +173,12 @@
     },
     {
       "name": "SulAbsorb",
-      "note": "SO2 介稳吸收（动力学，替代伪气相）：r = kLa*(H*P_SO2 - TOT(Sul))，自限于亨利溶解度；P_SO2=0 时逆向解吸（再生 SO2）。吸收 1 Sul 消耗 1 H2O",
+      "note": "SO2 介稳吸收（动力学，替代伪气相）：r = kLa*(H*P_SO2 - TOT(Sul))，自限于亨利溶解度；P_SO2=0 时逆向解吸（再生 SO2）。外部储库按 SO2 注入 S1O2；H 不得凭空从液相移除。",
       "formula": {
         "Sul": 1,
-        "H": -2,
         "O": -1
       },
+      "reservoirAtoms": { "S": 1, "O": 2 },
       "rateExpression": "0.02 * (PARM(1) * PARM(2) - TOT(\"Sul\"))",
       "parms": [
         1.24,
@@ -132,10 +194,11 @@
     {
       "name": "FerrousReducesNitrate",
       "kind": "bulk",
-      "note": "NO3- + 2Fe2+ + 2H+ -> NO2- + 2Fe3+ + H2O 的池化净流：Nitra→Nitri。Fe 仅作速率门（元素账不动——价态 token 结构性不可能），Fe(2) 取平衡浓度；电子计量由速率门近似",
+      "note": "Nitra→Nitri 的守恒元素源项：池的 NO3 原子转为 NO2 与一个真实 O。Fe(2) 目前是速率门；原生平衡是否随补齐 O 自动改变 Fe 价态须由回归探针确认，不能以本条删除 Fe 库存。",
       "formula": {
         "Nitra": -1,
-        "Nitri": 1
+        "Nitri": 1,
+        "O": 1
       },
       "rateExpression": "0.05 * TOT(\"Nitra\") * TOT(\"Fe(+2)\")",
       "capacity": 1000.0
@@ -143,10 +206,11 @@
     {
       "name": "HypOxidisesFerrous",
       "kind": "bulk",
-      "note": "OCl- + 2Fe2+ + 2H+ -> Cl- + 2Fe3+ + H2O 的池化净流：漂白液被亚铁污染消耗（灭菌/氧化力损失）。Fe 仅作速率门",
+      "note": "Hyp→真实 Cl/O 的守恒元素源项；Fe(2) 是污染速率门。补齐 O 后由原生平衡决定 Fe 价态是否迁移，不能通过 formula 删除 Fe 元素。",
       "formula": {
         "Hyp": -1,
-        "Cl": 1
+        "Cl": 1,
+        "O": 1
       },
       "rateExpression": "0.5 * TOT(\"Hyp\") * TOT(\"Fe(+2)\")",
       "capacity": 1000.0
@@ -154,11 +218,13 @@
     {
       "name": "ChlorineAbsorbs",
       "kind": "interface",
-      "note": "Cl2(g) + 2OH- -> Cl- + OCl- + H2O：氯气入碱制漂白液（电解阳极气利用）。气源不入液账（吸收=创建 Hyp+Cl 1:1），OH- 门控自停（碱耗尽则吸收停，与 SulAbsorb 的亨利自限同族）",
+      "note": "Cl2(g) + 2OH- -> Cl- + OCl- + H2O：氯气入碱制漂白液（电解阳极气利用）。外部储库仅注入 Cl2；OCl 所需 O 从液内碱/水重分配，OH- 门控自停。",
       "formula": {
         "Hyp": 1,
-        "Cl": 1
+        "Cl": 1,
+        "O": -1
       },
+      "reservoirAtoms": { "Cl": 2 },
       "rateExpression": "PARM(1) * PARM(2) * MOL(\"OH-\") / (MOL(\"OH-\") + 1e-5)",
       "parms": [
         0.002,
@@ -173,12 +239,11 @@
     {
       "name": "HypDecay",
       "kind": "bulk",
-      "note": "2HOCl -> 2Cl- + O2 + 2H+（按 1 Hyp 计：Hyp -> Cl + 1/2 O2 + H+）：漂白液储存自然失效。速率源 MOL(\"HypH\")（HOCl 活性物种），O2 记液内 O 账。k=0.05 estimated（文献 0.04-0.12 M-1s-1，商品漂白液半衰期数量级）。速率 = TOT(Hyp) 池门控（防挂死铁律）× MOL(HypH) 活性物种加权",
+      "note": "漂白液储存自然失效：按池总量 Hyp(OCl) -> 真实 Cl + O，H 不得因为活性形态 HypH 而被 formula 凭空生成。速率源 MOL(\"HypH\") 只决定速率。k=0.05 estimated（文献 0.04-0.12 M-1s-1，商品漂白液半衰期数量级）。",
       "formula": {
         "Hyp": -1,
         "Cl": 1,
-        "O": 1,
-        "H": 1
+        "O": 1
       },
       "rateExpression": "0.05 * TOT(\"Hyp\") * MOL(\"HypH\")",
       "capacity": 1000.0
@@ -186,37 +251,37 @@
     {
       "name": "HypOxidisesIodide",
       "kind": "bulk",
-      "note": "OCl- + 2I- + 2H+ -> Cl- + I2 + H2O：漂白液氧化碘（碘量法）。引擎边界（混沌轮2/诊断实锤）：-formula 销毁多价态 DLP 元素 I 结构性无解（redox 重平衡与电荷平衡冲突，所有步长组合 'has not converged'/低 pe 挂死），故 I 保留速率门不进元素账；化学计量限量用速率表达式实现：r ∝ TOT(\"I(-1)\") 存在性门 + MOL(\"I-\") 一阶——I(-1) 池耗尽（被 pe 平衡氧化成 I(1)/I2(cr)）时通道自停，痕量碘不再催化烧穿整池 Hyp。k=1e5 estimated。速率门 TOT(\"I(-1)\")：碘以元素 I 输入时 pe 涌现分配，氧化态碘（I(1)/I(+5)）不再激活通道——即\"碘已被氧化完\"语义",
+      "note": "酸性碘量法的 Hyp 氧化入口。速率门必须是自由还原态 I-，不可使用 DLP 总量 I(-1)：后者包含已氧化的 ICl2-，会在 I- 耗尽后继续烧 Hyp 并错误放出 O2。原生 I2/I3-/碘酸盐分配仍由条件和剂量决定。",
       "formula": {
         "Hyp": -1,
         "Cl": 1,
-        "H": -2,
-        "O": -1
+        "O": 1
       },
-      "rateExpression": "1e5 * TOT(\"Hyp\") * TOT(\"I(-1)\")",
+      "rateExpression": "1e5 * TOT(\"Hyp\") * MOL(\"I-\")",
       "capacity": 1000.0
     },
     {
       "name": "HypOxidisesSulfide",
       "kind": "bulk",
-      "note": "OCl- + HS- -> Cl- + S(cr) + OH- 的池化净流：漂白液氧化硫化物（脱硫除臭）。S 仅作速率门，S(cr) 沉淀由 pe 平衡涌现（S(cr) 相 sit.dat log_k -2.14 在库）。净元素流仅 Hyp->Cl。k=1e4 estimated（HOCl+HS- 文献 3e7 M-1s-1，游戏节奏值）。轮2修正：S(-2) 是化学计量反应物（1:1），formula 补 S:-1——硫化物耗尽通道自停，不再催化毁灭 Hyp。注意：销毁真实 S 账会移出溶液（S(cr) 沉淀由 pe 涌现不再由本反应表达，净近似不变）",
+      "note": "OCl- + HS- 的定量氧化入口：Hyp 与 Sulfide 池各消耗 1 mol，生成受保护 Szero(0) 池；EngineSulfur（S8 溶解度）把它写入硫固相账本。Sulfide/Szero 均避免原生 DLP 在零步把原料或 S(0) 分裂为硫化物/硫酸盐。",
       "formula": {
         "Hyp": -1,
-        "S": -1,
-        "Cl": 1
+        "Sulfide": -1,
+        "Cl": 1,
+        "O": 1,
+        "Szero": 1
       },
-      "rateExpression": "1e4 * TOT(\"Hyp\") * TOT(\"S(-2)\")",
+      "rateExpression": "1e4 * TOT(\"Hyp\") * TOT(\"Sulfide\")",
       "capacity": 1000.0
     },
     {
       "name": "HypDecayCatalysedByManganese",
       "kind": "bulk",
-      "note": "Mn2+ 催化的 OCl- 分解（净流同 HypDecay）：Hyp -> Cl + 1/2 O2 + H+，Mn 仅作速率门（催化，元素账不动；MnO2(s) 沉淀由 pe 平衡涌现——sit.dat MnO2(s) log_k 42 已在库，策展 Pyrolusite 已删防重复）。金属污染毁漂白液的机制。k=10 estimated。修正：TOT 参数须用价态 master 名 Mn(+2)（TOT(\"Mn+2\") 静默返回 0，轮1混沌实锤）",
+      "note": "Mn2+ 催化的 OCl- 分解，净流同 HypDecay：Hyp(OCl) -> 真实 Cl + O。Mn 是催化速率门，元素账不动；活性形态不能让 H 凭空生成。k=10 estimated。TOT 参数必须用价态 master 名 Mn(+2)。",
       "formula": {
         "Hyp": -1,
         "Cl": 1,
-        "O": 1,
-        "H": 1
+        "O": 1
       },
       "rateExpression": "10 * TOT(\"Hyp\") * TOT(\"Mn(+2)\")",
       "capacity": 1000.0
@@ -224,7 +289,7 @@
     {
       "name": "SulOxidisesSlowly",
       "kind": "bulk",
-      "note": "SO3-2 + 1/2 O2 -> SO4-2：亚硫酸盐被溶解氧缓慢氧化（敞口放置数天失效）。Sul 池 -> 真实 S(+6) 账；净 O:+3（SO4 产 4 减 O2 耗 1，与 Quench 记账法同构）。k=1e-4 estimated（文献 1e-5~1e-6 M-1s-1，游戏节奏值）",
+      "note": "SO3-2 + 1/2 O2 -> SO4-2：亚硫酸盐被溶解氧缓慢氧化（敞口放置数天失效）。Sul 池 -> 真实 S(+6) 账；展开后原子零残差，O2 仅为可用性门，原生平衡分配现存 O 原子。k=1e-4 estimated（文献 1e-5~1e-6 M-1s-1，游戏节奏值）。",
       "formula": {
         "Sul": -1,
         "S": 1,
@@ -236,13 +301,45 @@
     {
       "name": "SulOxidisedByPermanganate",
       "kind": "bulk",
-      "note": "5 SO3-2 + 2 MnO4- + 6 H+ -> 5 SO4-2 + 2 Mn+2 + 3 H2O 的池化近似：MnO4- 仅作速率门（Mn 价态变化不可表达，不入账——氧化剂计量消耗是已知近似）。k=10 estimated（真实扩散控制 >1e3，游戏保守值）。轮2记录：MnO4- 仅门控不消耗（氧化剂无限近似，引擎价态限制）——高锰酸盐过量场景 Sul 会全灭，接受为已知近似；O:+3 记账使 O2 相成无限源同属伪池缴税代价",
+      "note": "强酸支路（pH < 3.5）：5 SO3^2- + 2 MnO4- + 6 H+ -> 5 SO4^2- + 2 Mn2+ + 3 H2O。EPA 工程资料将酸性高锰酸盐还原终点列为 Mn(II)；3.5 是本策展模型的互斥工况分界，不宣称为所有混合体系的普适相界。Mnvii 是有限氧化剂池；产物转入原生 Mn。k=10 为游戏节奏值。",
       "formula": {
-        "Sul": -1,
-        "S": 1,
-        "O": 4
+        "Sul": -5,
+        "Mnvii": -2,
+        "S": 5,
+        "Mn": 2,
+        "O": 23
       },
-      "rateExpression": "10 * TOT(\"Sul\") * MOL(\"MnO4-\")",
+      "rateExpression": "10 * TOT(\"Sul\") * TOT(\"Mnvii\")",
+      "conditionExpression": "-LA(\"H+\") < 3.5",
+      "capacity": 1000.0
+    },
+    {
+      "name": "HypOxidisesElementalSulfur",
+      "kind": "bulk",
+      "note": "过量 Hyp 的后续氧化：Szero(0) + 3 OCl- -> 原生 S(VI) + 3 Cl-（H/O 由原生水相平衡分配）。速率受溶解 Szero 门控；EngineSulfur 固相只经其真实 S8 溶解度供给，避免固硫被无条件瞬时烧穿。k=1e-3 是低溶解度受限的游戏节奏值。",
+      "formula": {
+        "Hyp": -3,
+        "Szero": -1,
+        "Cl": 3,
+        "O": 3,
+        "S": 1
+      },
+      "rateExpression": "1e-3 * TOT(\"Hyp\") * TOT(\"Szero\")",
+      "capacity": 1000.0
+    },
+    {
+      "name": "SulOxidisedByPermanganateToManganeseDioxide",
+      "kind": "bulk",
+      "note": "中性至普通碱性支路（3.5 ≤ pH ≤ 12）：3 SO3^2- + 2 MnO4- + H2O -> 3 SO4^2- + 2 MnO2(s) + 2 OH-。EPA 工程资料给出该 pH 带的高锰酸盐还原终点 MnO2；3.5/12 是本策展模型的互斥工况边界。Mnvii 与 Sul 按 2:3 定量消耗；原生 Mn 在 MnO2(s) 候选相存在时进入固相账本。pH>12 的 Mn(VI) 终点本轮未建模，两个支路均停。k=10 为游戏节奏值。",
+      "formula": {
+        "Sul": -3,
+        "Mnvii": -2,
+        "S": 3,
+        "Mn": 2,
+        "O": 17
+      },
+      "rateExpression": "10 * TOT(\"Sul\") * TOT(\"Mnvii\")",
+      "conditionExpression": "-LA(\"H+\") >= 3.5 AND -LA(\"H+\") <= 12",
       "capacity": 1000.0
     },
     {
@@ -261,11 +358,11 @@
     {
       "name": "NitriteOxidisesFerrous",
       "kind": "bulk",
-      "note": "NO2- + Fe2+ + 2H+ -> NO + Fe3+ + H2O 的池化净流（H 账 -2 成水）。N 进真实 N 账（pe 涌现分配：高 pe -> NO3-，低 pe -> NH3/N2，接受引擎价态语义）。Fe 仅作速率门（沿 FerrousReducesNitrate 模式）。k=1e-3 estimated（数小时级慢反应）",
+      "note": "Nitri -> 真实 N/O 的守恒元素源项，Fe(2) 是速率门。NO 气体的定量库存和 Fe2+/Fe3+ 化学计量尚需内部价态池；本条不得以 H/O 或 Fe 总量的删除冒充该过程。k=1e-3 estimated（数小时级慢反应）。",
       "formula": {
         "Nitri": -1,
         "N": 1,
-        "H": -2
+        "O": 2
       },
       "rateExpression": "1e-3 * TOT(\"Nitri\") * TOT(\"Fe(+2)\")",
       "capacity": 1000.0
@@ -273,10 +370,11 @@
     {
       "name": "NitriDisproportionates",
       "kind": "bulk",
-      "note": "2 HNO2 -> NO + NO2 + H2O：酸催化歧化（敞口亚硝酸盐不稳定主因，棕烟逸出不可视化——NO/NO2 气相 sit.dat 缺，N 进真实账 pe 涌现分配）。MOL(\"HNitri\") 门 = 酸催化（pH>4 自停）。capacity 收紧 100 防低 pH 速率爆炸。k=0.3 estimated（文献 0.1-3 M-1s-1）。速率 = TOT(Nitri) 池门控（防挂死铁律）× MOL(HNitri) 酸催化加权",
+      "note": "亚硝酸根酸门控失效：2 Nitri 的 N/O 原子守恒地转入真实 N/O 账。NO/NO2 棕烟没有独立气相库存，故本条不能声称已建模定量歧化逸出；若原生验证未给出所需的 NO/NO2 定量逸出，才评估内部池和气相事务。MOL(\"HNitri\") 门 = 酸催化（pH>4 自停）。capacity 收紧 100 防低 pH 速率爆炸。",
       "formula": {
         "Nitri": -2,
-        "N": 2
+        "N": 2,
+        "O": 4
       },
       "rateExpression": "0.3 * TOT(\"Nitri\") * MOL(\"HNitri\")",
       "capacity": 100.0

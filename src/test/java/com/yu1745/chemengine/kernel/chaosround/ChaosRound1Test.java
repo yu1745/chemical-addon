@@ -10,7 +10,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * Chaos Round 1：策展表 16 条反应中 10 条新增反应的动态行为验收测试。
+ * Chaos Round 1：策展动力学的动态行为验收测试。
  *
  * <p>与静态防线测试（CurationTest/CurationGapTest）互补：这里只验证
  * KINETICS 实际积分后的方向与化学计量——池动没动、动多少、比例对不对。
@@ -30,12 +30,17 @@ class ChaosRound1Test {
                 -high_precision   true
                 -pH               true
                 -pe               true
-                -totals           Na Cl S N Fe Mn I Hyp Sul Nitri Nitra Fe(2)
-                -molalities       O2 HNitri HypH MnO4- Mn+2
+                -totals           Na Cl S N Fe Mn I Hyp Sul Sulfide Szero Mnvii Nitri Nitra Fe(2)
+                -molalities       O2 HNitri HypH Mnvii- Mn+2
             """;
 
     /** 跑一个场景：SOLUTION(用户给) + RATES + KINETICS(单反应 include) + 额外块 + SELECTED_OUTPUT。 */
     private static IPhreeqc.RunResult active(String solution, String reaction, String extraBlocks,
+                                             double... steps) {
+        return active(solution, Set.of(reaction), extraBlocks, steps);
+    }
+
+    private static IPhreeqc.RunResult active(String solution, Set<String> reactions, String extraBlocks,
                                              double... steps) {
         try (IPhreeqc q = IPhreeqc.create()) {
             return q.run("""
@@ -44,7 +49,7 @@ class ChaosRound1Test {
                     """.formatted(solution)
                     + C.ratesBlock()
                     + "USE solution 1\n"
-                    + C.kineticsBlock(Set.of(reaction), null, steps)
+                    + C.kineticsBlock(reactions, null, steps)
                     + extraBlocks
                     + PUNCH
                     + "\nEND\n");
@@ -126,7 +131,7 @@ class ChaosRound1Test {
     // ==== 2. HypOxidisesIodide ====
 
     @Test
-    @DisplayName("HypOxidisesIodide: I(-1) 门控限量（速率门版本），Cl↑ 1:1，I(-1) 耗尽自停")
+    @DisplayName("HypOxidisesIodide: 自由 I- 门控，Cl↑ 1:1")
     void hypOxidisesIodide_stoichiometry() {
         String sol = """
                 SOLUTION 1
@@ -143,8 +148,7 @@ class ChaosRound1Test {
         var last = lastRow(active(sol, "HypOxidisesIodide", "", 100));
         double dHyp = mol(last, "Hyp") - mol(base, "Hyp");
         double dCl = mol(last, "Cl") - mol(base, "Cl");
-        // 速率门版本：I 不进元素账（销毁 DLP 多价态元素结构性无解，见策展 note）；
-        // 但 TOT("I(-1)") 门使通道在碘耗尽/被氧化后自停 —— Hyp 消耗有限且 Cl 1:1
+        // I 不进元素 formula；但自由 I- 门使通道在碘被氧化后自停。
         assertRatio("Iodide: ΔCl:-ΔHyp", -dHyp, dCl, 0.01);
         assertTrue(dHyp < -1e-4, "快通道下 Hyp 应显著消耗, dHyp=" + dHyp);
     }
@@ -171,7 +175,7 @@ class ChaosRound1Test {
     // ==== 3. HypOxidisesSulfide ====
 
     @Test
-    @DisplayName("HypOxidisesSulfide: Hyp↓ Cl↑ 1:1, S(-2) 1:1 化学计量消耗（轮2修正后）")
+    @DisplayName("HypOxidisesSulfide: Hyp:Sulfide 1:1，产物进入受保护 Szero 池")
     void hypOxidisesSulfide_stoichiometry() {
         String sol = """
                 SOLUTION 1
@@ -181,18 +185,19 @@ class ChaosRound1Test {
                     water 1 kg
                     Na   20 mmol/kgw
                     Cl   10 mmol/kgw
-                    S(-2) 10 mmol/kgw
+                    Sulfide 10 mmol/kgw
                     Hyp  5  mmol/kgw
                 """;
         var base = baseline(sol, "");
         var last = lastRow(active(sol, "HypOxidisesSulfide", "", 10));
         double dHyp = mol(last, "Hyp") - mol(base, "Hyp");
         double dCl = mol(last, "Cl") - mol(base, "Cl");
-        double dS = mol(last, "S") - mol(base, "S");
+        double dSulfide = mol(last, "Sulfide") - mol(base, "Sulfide");
+        double dSzero = mol(last, "Szero") - mol(base, "Szero");
         assertTrue(dHyp < -1e-4, () -> "Hyp 应显著下降, dHyp=" + dHyp);
         assertRatio("Sulfide: ΔCl:-ΔHyp", -dHyp, dCl, 0.01);
-        // 轮2修正后：S(-2) 是化学计量反应物（1:1），formula 补 S:-1；销毁的真实 S 移出溶液账（S(cr) 沉淀叙事由本反应直接承担）
-        assertRatio("Sulfide: -ΔS:-ΔHyp = 1:1", -dHyp, -dS, 0.01);
+        assertRatio("Sulfide: -ΔSulfide:-ΔHyp", -dHyp, -dSulfide, 0.01);
+        assertRatio("Sulfide: ΔSzero:-ΔHyp", -dHyp, dSzero, 0.01);
     }
 
     // ==== 4. HypDecayCatalysedByManganese ====
@@ -283,28 +288,33 @@ class ChaosRound1Test {
     // ==== 6. SulOxidisedByPermanganate ====
 
     @Test
-    @DisplayName("SulOxidisedByPermanganate: 常规 pe 下惰性(记录) + 高pe碱性下 Sul↓ S↑ 1:1")
+    @DisplayName("SulOxidisedByPermanganate: 中性支路 Sul:Mnvii=3:2")
     void sulOxidisedByPermanganate() {
-        // SOLUTION 定义 Mn(+7) 后红汓池不被 pe 重新分配 → pe 4 下 MnO4- 仍在(约 0.7 mmol)，反应照常走
+        // pH 10 的实测收敛区间处于 EPA 所列 MnO2 支路 3.5--12 内；同时启用两条
+        // 策展速率，断言酸性支路不会混入这套 3:2 计量。
         String solNormal = """
                 SOLUTION 1
                     temp 25
-                    pH   7 charge
+                    pH   10 charge
                     pe   4
                     water 1 kg
-                    Na   30 mmol/kgw
-                    Cl   10 mmol/kgw
+                    Na   20 mmol/kgw
+                    K    1 mmol/kgw
                     Sul  10 mmol/kgw
-                    Mn(+7) 1 mmol/kgw
+                    Mnvii 1 mmol/kgw
                 """;
         var base = baseline(solNormal, "");
-        var last = lastRow(active(solNormal, "SulOxidisedByPermanganate", "", 0.02, 0.02, 0.04));
+        var last = lastRow(active(solNormal, Set.of("SulOxidisedByPermanganate",
+                "SulOxidisedByPermanganateToManganeseDioxide"), "", 0.02, 0.02, 0.04));
         double dSul = mol(last, "Sul") - mol(base, "Sul");
-        double dS = mol(last, "S") - mol(base, "S");
-        assertTrue(last.d("m_MnO4-") > 1e-5, () -> "Mn(+7) 池下 MnO4- 应存在: " + last.d("m_MnO4-"));
-        assertTrue(dSul < -1e-7, () -> "Sul 应被 MnO4- 氧化, dSul=" + dSul);
-        assertRatio("Permanganate: ΔS:-ΔSul", -dSul, dS, 0.01);
-        assertEquals(mol(base, "Mn"), mol(last, "Mn"), 1e-5, "Mn 仅速率门, 守恒");
+        double dMnvii = mol(last, "Mnvii") - mol(base, "Mnvii");
+        assertTrue(last.d("pH") >= 3.5 && last.d("pH") <= 12,
+                () -> "中性 MnO2 支路的实际 pH 必须在 [3.5, 12]: " + last.d("pH"));
+        assertTrue(last.d("m_Mnvii-") > 1e-5, () -> "Mnvii 池应存在: " + last.d("m_Mnvii-"));
+        assertTrue(dSul < -1e-7, () -> "Sul 应被 Mnvii 氧化, dSul=" + dSul);
+        assertRatio("Permanganate: -ΔSul: -ΔMnvii", 1.5 * -dMnvii, -dSul, 0.01);
+        assertRatio("Permanganate: native Mn product:-ΔMnvii", -dMnvii,
+                mol(last, "Mn") - mol(base, "Mn"), 0.01);
     }
 
     // ==== 7. HypOxidisesNitrite ====

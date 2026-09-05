@@ -56,16 +56,6 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity
 		return stack.isEmpty() || !Miscibility.isGas(stack);
 	}
 
-	/** P3b：最近一次读档的内核态 dump（DUMP SOLUTION_RAW 文本；null = 此档无内核态）。 */
-	@Nullable
-	private String chemengineDump;
-
-	/** P3b：内核态 dump（存档后可用；供审计/KINETICS 步进接入）。 */
-	@Nullable
-	public String chemengineDump() {
-		return chemengineDump;
-	}
-
 	public static final int TANK_CAPACITY = 1000; // mB per interior block (1 bucket — small enough that a few buckets visibly raise the surface)
 	public static final int AMBIENT_TEMP = 20;
 	public static final int ITEM_SLOTS = 4;
@@ -343,9 +333,8 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity
 			setProgress(0, null);
 			return;
 		}
-		// 化学权威 = IPhreeqc 内核（2026-08 全量切换）+ mod 侧物理拍：
-		// 供压（釜气相分压 → interface 反应）→ KINETICS 步进 → 增量写回 →
-		// 投料溶解/曲线结晶/开口蒸发（PhysicalSteps）。仍缺：脱气/反应热记账。
+		// 化学权威 = IPhreeqc RAW state：内核步进和状态写回后，PhysicalSteps
+		// 只执行原生投料、气液传质、蒸水和固相 ledger 事务。
 		stepKernelChemistry();
 		ChemicalReactionRecipe recipe = ReactionLogic.findRecipe(this);
 		if (recipe == null) {
@@ -363,9 +352,15 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity
 		float next = progress + (float) REACTION_TICK / recipe.getProcessingDuration()
 			* ReactionLogic.rateCoefficient(recipe, getTemperature(), stirringCoefficient());
 		if (next >= 1.0f) {
-			ReactionLogic.completeRecipe(this, recipe);
-			setProgress(0, recipe.getId());
-			sync();
+			if (ReactionLogic.completeRecipe(this, recipe)) {
+				setProgress(0, recipe.getId());
+				sync();
+			} else {
+				// A native candidate rejected a removal/output. Do not report a
+				// completed batch or consume the accumulated progress.
+				setStatus(ReactorStatus.NO_RECIPE);
+				setProgress(0, null);
+			}
 		} else {
 			setProgress(next, recipe.getId());
 		}
@@ -382,28 +377,36 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity
 	}
 
 	/**
-	 * 内核步进（反应釜与 M08 共用主循环）：供压 → KINETICS 步进 → 增量写回 +
-	 * 读数发布（pH 表计共享本拍快照，零额外求解）→ mod 侧物理拍（投料溶解/
-	 * 曲线结晶/开口蒸发，PhysicalSteps）。
+	 * 内核步进（反应釜与 M08 共用主循环）：RAW state 求解和写回、读数发布，
+	 * 随后执行 PhysicalSteps 的原生物料事务。
 	 *
 	 * @return 本拍开口蒸发的蒸汽量（mB；密封/未沸腾 = 0——M08 冷凝罐回收为馏出水）
 	 */
 	protected long stepKernelChemistry() {
+		CompoundTag before = tank.serializeNBT();
 		var step = com.yu1745.chemicaladdon.composition.parity.TickDriver.step(
 				tank.getFluids(),
 				com.yu1745.chemicaladdon.composition.parity.TickDriver.SECONDS_PER_STEP,
 				getTemperature());
-		if (step.valid) {
-			com.yu1745.chemicaladdon.composition.parity.WriteBack.firstOf(tank.getFluids(), step);
+		boolean committed = step.valid
+			&& com.yu1745.chemicaladdon.composition.parity.WriteBack.firstOf(tank.getFluids(), step);
+		if (committed) {
 			com.yu1745.chemicaladdon.composition.parity.EngineReadings.publish(step, worldPosition);
 			recordSpeciation(speciationOf(step)); // P7.4：内核 SI/相增量 → 护目镜化验行
 		} else {
 			com.yu1745.chemicaladdon.composition.parity.EngineReadings.invalidate();
+			if (step.valid) {
+				return 0; // valid solve but failed write-back: reject the whole chemistry transaction
+			}
 		}
 		// mod 侧物理拍（P7.2/P7.3）：内核不管的三类自发物理（曲线物种的饱和/结晶
 		// 表、投料、蒸水）；蒸汽量上报给 M08 冷凝罐
 		long[] vented = new long[1];
 		PhysicalSteps.apply(tank, isOpen(), items, stirringCoefficient(), vented, getTemperature());
+		if (!before.equals(tank.serializeNBT())) {
+			setChanged();
+			sync();
+		}
 		return vented[0] / Chemistry.QUANTA_PER_MB;
 	}
 
@@ -560,7 +563,6 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity
 		tag.putInt("pinnedTemperature", pinnedTemperature);
 		// P3b：内核态存档（ENGINE_READINGS 开启时，写入 DUMP 全精度文本）
 		if (!clientPacket) {
-			com.yu1745.chemicaladdon.composition.parity.EngineArchive.write(tag, getTank().getFluids());
 		}
 	}
 
@@ -582,7 +584,6 @@ public class ReactorControllerBlockEntity extends VesselBlockEntity
 		pinnedTemperature = tag.contains("pinnedTemperature") ? tag.getInt("pinnedTemperature") : -1;
 		// P3b：读回内核态 dump（供后续 KINETICS 步进/审计；不回写 Mixture）
 		if (!clientPacket) {
-			chemengineDump = com.yu1745.chemicaladdon.composition.parity.EngineArchive.read(tag);
 		}
 	}
 

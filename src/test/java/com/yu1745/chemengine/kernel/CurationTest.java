@@ -131,7 +131,7 @@ class CurationTest {
         String rates = c.ratesBlock();
         assertTrue(rates.startsWith("RATES\n"), rates);
         assertTrue(rates.contains("Quench\n    -start"), rates);
-        assertTrue(rates.contains("SAVE r * TIME"), rates);
+        assertTrue(rates.contains("SAVE r * TIME * TOT(\"water\")"), rates);
 
         String kin = c.kineticsBlock(1, 10);
         assertTrue(kin.contains("-formula Cl 1 Hyp -1 O 4 S 1 Sul -1"), kin);  // TreeMap 字母序
@@ -150,5 +150,23 @@ class CurationTest {
 
         // 策展相已移除（sit.dat 自带 MnO2(s) log_k 42，数据源更新，Pyrolusite 策展补丁退役）
         // addendum 不再含 PHASES 块；phases 查询对缺失名拋出
+    }
+
+    @Test
+    @DisplayName("策展表原子审计：bulk 零残差，interface 明示外部 SO2/Cl2 原子流")
+    void curatedFormulaeExpandToDeclaredRealAtomFlows() {
+        Curation c = Curation.load();
+        for (Curation.Reaction reaction : c.reactions()) {
+            Curation.ExpandedFormulaAudit audit = c.expandedFormulaAudit(reaction);
+            if (reaction.kindEnum() == Curation.Kind.BULK) {
+                assertTrue(audit.isAtomConserving(), reaction.name + " / " + audit.atomDelta());
+            } else {
+                assertEquals(reaction.reservoirAtoms, audit.atomDelta(), reaction.name);
+            }
+        }
+        assertEquals(Map.of("Cl", 1.0, "O", 1.0),
+                c.pseudoElements().stream().filter(p -> p.element.equals("Hyp")).findFirst().orElseThrow().atoms);
+        assertEquals(Map.of("S", 1.0, "O", 3.0),
+                c.pseudoElements().stream().filter(p -> p.element.equals("Sul")).findFirst().orElseThrow().atoms);
     }
 }

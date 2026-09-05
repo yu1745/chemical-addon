@@ -120,7 +120,7 @@ public class SpeciesManager {
 		// U15 bittern salts (bittern-salt curves: the dry-out residue of brine)
 		"magnesium_chloride_solution",
 		// P4b 伪池宿主（species JSON only）：次氯酸钠/亚硫酸钠溶液——
-		// EngineBridge 映射 OCl→Hyp、SO3→Sul 介稳池（见 parity 包）
+		// ChemicalBasis converts these public neutral formulae at the KSS engine boundary.
 		"sodium_hypochlorite", "sodium_sulphite_solution",
 		"sodium_nitrate_solution", "sodium_nitrite"
 	};

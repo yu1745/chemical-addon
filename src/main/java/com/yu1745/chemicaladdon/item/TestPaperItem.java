@@ -54,7 +54,17 @@ public class TestPaperItem extends Item {
 		/** KSCN: blood red = ferric iron present (product iron contamination). */
 		POTASSIUM_THIOCYANATE,
 		/** Cobalt-glass flame scope: K lilac (Na yellow filtered out) / Na yellow / Ca brick red. */
-		COBALT_GLASS
+		COBALT_GLASS,
+		HYPOCHLORITE,
+		SULFITE,
+		AMMONIUM,
+		NITRATE_NITRITE,
+		FERROUS_FERRIC,
+		HARDNESS,
+		AMMONIA_GAS,
+		SULFUR_DIOXIDE_GAS,
+		CHLORINE_GAS,
+		NOX_GAS
 	}
 
 	private final Kind kind;
@@ -92,9 +102,8 @@ public class TestPaperItem extends Item {
 				player.displayClientMessage(result, true);
 			}
 			level.playSound(null, pos, SoundEvents.AZALEA_LEAVES_STEP, SoundSource.PLAYERS, 0.8f, 1.4f);
-			if (player == null || !player.getAbilities().instabuild) {
-				context.getItemInHand().shrink(1); // consumed by the dip
-			}
+			// Reward papers are reusable field probes. Automation still requires the
+			// detector box, which turns their qualitative chemistry into a signal.
 		}
 		return InteractionResult.sidedSuccess(level.isClientSide);
 	}
@@ -108,6 +117,10 @@ public class TestPaperItem extends Item {
 			return sampleWidePh(reactor);
 		}
 		String key = verdictKey(kind, reactor);
+		if (key.equals("paper.chemicaladdon.target_positive") || key.equals("paper.chemicaladdon.target_negative")) {
+			return Component.translatable(key, Component.translatable("paper.chemicaladdon.target." + kind.name().toLowerCase()))
+				.withStyle(colorOf(key));
+		}
 		return Component.translatable(key).withStyle(colorOf(key));
 	}
 
@@ -152,8 +165,26 @@ public class TestPaperItem extends Item {
 				}
 				return "paper.chemicaladdon.flame_none";
 			}
+			case HYPOCHLORITE:
+				return qualitative(tank, "ClO-1");
+			case SULFITE:
+				return qualitative(tank, "SO3-2");
+			case AMMONIUM:
+				return qualitative(tank, "NH4+1");
+			case NITRATE_NITRITE:
+				return ionUnits(tank, "NO3-1") + ionUnits(tank, "NO2-1") >= 1 ? "paper.chemicaladdon.target_positive" : "paper.chemicaladdon.target_negative";
+			case FERROUS_FERRIC:
+				return ionUnits(tank, "Fe+2") + ionUnits(tank, "Fe+3") >= 1 ? "paper.chemicaladdon.target_positive" : "paper.chemicaladdon.target_negative";
+			case HARDNESS:
+				return ionUnits(tank, "Ca+2") + ionUnits(tank, "Mg+2") >= 1 ? "paper.chemicaladdon.target_positive" : "paper.chemicaladdon.target_negative";
+			case AMMONIA_GAS, SULFUR_DIOXIDE_GAS, CHLORINE_GAS, NOX_GAS:
+				return "paper.chemicaladdon.target_negative"; // handheld dipping samples liquid only
 		}
 		throw new IllegalArgumentException("unknown kind " + kind);
+	}
+
+	private static String qualitative(ReactorTank tank, String ion) {
+		return ionUnits(tank, ion) >= 1 ? "paper.chemicaladdon.target_positive" : "paper.chemicaladdon.target_negative";
 	}
 
 	/** Wide-range paper carries the reading: "pH ≈ N" needs the number inline. */

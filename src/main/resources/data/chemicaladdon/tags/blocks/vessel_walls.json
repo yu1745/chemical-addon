@@ -14,7 +14,8 @@
     "chemicaladdon:baume_gauge",
     "chemicaladdon:turbidity_gauge",
     "chemicaladdon:liquid_level_gauge",
-    "chemicaladdon:status_port",
+	"chemicaladdon:orp_gauge",
+    "chemicaladdon:process_state_transmitter",
     "chemicaladdon:metering_inlet",
     "chemicaladdon:compressor"
   ]

@@ -57,7 +57,8 @@ public class StatusPortBlock extends ChemicalBrickBlock implements EntityBlock {
 			return InteractionResult.PASS;
 		}
 		if (!level.isClientSide) {
-			player.displayClientMessage(Component.translatable("message.chemicaladdon.status_port", port.statusComponent()),
+			if(player.isShiftKeyDown())port.acknowledge();
+			player.displayClientMessage(Component.translatable("message.chemicaladdon.process_state_transmitter", port.statusComponent()),
 				true);
 			level.playSound(null, pos, SoundEvents.COMPARATOR_CLICK, SoundSource.BLOCKS, 0.4f, 1.0f);
 		}

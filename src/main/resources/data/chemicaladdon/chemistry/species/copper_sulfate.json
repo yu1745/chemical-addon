@@ -1,5 +1,6 @@
 {
   "formula": "CuSO4·5H2O",
+  "enginePhase": "Chalcanthite",
   "phase": "SOLID",
   "meltingPointC": 110,
   "boilingPointC": 650

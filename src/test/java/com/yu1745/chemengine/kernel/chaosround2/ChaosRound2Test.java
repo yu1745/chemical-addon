@@ -11,7 +11,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * Chaos Round 2：多反应同场竞争。16 条策展反应共享反应物（尤其 Hyp 被 6 条争抢）
+ * Chaos Round 2：多反应同场竞争。
  * 与共享 O2 库时的化学序、守恒与竞争时序。只读 chemistry.json，不改表。
  */
 class ChaosRound2Test {
@@ -26,8 +26,8 @@ class ChaosRound2Test {
                 -high_precision   true
                 -pH               true
                 -pe               true
-                -totals           Na Cl S N C Fe Mn I Ba Ca S(-2) Fe(2) Hyp Sul Nitri Nitra
-                -molalities       O2 HNitri HypH MnO4-
+                -totals           Na Cl S N C Fe Mn I Ba Ca Sulfide Szero Fe(2) Hyp Sul Nitri Nitra
+                -molalities       O2 HNitri HypH Mnvii-
             """;
 
     private static final String PUNCH_PHASES = """
@@ -38,8 +38,8 @@ class ChaosRound2Test {
                 -high_precision   true
                 -pH               true
                 -pe               true
-                -totals           Na Cl S N C Fe Mn I Ba Ca S(-2) Fe(2) Hyp Sul Nitri Nitra
-                -molalities       O2 HNitri HypH MnO4-
+                -totals           Na Cl S N C Fe Mn I Ba Ca Sulfide Szero Fe(2) Hyp Sul Nitri Nitra
+                -molalities       O2 HNitri HypH Mnvii-
                 -equilibrium_phases Barite Calcite MnO2(s) S(cr) I2(cr) Ferrihydrite(am)
             """;
 
@@ -104,7 +104,7 @@ class ChaosRound2Test {
     // ==== 1. Hyp 六路争抢 ====
 
     @Test
-    @DisplayName("六路争抢: I/S 快通道先吃, 池单调降, Cl=-ΔHyp, 元素守恒")
+    @DisplayName("六路争抢: 快通道先吃 Hyp，Cl=-ΔHyp，I/S/Fe/Mn/Na 原子守恒")
     void scenario1_hypSixWayContest() {
         String sol = """
                 SOLUTION 1
@@ -115,7 +115,7 @@ class ChaosRound2Test {
                     Na   120 mmol/kgw
                     Cl   10  mmol/kgw
                     I    8   mmol/kgw
-                    S(-2) 6  mmol/kgw
+                    Sulfide 6  mmol/kgw
                     Nitri 5  mmol/kgw
                     Fe(+2) 4 mmol/kgw
                     Mn(+2) 1 mmol/kgw
@@ -133,14 +133,13 @@ class ChaosRound2Test {
         assertRatio("六路: ΔCl:-ΔHyp", -dHyp, dCl, 0.01);
         // 池单调性
         assertMonotoneDown("六路", r, "Hyp");
-        assertMonotoneDown("六路", r, "S(-2)");
+        assertMonotoneDown("六路", r, "Sulfide");
         assertMonotoneDown("六路", r, "Nitri");
-        // 轮2修正后语义：I 仍是速率门（DLP 元素销毁结构性无解）但 TOT("I(-1)") 门控限量；
-        // S(-2) 已改化学计量消耗（S:-1）——S 总量下降是预期，S 守恒改为 S(真实)+1:1 对应 Hyp 消耗
-        // Mn/Fe/Na 守恒不变
+        // Szero 保护 S(0) 产物，原生 S 总量不应承担这个内部池的库存。
+        // Mn/Fe/Na 守恒不变。
         assertEquals(mol(base, "I"), mol(last, "I"), 1e-5, "I 仅速率门应守恒（速率门版本）");
-        assertTrue(mol(last, "S") < mol(base, "S") - 1e-4,
-                () -> "S(-2) 化学计量通道应消耗 S（1:1），实测 dS=" + (mol(last, "S") - mol(base, "S")));
+        assertEquals(mol(base, "Sulfide"), mol(last, "Sulfide") + mol(last, "Szero"), 1e-5,
+                "Sulfide 必须逐原子转入 Szero，而非删除或坍缩到原生 S");
         assertEquals(mol(base, "Mn"), mol(last, "Mn"), 1e-5, "Mn 守恒");
         assertEquals(mol(base, "Fe"), mol(last, "Fe"), 1e-5, "Fe 守恒");
         assertEquals(mol(base, "Na"), mol(last, "Na"), 1e-4, "Na 守恒");
@@ -148,8 +147,8 @@ class ChaosRound2Test {
         // 打印分段 Hyp 消耗速率供人工核对 k 排序
         for (int i = 0; i < r.rowCount(); i++) {
             var row = r.row(i);
-            System.out.printf("[S1] row%d t=%.3g pH=%.2f Hyp=%.4f S(-2)=%.4f Nitri=%.4f Fe(2)=%.4f%n",
-                    i, row.d("time"), row.d("pH"), mol(row, "Hyp"), mol(row, "S(-2)"),
+            System.out.printf("[S1] row%d t=%.3g pH=%.2f Hyp=%.4f Sulfide=%.4f Nitri=%.4f Fe(2)=%.4f%n",
+                    i, row.d("time"), row.d("pH"), mol(row, "Hyp"), mol(row, "Sulfide"),
                     mol(row, "Nitri"), mol(row, "Fe(2)"));
         }
         // 第一段（1e3 s）内 Hyp 消耗应 >= 6 mmol（S 6 快通道 1:1 计量 + I 门控贡献）
@@ -306,8 +305,8 @@ class ChaosRound2Test {
         assertTrue(dS > -1e-6, () -> "S 应只增不减(Quench Sul->S(+6); 本场景无 S(-2) 投入), dS=" + dS);
         assertEquals(mol(base, "Na"), mol(last, "Na"), 1e-4);
         assertEquals(mol(base, "I"), mol(last, "I"), 1e-6, "I 守恒（仅门）");
-        // Permanganate 无 MnO4- 惰性
-        assertTrue(last.d("m_MnO4-") < 1e-9, "无 Mn(+7) 时 MnO4- 应为零");
+        // Permanganate 无 Mnvii- 惰性
+        assertTrue(last.d("m_Mnvii-") < 1e-9, "无 Mnvii 时 Mnvii- 应为零");
         System.out.printf("[S4] dSul=%.3e dHyp=%.4f dCl=%.4f (Quench 窗口 Sul≈%.3e, 慢通道≈%.2e)%n",
                 dSul, dHyp, dCl, dSul, -dSul - (-dHyp - 2e-3));
         // I 不在时 Quench 才能主导（对照）：无 I 场景下 Sul 应被 Quench 烧穿

@@ -19,6 +19,8 @@ public final class SolidColors {
 		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "soda_ash"), 0xFFF0F0F0);
 		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "gypsum"), 0xFFE0E0D0);
 		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "sulfur"), 0xFFD8D838);
+		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "iodine"), 0xFF343044);
+		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "manganese_dioxide"), 0xFF3A342E);
 		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "bauxite"), 0xFFB85030);
 		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "aluminium_hydroxide"), 0xFFE8E8E8);
 		COLORS.put(new ResourceLocation(ChemicalAddon.MODID, "alumina"), 0xFFF0F0F0);

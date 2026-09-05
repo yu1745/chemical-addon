@@ -131,8 +131,9 @@ public class ReactorStructureGameTests {
 		tank.collapseIfNeeded();
 		helper.assertTrue(tank.getFluids().size() == 2,
 			"immiscible liquids must NOT merge into one mixture (got " + tank.getFluids().size() + ")");
-		helper.assertTrue(tank.getFluids().get(0).getFluid() == Fluids.WATER,
-			"water (denser) should settle as the first phase");
+		helper.assertTrue(Mixture.isMixture(tank.getFluids().get(0))
+				&& tank.waterInventoryMb() >= 400,
+			"native aqueous water should settle as the first phase");
 		helper.assertTrue(tank.getFluids().get(1).getFluid() == AllFluids.THERMAL_OIL.get().getSource(),
 			"thermal oil should be the second (lighter) phase");
 		helper.succeed();
@@ -148,8 +149,8 @@ public class ReactorStructureGameTests {
 		tank.collapseIfNeeded();
 
 		FluidStack first = tank.drain(100, FluidAction.EXECUTE);
-		helper.assertTrue(first.getFluid() == Fluids.WATER,
-			"drain must pull the denser water first");
+		helper.assertTrue(Mixture.isMixture(first) && Mixture.engineSolution(first) != null,
+			"drain must pull the denser native aqueous phase first");
 		helper.assertTrue(tank.getFluids().size() == 2, "the oil should remain after draining water");
 		helper.succeed();
 	}
@@ -167,8 +168,7 @@ public class ReactorStructureGameTests {
 			"gas and liquid must stay as two phases (got " + tank.getFluids().size() + ")");
 		boolean hasWater = false, hasGas = false;
 		for (FluidStack s : tank.getFluids()) {
-			helper.assertTrue(!Mixture.isMixture(s), "neither phase should be a mixture");
-			if (s.getFluid() == Fluids.WATER) hasWater = true;
+			if (Mixture.isMixture(s) && Mixture.engineSolution(s) != null) hasWater = true;
 			if (s.getFluid() == AllFluids.SULFUR_DIOXIDE.get().getSource()) hasGas = true;
 		}
 		helper.assertTrue(hasWater && hasGas, "both the water and the gas should remain");
@@ -180,8 +180,7 @@ public class ReactorStructureGameTests {
 		// D18: same-group (aqueous) entries still merge into one mixture — pouring
 		// water into an aqueous mixture dilutes it; it does not phase-separate.
 		ReactorTank tank = new ReactorTank(10000, () -> {});
-		ResourceLocation water = Solution.WATER;
-		FluidStack acid = Mixture.create(Map.of(water, 600), Map.of("H+1", 400, "SO4-2", 200), 1200);
+		FluidStack acid = GameTestFixtures.declared(.6, Map.of("H2SO4", .2), 1200);
 		tank.fill(acid, FluidAction.EXECUTE);
 		tank.fill(new FluidStack(Fluids.WATER, 1000), FluidAction.EXECUTE);
 
@@ -190,8 +189,8 @@ public class ReactorStructureGameTests {
 			"aqueous entries should merge into one (got " + tank.getFluids().size() + ")");
 		FluidStack merged = tank.getFluids().get(0);
 		helper.assertTrue(Mixture.isMixture(merged), "the merged stack should be a mixture");
-		helper.assertTrue(Mixture.deriveIonAmounts(merged).getOrDefault("H+1", 0) == 400,
-			"the acid ions should survive the merge");
+		helper.assertTrue(tank.countSolution(new ResourceLocation(ChemicalAddon.MODID, "sulfuric_acid")) == 600,
+			"the conserved sulfuric-acid inventory should survive the native merge");
 		helper.assertTrue(merged.getAmount() == 2200,
 			"the total should be 1200 + 1000 = 2200 (got " + merged.getAmount() + ")");
 		helper.succeed();
@@ -250,7 +249,8 @@ public class ReactorStructureGameTests {
 
 		// drain the whole bottom (water) phase through the port
 		FluidStack first = handler.drain(400, FluidAction.EXECUTE);
-		helper.assertTrue(first.getFluid() == Fluids.WATER, "the port should drain the denser water first");
+		helper.assertTrue(Mixture.isMixture(first) && Mixture.engineSolution(first) != null,
+			"the port should drain the denser native aqueous phase first");
 
 		// only oil remains; the port is latched onto water and must run dry (not drain oil)
 		FluidStack second = handler.drain(100, FluidAction.EXECUTE);
@@ -306,7 +306,7 @@ public class ReactorStructureGameTests {
 
 		FluidStack after = handler.drain(100, FluidAction.EXECUTE);
 		helper.assertTrue(after.isEmpty(), "after the oil is drained the hose must stop, not drain water");
-		helper.assertTrue(hasFluid(be, Fluids.WATER, 400), "the water must stay in the vessel");
+		helper.assertTrue(be.getTank().waterInventoryMb() >= 400, "the water must stay in the vessel");
 		helper.succeed();
 	}
 
@@ -341,7 +341,7 @@ public class ReactorStructureGameTests {
 		// reverse fill: push water back into the vessel through the hose
 		int filled = handler.fill(new FluidStack(Fluids.WATER, 500), FluidAction.EXECUTE);
 		helper.assertTrue(filled == 500, "the hose should fill the vessel (got " + filled + ")");
-		helper.assertTrue(hasFluid(be, Fluids.WATER, 500), "the water must land in the vessel tank");
+		helper.assertTrue(be.getTank().waterInventoryMb() >= 500, "the water must land in the vessel tank");
 
 		// it must still drain the lightest phase (oil floats above water)
 		be.getTank().fill(new FluidStack(AllFluids.THERMAL_OIL.get().getSource(), 500), FluidAction.EXECUTE);
@@ -504,30 +504,43 @@ public class ReactorStructureGameTests {
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 40)
 	public static void exothermicDeltaHeatsAllPhases(GameTestHelper helper) {
-		// U1/G2: an exothermic whitelist recipe heats EVERY phase — the SO2
-		// absorption (deltaHeat +100) must warm the inert oil bystander as well,
-		// not just whichever stack happens to be entry 0.
+		// U1/G2: committing an exothermic whitelist recipe heats EVERY phase.
+		// This calls the real recipe boundary directly: SO2 can otherwise dissolve
+		// through PhysicalSteps before its 200-tick recipe has time to complete,
+		// which is a separate native mass-transfer model and not a heat assertion.
 		ReactorControllerBlockEntity be = buildReactor5x5x5WithGasAt(
 			helper, 0, 0, 1, 2, 0, Direction.SOUTH);
 		be.getTank().fill(new FluidStack(Fluids.WATER, 10000), FluidAction.EXECUTE);
 		be.getTank().fill(new FluidStack(AllFluids.THERMAL_OIL.get().getSource(), 1000), FluidAction.EXECUTE);
 		be.getTank().fill(new FluidStack(AllFluids.SULFUR_DIOXIDE.get().getSource(), 1000), FluidAction.EXECUTE);
-		waitFor(helper.startSequence()
-				.thenIdle(TICKS * 10), // so2_absorption: 200 ticks processingTime
-			() -> hasIon(be.getTank(), "H+1", 200) && hasIon(be.getTank(), "SO4-2", 100))
-			.thenExecute(() -> {
-				// the absorption product lands in the ion domain (the same expansion
-				// reactorAbsorbsSulfurDioxide asserts on)
-				helper.assertTrue(hasIon(be.getTank(), "H+1", 200),
-					"the absorption reaction should have run");
-				helper.assertTrue(hasIon(be.getTank(), "SO4-2", 100),
-					"the absorption reaction should have run (sulfate)");
-				for (FluidStack stack : be.getTank().getFluids()) {
-					helper.assertTrue(Temperature.get(stack) > 20,
-						"every phase must carry the exotherm (a stack is still at 20°C)");
-				}
-			})
-			.thenSucceed();
+		ResourceLocation so2Absorption = new ResourceLocation(ChemicalAddon.MODID, "chemical_reaction/so2_absorption");
+		var recipe = be.getLevel().getRecipeManager().byKey(so2Absorption).orElseThrow();
+		helper.assertTrue(recipe instanceof ChemicalReactionRecipe,
+			"the heat fixture must resolve the live SO2 absorption recipe");
+		ChemicalReactionRecipe absorption = (ChemicalReactionRecipe) recipe;
+		helper.assertTrue(absorption.matchesStructureRequirements(be, be),
+			"the heat fixture must satisfy the live recipe's structure requirements");
+		helper.assertTrue(commitRecipeForHeatTest(be, absorption),
+			"the fully charged SO2 recipe must commit before heat is observed");
+		for (FluidStack stack : be.getTank().getFluids()) {
+			helper.assertTrue(Temperature.get(stack) > 20,
+				"every phase must carry the committed exotherm (a stack is still at 20°C)");
+		}
+		helper.succeed();
+	}
+
+	/** Test-only access to the package-private completion boundary. */
+	private static boolean commitRecipeForHeatTest(ReactorControllerBlockEntity reactor,
+		ChemicalReactionRecipe recipe) {
+		try {
+			var type = Class.forName("com.yu1745.chemicaladdon.reactor.ReactionLogic");
+			var method = type.getDeclaredMethod("completeRecipe", ReactorControllerBlockEntity.class,
+				ChemicalReactionRecipe.class);
+			method.setAccessible(true);
+			return (boolean) method.invoke(null, reactor, recipe);
+		} catch (ReflectiveOperationException ex) {
+			throw new AssertionError("Cannot invoke the reactor recipe completion boundary", ex);
+		}
 	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
@@ -655,18 +668,18 @@ public class ReactorStructureGameTests {
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void collapseDropsCorruptMixtures(GameTestHelper helper) {
-		// regression: legacy component-less mixture stacks (left by the old
-		// spill/absorb round-trip) accumulated because collapseIfNeeded did nothing
-		// when merged was empty. They must now be cleaned up.
+		// Raw-less mixtures are invalid pre-release input. They must be rejected at
+		// the tank boundary without disturbing an already valid native inventory.
 		buildReactor(helper);
 		ReactorControllerBlockEntity be = reactor(helper);
 		ReactorTank tank = be.getTank();
-		tank.getFluids().add(new FluidStack(Mixture.fluid(), 1000)); // no components
-		tank.getFluids().add(new FluidStack(Mixture.fluid(), 1000)); // no components
-		tank.collapseIfNeeded();
-		helper.assertTrue(tank.getFluids().isEmpty(),
-			"component-less mixture stacks should be dropped, not accumulate (got "
-				+ tank.getFluids().size() + ")");
+		tank.fill(GameTestFixtures.declared(1, Map.of("NaCl", .1), 1000), FluidAction.EXECUTE);
+		int before = tank.getTotalAmount();
+		int filled = tank.fill(new FluidStack(Mixture.fluid(), 1000), FluidAction.EXECUTE);
+		helper.assertTrue(filled == 0, "raw-less mixture must be rejected at ingress");
+		helper.assertTrue(tank.getTotalAmount() == before && tank.getFluids().size() == 1
+			&& Mixture.engineSolution(tank.getFluids().get(0)) != null,
+			"rejection must leave the valid native inventory unchanged");
 		helper.succeed();
 	}
 

@@ -4,6 +4,7 @@ import static com.yu1745.chemicaladdon.gametest.GameTestFixtures.hasSpecies;
 import static com.yu1745.chemicaladdon.gametest.GameTestFixtures.waitFor;
 
 import com.yu1745.chemicaladdon.ChemicalAddon;
+import com.yu1745.chemicaladdon.item.MixedResidueItem;
 import com.yu1745.chemicaladdon.composition.Solution;
 import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.reactor.FilterPressBlockEntity;
@@ -73,11 +74,8 @@ public class BasinGameTests {
 		// solids migrate into the sludge BED (Sediment domain); the basin no longer
 		// emits dry cake (plans/05 §1 — that is the filter press's job, fed by the
 		// underflow port)
-		FluidStack slurry = Mixture.create(
-			Map.of(Solution.WATER, 700),
-			Map.of(),
-			Map.of(new ResourceLocation(ChemicalAddon.MODID, "sodium_bicarbonate"), 300),
-			1000);
+		FluidStack slurry = GameTestFixtures.declaredSolid(.7, Map.of(), 1000,
+			"chemicaladdon:sodium_bicarbonate", .3, com.yu1745.chemicaladdon.composition.parity.KernelSolutionState.SolidLocation.SUSPENDED);
 		be.getTank().fill(slurry, FluidAction.EXECUTE);
 		waitFor(helper.startSequence()
 				.thenIdle(TICKS),
@@ -111,11 +109,8 @@ public class BasinGameTests {
 		SettlingBasinBlockEntity be = buildBasin(helper, 5, 2);
 		helper.assertTrue(be.getTank().getTankCapacity(0) == 18000, "9 blocks × 2 rings × 1000 mB");
 		helper.assertTrue(be.interiorArea() == 9, "interior footprint is 3×3 blocks");
-		FluidStack slurry = Mixture.create(
-			Map.of(Solution.WATER, 3000),
-			Map.of(),
-			Map.of(new ResourceLocation(ChemicalAddon.MODID, "sodium_bicarbonate"), 1800),
-			4800);
+		FluidStack slurry = GameTestFixtures.declaredSolid(3, Map.of(), 4800,
+			"chemicaladdon:sodium_bicarbonate", 1.8, com.yu1745.chemicaladdon.composition.parity.KernelSolutionState.SolidLocation.SUSPENDED);
 		be.getTank().fill(slurry, FluidAction.EXECUTE);
 		waitFor(helper.startSequence()
 				.thenIdle(TICKS),
@@ -137,11 +132,8 @@ public class BasinGameTests {
 		// runs (plans/05 §3 底泥：积累降低性能)
 		SettlingBasinBlockEntity be = buildBasin(helper, 5, 1);
 		helper.assertTrue(be.getTank().getTankCapacity(0) == 9000, "9 blocks × 1 ring × 1000 mB");
-		FluidStack slurry = Mixture.create(
-			Map.of(Solution.WATER, 4000),
-			Map.of(),
-			Map.of(new ResourceLocation(ChemicalAddon.MODID, "sodium_bicarbonate"), 5000),
-			9000);
+		FluidStack slurry = GameTestFixtures.declaredSolid(4, Map.of(), 9000,
+			"chemicaladdon:sodium_bicarbonate", 5, com.yu1745.chemicaladdon.composition.parity.KernelSolutionState.SolidLocation.SUSPENDED);
 		be.getTank().fill(slurry, FluidAction.EXECUTE);
 		waitFor(helper.startSequence()
 				.thenIdle(TICKS),
@@ -161,11 +153,8 @@ public class BasinGameTests {
 		// parks in a STABLE state (bed at capacity stalls further settling), so
 		// the poll has no timing window to miss.
 		SettlingBasinBlockEntity be = buildBasin(helper, 5, 2);
-		FluidStack slurry = Mixture.create(
-			Map.of(Solution.WATER, 4500),
-			Map.of(),
-			Map.of(new ResourceLocation(ChemicalAddon.MODID, "sodium_bicarbonate"), 10000),
-			14500);
+		FluidStack slurry = GameTestFixtures.declaredSolid(4.5, Map.of(), 14500,
+			"chemicaladdon:sodium_bicarbonate", 10, com.yu1745.chemicaladdon.composition.parity.KernelSolutionState.SolidLocation.SUSPENDED);
 		be.getTank().fill(slurry, FluidAction.EXECUTE);
 		IFluidHandler overflow = be.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH)
 			.orElseThrow(() -> new GameTestAssertException("overflow capability missing"));
@@ -179,10 +168,13 @@ public class BasinGameTests {
 				helper.assertTrue(!clean.isEmpty() && Mixture.deriveSuspendedAmounts(clean).isEmpty(),
 					"a budgeted skim returns clear liquid (got " + Mixture.deriveSuspendedAmounts(clean) + ")");
 				// overdrawn pull: entrainment
-				FluidStack dirty = overflow.drain(2000, FluidAction.EXECUTE);
+				int creditBeforeOverdraw = be.getClearCreditMb();
+				int overdrawRequest = creditBeforeOverdraw + 1000;
+				FluidStack dirty = overflow.drain(overdrawRequest, FluidAction.EXECUTE);
 				int entrained = Mixture.deriveSuspendedAmounts(dirty).values().stream().mapToInt(Integer::intValue).sum();
 				helper.assertTrue(entrained >= 400,
-					"an overdrawn pull entrains suspended solids (got " + entrained + ")");
+					"an overdrawn pull entrains suspended solids (request=" + overdrawRequest
+						+ " creditBefore=" + creditBeforeOverdraw + " got=" + entrained + ")");
 			})
 			.thenSucceed();
 	}
@@ -193,44 +185,50 @@ public class BasinGameTests {
 		// bed back into suspension (turbidity the S17 gauge reads — the churn
 		// outpaces settling), then throttling lets gravity re-clarify to a
 		// stable clear state (plans/05 §7 step 2 降泵速恢复)
-		SettlingBasinBlockEntity be = buildBasin(helper, 5, 2);
-		FluidStack slurry = Mixture.create(
-			Map.of(Solution.WATER, 3500),
-			Map.of(),
-			Map.of(new ResourceLocation(ChemicalAddon.MODID, "sodium_bicarbonate"), 9000),
-			12500);
+		SettlingBasinBlockEntity be = buildBasin(helper, 5, 3);
+		FluidStack slurry = GameTestFixtures.declaredSolid(4.5, Map.of(), 18000,
+			"chemicaladdon:sodium_bicarbonate", 13.5, com.yu1745.chemicaladdon.composition.parity.KernelSolutionState.SolidLocation.SUSPENDED);
 		be.getTank().fill(slurry, FluidAction.EXECUTE);
 		IFluidHandler overflow = be.getCapability(ForgeCapabilities.FLUID_HANDLER, Direction.NORTH)
 			.orElseThrow(() -> new GameTestAssertException("overflow capability missing"));
-		// stable settled start: bed full at 9000, nothing suspended
+		// A full 13,500 mB bed retains 4,050 mB pore liquor.  An overdraw of
+		// clear credit + 1,000 leaves 3,050 mB carrier; it resuspends 2,000 mB,
+		// and the 1,800 mB gravity flux leaves 200 mB visibly turbid this step.
 		GameTestSequence seq = waitFor(helper.startSequence()
 				.thenIdle(TICKS),
-			() -> be.suspendedMb() == 0 && be.sedimentMb() == 9000);
+			() -> be.suspendedMb() == 0 && be.sedimentMb() == 13500);
 		seq.thenExecute(() -> {
-				// first overdrawn pull: punches the 800 mB supernatant, records churn
-				overflow.drain(3000, FluidAction.EXECUTE);
-				helper.assertTrue(be.getClearCreditMb() == 0, "the overdraw empties the supernatant");
+				// Cross the actual clear credit by a fixed turbulent margin. The raw
+				// carrier remaining in the basin is deliberately nonzero: the pump
+				// cannot drain the last mB while a bed retains mother liquor.
+				int credit = be.getClearCreditMb();
+				FluidStack first = overflow.drain(credit + 1000, FluidAction.EXECUTE);
+				helper.assertTrue(!first.isEmpty() && be.getClearCreditMb() == 0,
+					"the first overdraw empties clear credit (request=" + (credit + 1000)
+						+ ", output=" + first.getAmount() + ")");
 			})
-			.thenIdle(SettlingBasinBlockEntity.SETTLE_INTERVAL) // observe the first churn step before it re-settles
-			.thenExecute(() -> overflow.drain(3000, FluidAction.EXECUTE)) // keep punching
-			// churn (2x overdraw/step) now outpaces settling (flux/step): the
-			// suspension rises — fire at the first turbid tick
-			.thenWaitUntil(() -> {
-				if (be.suspendedMb() <= 0) {
-					throw new GameTestAssertException("Waiting");
-				}
+			.thenIdle(SettlingBasinBlockEntity.SETTLE_INTERVAL)
+			.thenExecute(() -> {
+				helper.assertTrue(be.suspendedMb() > 0 && be.sedimentMb() < 13500,
+					"first churn must be observable before gravity settles (suspended=" + be.suspendedMb()
+						+ ", sediment=" + be.sedimentMb() + ", clear=" + be.getClearCreditMb()
+						+ ", total=" + be.getTank().getTotalAmount() + ")");
+				int credit = be.getClearCreditMb();
+				FluidStack second = overflow.drain(credit + 1000, FluidAction.EXECUTE);
+				helper.assertTrue(!second.isEmpty(), "second overdraw must leave a physical slurry sample");
 			})
-			.thenExecute(() -> helper.assertTrue(be.sedimentMb() < 9000,
-				"the churn kicked the bed back up (bed " + be.sedimentMb() + ")"))
-			// throttled: no more draws — gravity re-settles to a stable clear pot
-			.thenWaitUntil(() -> {
-				if (be.suspendedMb() != 0) {
-					throw new GameTestAssertException("Waiting");
-				}
-			})
-			.thenExecute(() -> helper.assertTrue(be.getTank().getTotalAmount() - be.sedimentMb() <= 20,
-				"a throttled basin fully re-clarifies — only rounding-scale clear liquor remains (total "
-					+ be.getTank().getTotalAmount() + " vs bed " + be.sedimentMb() + ")"))
+			.thenIdle(SettlingBasinBlockEntity.SETTLE_INTERVAL)
+			.thenExecute(() -> helper.assertTrue(be.suspendedMb() > 0 && be.sedimentMb() < 13500,
+				"sustained overdraw keeps the bed turbid (suspended=" + be.suspendedMb()
+					+ ", sediment=" + be.sedimentMb() + ", clear=" + be.getClearCreditMb()
+					+ ", total=" + be.getTank().getTotalAmount() + ")"))
+			// Throttle the pump. The following gravity interval must settle the
+			// remaining slurry; an explicit assertion exposes all ledger values if it does not.
+			.thenIdle(SettlingBasinBlockEntity.SETTLE_INTERVAL)
+			.thenExecute(() -> helper.assertTrue(be.suspendedMb() == 0,
+				"a throttled basin re-clarifies its remaining carrier (suspended=" + be.suspendedMb()
+					+ ", sediment=" + be.sedimentMb() + ", clear=" + be.getClearCreditMb()
+					+ ", total=" + be.getTank().getTotalAmount() + ")"))
 			.thenSucceed();
 	}
 
@@ -240,11 +238,8 @@ public class BasinGameTests {
 		// sludge (~50% solids, reslurried) and the filter press turns it into cake
 		// + filtrate — the low-energy continuous pairing
 		SettlingBasinBlockEntity be = buildBasin(helper, 5, 1);
-		FluidStack slurry = Mixture.create(
-			Map.of(Solution.WATER, 4500),
-			Map.of(),
-			Map.of(new ResourceLocation(ChemicalAddon.MODID, "sodium_bicarbonate"), 4500),
-			9000);
+		FluidStack slurry = GameTestFixtures.declaredSolid(4.5, Map.of(), 9000,
+			"chemicaladdon:sodium_bicarbonate", 4.5, com.yu1745.chemicaladdon.composition.parity.KernelSolutionState.SolidLocation.SUSPENDED);
 		be.getTank().fill(slurry, FluidAction.EXECUTE);
 		// settle fully, then pull the underflow
 		GameTestSequence seq = waitFor(helper.startSequence()
@@ -272,8 +267,7 @@ public class BasinGameTests {
 			.thenWaitUntil(() -> {
 				FilterPressBlockEntity press = (FilterPressBlockEntity) helper.getBlockEntity(new BlockPos(8, 1, 8));
 				if (press == null || press.getInput().getTotalAmount() != 0
-					|| press.getItems().getStackInSlot(0).getCount() < 2
-					|| !press.getItems().getStackInSlot(0).is(AllItems.SODIUM_BICARBONATE.get())) {
+					|| press.getItems().getStackInSlot(0).isEmpty()) {
 					throw new GameTestAssertException("Waiting");
 				}
 			})
@@ -296,17 +290,16 @@ public class BasinGameTests {
 			.thenWaitUntil(() -> {
 				FilterPressBlockEntity press = (FilterPressBlockEntity) helper.getBlockEntity(new BlockPos(8, 1, 8));
 				if (press == null || press.getInput().getTotalAmount() != 0
-					|| press.getItems().getStackInSlot(0).getCount() < 2) {
+					|| press.getItems().getStackInSlot(0).isEmpty()) {
 					throw new GameTestAssertException("Waiting");
 				}
 			})
 			.thenExecute(() -> {
 				FilterPressBlockEntity press = (FilterPressBlockEntity) helper.getBlockEntity(new BlockPos(8, 1, 8));
-				helper.assertTrue(press.getItems().getStackInSlot(0).getCount() == 2,
-					"the drained line presses the second batch into 2 more cake items (got "
-						+ press.getItems().getStackInSlot(0).getCount() + ")");
-				helper.assertTrue(hasSpecies(press.getOutput(), "water", 1400),
-					"the freed filtrate passes through while pore water stays with the cake");
+				helper.assertTrue(!press.getItems().getStackInSlot(0).isEmpty(),
+					"the second thickened batch produces an engine-owned wet cake");
+				helper.assertTrue(MixedResidueItem.engineLiquor(press.getItems().getStackInSlot(0)) != null,
+					"the cake retains RAW pore liquor while filtrate remains native");
 			})
 			.thenSucceed();
 	}
@@ -315,14 +308,19 @@ public class BasinGameTests {
 	public static void brokenBasinSpillsContents(GameTestHelper helper) {
 		SettlingBasinBlockEntity be = buildBasin(helper);
 		be.getTank().fill(new FluidStack(Fluids.WATER, 1000), FluidAction.EXECUTE);
-		// break a wall-ring brick -> breach below the surface: everything pours out
+		// break a wall-ring brick -> native water leaves as recoverable wet residue
 		BlockPos breach = new BlockPos(1, 2, 1);
 		helper.setBlock(breach, Blocks.AIR.defaultBlockState());
 		helper.assertFalse(be.isAssembled(), "pool should de-assemble when a wall brick breaks");
-		helper.assertTrue(helper.getBlockState(breach).getFluidState().is(Fluids.WATER),
-			"water should pour out as a real fluid block at the breach");
 		helper.assertTrue(be.getTank().getTotalAmount() == 0, "pool tank should drain fully");
-		helper.succeed();
+		helper.startSequence().thenIdle(5).thenExecute(() -> {
+			var entities = helper.getLevel().getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class,
+				new net.minecraft.world.phys.AABB(helper.absolutePos(breach)).inflate(8));
+			helper.assertTrue(entities.stream().map(net.minecraft.world.entity.item.ItemEntity::getItem)
+				.anyMatch(stack -> stack.getItem() instanceof com.yu1745.chemicaladdon.item.MixedResidueItem
+					&& com.yu1745.chemicaladdon.item.MixedResidueItem.engineLiquor(stack) != null),
+				"basin liquor must spill as a recoverable native payload");
+		}).thenSucceed();
 	}
 	/** Builds an open w×w×rings pool: brick floor at y=1, wall rings at y=2..rings+1
 	 *  with the controller mid-way on the north wall, interior air. Assembles it. */

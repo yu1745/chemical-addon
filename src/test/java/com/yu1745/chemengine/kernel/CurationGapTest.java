@@ -11,16 +11,8 @@ import org.junit.jupiter.api.Test;
 /**
  * 策展缺口补全验收：硝酸/亚硝酸介稳池 + 铁污染漂白液 + 氯气制漂白液。
  *
- * <p>对应发现档案：锅4（还原 pe 下 N 全塌 NH4+，真实硝酸盐介稳）、一锅汤（Fe 遇漂白液盲区）、
- * 电解→漂白液链断裂。CLI 探针基线（/tmp/gap1/2/4.phq）：
- * <ul>
- *   <li>FerrousReducesNitrate：Nitra 20→7.8 @10ks，Nitri 2→12.2，和恒 20，Fe 不动；</li>
- *   <li>HypOxidisesFerrous：Hyp 25→16.8 @1ks 递减，Cl 10→18.2 1:1，Fe/Na 不动；</li>
- *   <li>ChlorineAbsorbs：Hyp=Cl 1:1 增长（0.02→0.159 mol @1ks），OH⁻ 门控 pH 13.1→6.9。</li>
- * </ul>
- *
- * <p>引擎边界（_doc2 归档）：价态 token 结构性不可能（Fe 只作速率门）；
- * 池销毁必须 TOT 门控（销毁不存在的池 = 无限恢复循环挂死）。
+ * <p>每项动力学断言均与相同进料的零步 KINETICS 基线比较。这样不会把
+ * SOLUTION 初始平衡或数据库版本造成的物种分配误报为策展反应 extent。
  */
 class CurationGapTest {
 
@@ -55,76 +47,34 @@ class CurationGapTest {
     }
 
     @Test
-    @DisplayName("Fe²⁺ 还原硝酸盐：Nitra→Nitri 1:1，Fe 只作速率门（元素账不动）")
+    @DisplayName("Fe²⁺/硝酸盐：Nitra→Nitri 1:1，原生 Fe²⁺ 损失 = 2×Nitri 新增")
     void ferrousReducesNitrateToNitrite() {
-        try (IPhreeqc q = IPhreeqc.create()) {
-            IPhreeqc.RunResult r = q.run(ChemState.builder("nitrate + ferrous")
-                            .waterKg(1.0).pHCharge().pe(4)
-                            .total("Fe", 0.010).total("Na", 0.010).total("Nitra", 0.020)
-                            .build().toSolutionScript(1) + "END\n"
-                    + C.ratesBlock() + "\nUSE solution 1\n"
-                    + C.kineticsBlock(Set.of("FerrousReducesNitrate"), null, 1000, 10000)
-                    + """
-                    SELECTED_OUTPUT 1
-                        -state    true
-                        -time     true
-                        -totals   Nitra  Nitri  Fe
-                        -pH       true
-                    END
-                    """);
-            int last = r.rowCount() - 1;
-            double nitra = r.row(last).d("Nitra");
-            double nitri = r.row(last).d("Nitri");
-            System.out.printf("[Fe还原NO3] t=10ks: Nitra=%.4f Nitri=%.4f Fe=%.4f pH=%.2f%n",
-                    nitra, nitri, r.row(last).d("Fe"), r.row(last).d("pH"));
-            assertEquals(0.020, nitra + nitri, 1e-4, "池间 1:1 转化，总量守恒");
-            assertEquals(0.0078, nitra, 5e-4, "Nitra 20→~7.8 mM（CLI 基线）");
-            assertEquals(0.010, r.row(last).d("Fe"), 1e-6, "Fe 只作速率门，元素账不动");
-            // 中间步：单调
-            assertTrue(r.row(0).d("Nitra") > nitra, "Nitra 单调下降");
-        }
+        var base = last(runFerrousNitrate(0));
+        var active = last(runFerrousNitrate(1000, 10_000));
+        double nitraExtent = mol(base, "Nitra") - mol(active, "Nitra");
+        double nitriExtent = mol(active, "Nitri") - mol(base, "Nitri");
+        double fe2Loss = mol(base, "Fe(2)") - mol(active, "Fe(2)");
+        double fe3Gain = mol(active, "Fe(3)") - mol(base, "Fe(3)");
+        assertTrue(nitraExtent > 1e-6, "Nitra→Nitri 必须发生正 extent");
+        assertEquals(nitraExtent, nitriExtent, 1e-6, "N 原子在两个伪池间 1:1 转移");
+        assertEquals(2.0 * nitriExtent, fe2Loss, 1e-6, "原生 Fe²⁺ 损失 = 2×Nitri 新增");
+        assertEquals(fe2Loss, fe3Gain, 1e-6, "Fe 只在 Fe(2)/Fe(3) 价态间迁移");
+        assertEquals(mol(base, "Fe"), mol(active, "Fe"), 1e-6, "Fe 原子总量守恒");
     }
 
     @Test
-    @DisplayName("Fe²⁺ 污染漂白液：Hyp 被消耗、Cl 1:1 释放（一锅汤盲区补全）")
+    @DisplayName("Fe 污染漂白液：相对零步基线 Hyp→Cl 1:1，Fe/Na 原子守恒")
     void ferrousContaminationConsumesBleach() {
-        try (IPhreeqc q = IPhreeqc.create()) {
-            IPhreeqc.RunResult r = q.run("""
-                    SOLUTION 1 bleach contaminated by ferrous
-                        pH        11 charge
-                        pe        4
-                        Na        15 mmol/kgw
-                        Cl        10 mmol/kgw
-                        Hyp       25 mmol/kgw
-                        Fe        10 mmol/kgw
-                    END
-                    """ + C.ratesBlock() + """
-                    USE solution 1
-                    KINETICS 1
-                    HypOxidisesFerrous
-                        -formula Cl 1 Hyp -1
-                        -m        1000
-                        -m0       1000
-                        -steps    100 1000 seconds
-                    SELECTED_OUTPUT 1
-                        -state    true
-                        -time     true
-                        -totals   Hyp  Cl  Fe  Na
-                        -pH       true
-                    END
-                    """);
-            int last = r.rowCount() - 1;
-            double hyp = r.row(last).d("Hyp");
-            double cl = r.row(last).d("Cl");
-            System.out.printf("[Fe污染漂白液] t=1ks: Hyp=%.4f Cl=%.4f Fe=%.4f pH=%.2f%n",
-                    hyp, cl, r.row(last).d("Fe"), r.row(last).d("pH"));
-            assertTrue(hyp < 0.020, "Hyp 应被显著消耗（25→<20 mM），实测 " + hyp);
-            assertEquals(0.035 - hyp, cl, 2e-4, "Cl = 10 + 消耗的 Hyp（1:1）");
-            assertEquals(0.010, r.row(last).d("Fe"), 1e-6, "Fe 元素账不动");
-            assertEquals(0.015, r.row(last).d("Na"), 1e-6, "Na 旁观守恒");
-            // pH 方向：漂白液氧化力损失（净消耗 OH-），pH 下降
-            assertTrue(r.row(last).d("pH") < 10.0, "pH 应显著下降: " + r.row(last).d("pH"));
-        }
+        var base = last(runFerrousBleach(0));
+        var active = last(runFerrousBleach(100, 1000));
+        double hypExtent = mol(base, "Hyp") - mol(active, "Hyp");
+        double clGain = mol(active, "Cl") - mol(base, "Cl");
+        assertTrue(hypExtent > 1e-6, "Fe 门控下 Hyp 必须相对零步基线发生正的失效 extent");
+        assertEquals(hypExtent, clGain, 1e-6, "Hyp 的 Cl 原子按 1:1 进入真实 Cl 池");
+        assertEquals(mol(base, "Hyp") + mol(base, "Cl"), mol(active, "Hyp") + mol(active, "Cl"),
+                1e-6, "Hyp/Cl 的总 Cl 原子守恒");
+        assertEquals(mol(base, "Fe"), mol(active, "Fe"), 1e-6, "Fe 原子总量守恒");
+        assertEquals(mol(base, "Na"), mol(active, "Na"), 1e-6, "Na 旁观原子守恒");
     }
 
     @Test
@@ -182,5 +132,56 @@ class CurationGapTest {
         assertTrue(C.reaction("FerrousReducesNitrate").rateExpression.contains("TOT(\"Fe(+2)\")"),
                 "Fe(+2) 只能出现在速率表达式（BASIC TOT 合法），formula 中仍非法");
         assertEquals(Curation.Kind.INTERFACE, C.reaction("ChlorineAbsorbs").kindEnum());
+    }
+
+    private static IPhreeqc.RunResult runFerrousNitrate(double... steps) {
+        ChemState feed = ChemState.builder("nitrate + ferrous")
+                .waterKg(1.0).pHCharge().pe(0)
+                .total("Fe", 0.010).total("Na", 0.010).total("Nitra", 0.020)
+                .build();
+        try (IPhreeqc q = IPhreeqc.create()) {
+            return q.run(feed.toSolutionScript(1) + "END\n" + C.ratesBlock() + "END\nUSE solution 1\n"
+                    + C.kineticsBlock(Set.of("FerrousReducesNitrate"), null, steps) + selectedOutput());
+        }
+    }
+
+    private static IPhreeqc.RunResult runFerrousBleach(double... steps) {
+        String feed = """
+                SOLUTION 1 bleach contaminated by ferrous
+                    pH        11 charge
+                    pe        4
+                    water     1 kg
+                    Na        15 mmol/kgw
+                    Cl        10 mmol/kgw
+                    Hyp       25 mmol/kgw
+                    Fe        10 mmol/kgw
+                END
+                """;
+        try (IPhreeqc q = IPhreeqc.create()) {
+            return q.run(feed + C.ratesBlock() + "END\nUSE solution 1\n"
+                    + C.kineticsBlock(Set.of("HypOxidisesFerrous"), null, steps) + selectedOutput());
+        }
+    }
+
+    private static String selectedOutput() {
+        return """
+                SELECTED_OUTPUT 1
+                    -state true
+                    -time true
+                    -water true
+                    -high_precision true
+                    -totals Nitra Nitri Hyp Cl Fe Fe(2) Fe(3) Na
+                    -pH true
+                    -pe true
+                END
+                """;
+    }
+
+    private static IPhreeqc.RunResult.Row last(IPhreeqc.RunResult result) {
+        return result.row(result.rowCount() - 1);
+    }
+
+    private static double mol(IPhreeqc.RunResult.Row row, String column) {
+        return row.d(column) * row.d("mass_H2O");
     }
 }

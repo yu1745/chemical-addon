@@ -1,5 +1,7 @@
 # Known Limitations
 
+> 2026-09：下文主要是已退役自研求解器的历史问题清单。当前 IPhreeqc 运行时、介稳池与相模型的完成态及限制见 [`../progress.md`](../progress.md)，不能将下文的“已解决”直接视为当前模型覆盖承诺。
+
 ## 1. ~~NO₂ `delta_h` 暂为 0~~（已解决）
 
 - 已通过 `projectExact` 的通用 secondary 批量削减修复

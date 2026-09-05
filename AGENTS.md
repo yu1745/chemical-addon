@@ -1,12 +1,13 @@
 # AGENTS.md - chemical-addon（Create 化学附属）
 
-本仓库是 **Create Forge 6.0.8 的工业化学附属**（Forge 1.20.1，Java 17）。全新设计计划主索引为 `plans/README.md`，四类通用多方块为釜、塔、池、炉；旧计划与旧归档已废止。**代码完成态与历史单元只以 `docs/progress.md` 为准**。改代码前先读 `plans/README.md`、对应结构计划与 `plans/10-development.md`，不得把未来计划误写成已实现。
+本仓库是 **Create Forge 6.0.8 的工业化学附属**（Forge 1.20.1，Java 17）。全新设计计划主索引为 `plans/README.md`，四类通用多方块为釜、塔、池、炉；旧计划与旧归档已废止。**`docs/progress.md` 是代码完成状态与历史单元的登记正本，计划不代表已实现**。判断实际行为仍须检查源码和测试；发现登记与实现不一致时报告差异，不据此停止独立工作。改代码前先读 `plans/README.md`、涉及范围的结构计划与 `plans/10-development.md`；其他修改按涉及范围读取计划，不得把未来计划误写成已实现。
 
-## 核心架构（改动前必读 plans/02-common-architecture.md）
+## 核心架构（涉及运行时架构的代码修改前必读 plans/02-common-architecture.md）
 
-- **离子基底单一混合物**：溶液/浆料只注册一个 `chemicaladdon:mixture` 元流体，FluidStack NBT 承载四个域——`Molecules`（分子物种）+ `Ions`（电中性离子多重集，硬不变量）+ `Suspended`（悬浮固相=浆料）+ `Sediment`（沉底固相=降温结晶沉底）。纯物质（水、13 气体、导热油）照旧注册 Forge Fluid（气体=负密度）。
+- **原生状态单一混合物**：溶液/浆料只注册一个 `chemicaladdon:mixture` 元流体。化学权威是版本化 `KernelSolutionState`（PHREEQC `SOLUTION_RAW`、运输参考 mB、固相 mol/位置），直接存于 FluidStack NBT。`Molecules/Ions/Suspended/Sediment` 仅为单向派生显示缓存，不反向重建化学，不为显示离子子集补电荷或补水。纯水进入水相容器后也适配为原生状态；水、气体、导热油的 Forge 注册仍保留。
 - **物种 = 模式**：species JSON 是「命名组成模式」，只用于配方匹配/名字/颜色/创造栏桶默认配比，**不参与釜内存储与显示**。浓/稀是**连续浓度**（离子单位/水单位，运行时算），不是身份、不做二值判断。
-- **化学权威 = IPhreeqc 内核（U19 切换，RulesEngine 退役出运行时）**：釜/结晶器主循环 `PressureFeed`（气相分压→interface 反应）→ `TickDriver`（0.5 s/拍 KINETICS，温度贯通）→ `WriteBack`（增量迁移，dominant-ion 存储 S→SO₄²⁻/N→NH₄⁺/C→HCO₃⁻，幂等不膨胀）→ `EngineReadings`（pH 等表计共享快照）。沉淀/回溶走 `PhaseBridge`（物种 equilibria → inline PHASES + EQUILIBRIUM_PHASES）：过饱和自发析出**先入 `Suspended` 域成浆料**、溶解度曲线析晶沉 `Sediment` 域；过滤机/沉淀池抽固相域吐固体 item。内核不承载的游戏物理（开口蒸发/冷凝、投料溶解/投种、曲线结晶）由 `reactor/PhysicalSteps` 在内核步进后执行。引擎边界见 plans/02 §3：自发归内核，需驱动（点火/供电/催化/煅烧）归配方层；红氧经伪池 + KINETICS 解禁。
+- **化学权威 = IPhreeqc 内核**：`TickDriver` 从原生状态续接 KINETICS/相平衡，`WriteBack` 提交完整终态，`EngineReadings` 与显示缓存只读原生观测。`MIX_SOLUTION` 负责不反应的比例运输与混合；新进料声明水量与中性化学式。`PhaseBridge` 使用数据库 `enginePhase` 或数据包相定义，新增沉淀入悬浮账本；固相回溶、过滤、母液夹带与洗涤均保留精确库存。`PhysicalSteps` 处理原生投料、蒸水和数据限制的气体传递，不恢复旧曲线/四域求解。反应覆盖仍受数据库与策展动力学限制；完整双向气液与热耦合的完成态只看 progress。
+- **引擎优先、无旧档兼容**：模组尚未上线；允许破坏接口，由游戏适配引擎。不得新增旧存档迁移、dominant-ion 编码、旧四域回退或按物质重建纯水的修补路径。失败事务不得吞料。
 - 自研多方块模板（釜/塔/池）是后续所有容器结构的范本（`plans/03-vessel.md`；结构层基类 `vessel/VesselBlockEntity` 已由 U3 抽取落地）。
 
 ## 构建
@@ -20,12 +21,14 @@
 ./run-server.sh          # 冒烟测试：启动 dev 服务器、输出透传，识别到 "Done (" 后
                          # 三级关闭（组 SIGTERM → 轮询 → SIGKILL）并退出 0；
                          # 环境变量 WAIT_DONE_TIMEOUT / SHUTDOWN_GRACE_SECONDS
-./gradlew runGameTestServer   # 跑 GameTest（chemicaladdon/gametest/，125 个测试，需先 build）
+./gradlew runGameTestServer   # 跑 GameTest（chemicaladdon/gametest/，需先 build；当前数量见 progress）
 ```
 
 > ⚠️ runServer 永不自行返回：不要用 `cmd | script` 或 `cmd && script` 形式调用；`run-server.sh` 自行负责启动与收尾。关闭策略为纯 PID 方案（`$!` → PGID → 整组信号），**禁止**在脚本里用进程名/路径匹配（会误伤容器内的生产服 forge1 JVM）。
 >
-> ⚠️ **控制测试频率与范围**：一次连续开发任务中，先集中完成代码修改、静态检查和必要的轻量验证，**只在该轮开发全部完成、准备交付前各运行至多一次所需测试**；禁止每改一个文件、每完成一个子任务或每次修补后重复触发。普通方块/资源/玩法改动跑 `./gradlew modTest`，不必重跑未触及的化学内核；改动 `chemengine/`、`composition/`、parity/bridge、物种/数据库测试资源或构建/依赖时跑 `./gradlew engineTest`，发布和跨边界改动才跑完整 `./gradlew test`。`./gradlew runGameTestServer` 仍只在需要服务端行为覆盖的本轮末尾运行一次。仅当末轮测试确实失败并完成针对性修复后，才允许重跑对应失败测试。完整 JUnit 已通过后，后续构建必须使用 `./gradlew build -x test`，避免重复执行。若用户明确要求测试优先或逐步验证，则以用户要求为准。
+> ⚠️ **控制测试频率与范围**：一次连续开发任务中，先集中完成代码修改、静态检查和必要的轻量验证，再按影响范围运行所需测试；**同一代码状态不重复运行已通过的测试**，不因每改一个文件或完成一个子任务就重复触发。普通方块/资源/玩法改动跑 `./gradlew modTest`，不必重跑未触及的化学内核；改动 `chemengine/`、`composition/`、parity/bridge、物种/数据库测试资源或构建/依赖时跑 `./gradlew engineTest`，发布和跨边界改动跑完整 `./gradlew test`。仅在需要服务端行为覆盖时，于本轮末尾运行 `./gradlew runGameTestServer`。测试后发生影响行为的修改、修复测试失败或测试因环境问题未完成时，可重新运行相关测试，无需另行确认。所需测试通过后，构建使用 `./gradlew build -x test`，避免重复执行。仅审阅或纯文档修改不要求测试和构建。若用户明确要求测试优先或逐步验证，则以用户要求为准。
+
+GameTest 失败后可用 `python tools/run_gametest_failures.py --log build/native-gametest.log --prepare-only` 生成失败用例的隔离源码与 init 脚本，再执行 `./gradlew -I build/selected-gametests/selected-gametests.init.gradle runGameTestServer`。`--include 方法名1,方法名2` 可加入本轮新增回归。原始测试源码不变，隔离编译输出位于 `build/selected-gametest-classes`；最终打包使用不带该 init 的正常构建。
 
 ### 运行时依赖（mod）怎么加
 
@@ -39,7 +42,7 @@
 
 **本模组是 Create 的原生附属：Create 及其依赖库（catnip 等）就是我们的基础设施，能依赖的都应依赖，不要自己重新实现。** 写机制时优先考虑直接继承/复用 Create 基类与工具（SmartBlockEntity/SmartBlockEntityRenderer、LerpedFloat、AnimationTickHolder、CreateLang、IHaveGoggleInformation、ValueSettingsBehaviour、ProcessingRecipe 管线等），不要重复造轮子；自研只覆盖 Create 没有的部分（多流体流股、反应引擎、化学物种）。
 
-**写任何机制/结构/能力对接之前，先读成熟 mod 的同款实现，照它的模式写，不要自己发明。** 尤其是多方块、能力代理、网络同步这类容易踩坑的领域。已参考过的成熟实现：
+**新增机制、结构或能力对接前，先检查本仓库已有模式和最相关的成熟实现。** 尤其是多方块、能力代理、网络同步这类容易踩坑的领域。没有直接同款时，参考最接近的实现并说明差异，按项目架构实现 Create 未提供的部分。参考目录缺失时先检查可用源码与依赖缓存，并继续不受影响的工作；仅在缺失信息妨碍正确实现时请求补充。已参考过的成熟实现：
 
 | 参考源 | 位置 | 参考内容 |
 |--------|------|---------|
@@ -50,7 +53,7 @@
 | **Create TFMG** | `../create-tfmg-forge_1.20.1/` | 蒸馏塔/钢储罐/工业机器多方块结构参考 |
 | **IPhreeqc / PHREEQC**（USGS，公有领域） | 内核 vendor 并入本仓库（commit c988ea9，原 chem-engine 仓库封存；引擎文档 docs/engine/ 五件套，正本 PLAN.md） | **运行时化学唯一权威（U19）**：质量作用/SI 语义与 sit.dat（ThermoChimie）数据库；红氧经伪元素池 + KINETICS 速率方程解禁。旧自研 RulesEngine 退役出运行时（保留物流常量与回归锁）。归属见 THIRD_PARTY.md（sit.dat 许可证核实待办见 progress P6） |
 
-> 规则：新增机制前先到上表找对应实现读一遍；若参考了新的 mod 实现，把参考源追加到本表。
+> 规则：新增机制按上述规则优先检查表中最相关的实现；若参考了新的 mod 实现，把参考源追加到本表。
 
 ## 源码参考（MC / Forge API）
 
@@ -93,5 +96,5 @@ python3 tools/gen_species.py
 ## 规范
 
 - 反应配方未来接入 Create ProcessingRecipe 管线（自定义 RecipeType `chemical_reaction`），不手写分散配方入口。
-- 生产服 forge1 已装 Create 6.0.8 + createaddition 1.3.3；本 mod 上线走 `deploy-waiting/forge1/` 部署流程（见 server/AGENTS.md），**未经要求不得重启服务器**。
-- 提交前：`./gradlew build` 必须通过。
+- **未经要求不得重启服务器**。
+- 提交前：按上述影响范围通过所需测试，再执行 `./gradlew build -x test`；发布和跨边界改动须通过完整 `./gradlew test`。仅审阅或纯文档修改不要求测试和构建。

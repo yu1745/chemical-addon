@@ -42,6 +42,14 @@ public class AllItems {
 		REGISTRATE.item("sulfur", Item::new)
 			.lang("Sulfur")
 			.register();
+	public static final ItemEntry<Item> IODINE =
+		REGISTRATE.item("iodine", Item::new)
+			.lang("Iodine")
+			.register();
+	public static final ItemEntry<Item> MANGANESE_DIOXIDE =
+		REGISTRATE.item("manganese_dioxide", Item::new)
+			.lang("Manganese Dioxide")
+			.register();
 	public static final ItemEntry<Item> BAUXITE =
 		REGISTRATE.item("bauxite", Item::new)
 			.lang("Bauxite")
@@ -181,6 +189,46 @@ public class AllItems {
 	public static final ItemEntry<TestPaperItem> COBALT_GLASS =
 		REGISTRATE.item("cobalt_glass", p -> new TestPaperItem(p, TestPaperItem.Kind.COBALT_GLASS))
 			.lang("Cobalt-Glass Flame Scope")
+			.register();
+	public static final ItemEntry<TestPaperItem> HYPOCHLORITE =
+		REGISTRATE.item("hypochlorite_paper", p -> new TestPaperItem(p, TestPaperItem.Kind.HYPOCHLORITE))
+			.lang("Effective Chlorine Paper")
+			.register();
+	public static final ItemEntry<TestPaperItem> SULFITE =
+		REGISTRATE.item("sulfite_paper", p -> new TestPaperItem(p, TestPaperItem.Kind.SULFITE))
+			.lang("Sulfite Paper")
+			.register();
+	public static final ItemEntry<TestPaperItem> AMMONIUM =
+		REGISTRATE.item("ammonium_paper", p -> new TestPaperItem(p, TestPaperItem.Kind.AMMONIUM))
+			.lang("Ammonium Paper")
+			.register();
+	public static final ItemEntry<TestPaperItem> NITRATE_NITRITE =
+		REGISTRATE.item("nitrate_nitrite_paper", p -> new TestPaperItem(p, TestPaperItem.Kind.NITRATE_NITRITE))
+			.lang("Nitrate/Nitrite Paper")
+			.register();
+	public static final ItemEntry<TestPaperItem> FERROUS_FERRIC =
+		REGISTRATE.item("ferrous_ferric_paper", p -> new TestPaperItem(p, TestPaperItem.Kind.FERROUS_FERRIC))
+			.lang("Ferrous/Ferric Paper")
+			.register();
+	public static final ItemEntry<TestPaperItem> HARDNESS =
+		REGISTRATE.item("hardness_paper", p -> new TestPaperItem(p, TestPaperItem.Kind.HARDNESS))
+			.lang("Hardness Paper")
+			.register();
+	public static final ItemEntry<TestPaperItem> AMMONIA_GAS =
+		REGISTRATE.item("ammonia_gas_paper", p -> new TestPaperItem(p, TestPaperItem.Kind.AMMONIA_GAS))
+			.lang("Ammonia Gas Paper")
+			.register();
+	public static final ItemEntry<TestPaperItem> SULFUR_DIOXIDE_GAS =
+		REGISTRATE.item("sulfur_dioxide_gas_paper", p -> new TestPaperItem(p, TestPaperItem.Kind.SULFUR_DIOXIDE_GAS))
+			.lang("Sulfur Dioxide Gas Paper")
+			.register();
+	public static final ItemEntry<TestPaperItem> CHLORINE_GAS =
+		REGISTRATE.item("chlorine_gas_paper", p -> new TestPaperItem(p, TestPaperItem.Kind.CHLORINE_GAS))
+			.lang("Chlorine Gas Paper")
+			.register();
+	public static final ItemEntry<TestPaperItem> NOX_GAS =
+		REGISTRATE.item("nox_gas_paper", p -> new TestPaperItem(p, TestPaperItem.Kind.NOX_GAS))
+			.lang("NOx Gas Paper")
 			.register();
 
 	public static void register() {

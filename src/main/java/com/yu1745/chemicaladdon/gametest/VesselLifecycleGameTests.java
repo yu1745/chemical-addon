@@ -413,11 +413,10 @@ public class VesselLifecycleGameTests {
 		ReactorControllerBlockEntity be = reactor(helper);
 		be.getTank().fill(new FluidStack(Fluids.WATER, 2000), FluidAction.EXECUTE);
 		be.getItems().setStackInSlot(0, new ItemStack(AllItems.SULFUR.get()));
-		// break a wall brick -> breach: water becomes a real fluid block there, sulfur drops
+		// break a wall brick -> breach: native liquor becomes a recoverable wet-residue
+		// entity, while ordinary inventory items still drop.
 		BlockPos breach = new BlockPos(1, 2, 1);
 		helper.setBlock(breach, Blocks.AIR.defaultBlockState());
-		helper.assertTrue(helper.getBlockState(breach).getFluidState().is(Fluids.WATER),
-			"water should pour out as a real fluid block at the breach");
 		helper.assertTrue(be.getTank().getTotalAmount() == 0, "tank should be empty after spilling");
 		helper.assertTrue(be.getItems().getStackInSlot(0).isEmpty(), "item buffer should be empty after spilling");
 		// item entities land in the pending list on the same tick; wait a moment
@@ -429,6 +428,10 @@ public class VesselLifecycleGameTests {
 					new net.minecraft.world.phys.AABB(helper.absolutePos(breach)).inflate(8));
 				helper.assertTrue(entities.stream().anyMatch(e -> e.getItem().is(AllItems.SULFUR.get())),
 					"sulfur should drop as an item entity");
+				helper.assertTrue(entities.stream().map(net.minecraft.world.entity.item.ItemEntity::getItem)
+					.anyMatch(stack -> stack.getItem() instanceof MixedResidueItem
+						&& MixedResidueItem.engineLiquor(stack) != null),
+					"native water must spill as recoverable liquor, not a lossy world fluid block");
 			})
 			.thenSucceed();
 	}

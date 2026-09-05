@@ -177,14 +177,10 @@ public class FurnaceGameTests {
 		}
 	}
 
-	/** True when the tank holds at least {@code min} mB of plain water. */
+	/** True when the tank holds at least {@code min} mB of water, including a
+	 * native aqueous state created by the furnace's declared steam output. */
 	private static boolean hasWater(ReactorTank tank, int min) {
-		for (FluidStack stack : tank.getFluids()) {
-			if (!Mixture.isMixture(stack) && stack.getFluid() == Fluids.WATER && stack.getAmount() >= min) {
-				return true;
-			}
-		}
-		return false;
+		return tank.waterInventoryMb() >= min;
 	}
 
 }

@@ -10,6 +10,11 @@ import com.yu1745.chemicaladdon.composition.Chemistry;
 import com.yu1745.chemicaladdon.composition.Solution;
 import com.yu1745.chemicaladdon.composition.Species;
 import com.yu1745.chemicaladdon.composition.SpeciesManager;
+import com.yu1745.chemicaladdon.composition.parity.EngineBridge;
+import com.yu1745.chemicaladdon.composition.parity.Kernel;
+import com.yu1745.chemicaladdon.composition.parity.KernelSolutionState;
+import com.yu1745.chemicaladdon.composition.parity.TickDriver;
+import com.yu1745.chemicaladdon.composition.parity.WriteBack;
 import com.yu1745.chemicaladdon.fluid.FluidColors;
 import com.yu1745.chemicaladdon.fluid.IonColors;
 import com.yu1745.chemicaladdon.fluid.Mixture;
@@ -37,7 +42,7 @@ import com.yu1745.chemicaladdon.reactor.PressureGaugePanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlock;
 import com.yu1745.chemicaladdon.reactor.ReactorControllerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ReactorTank;
-import com.yu1745.chemicaladdon.reactor.RulesEngine;
+import com.yu1745.chemicaladdon.reactor.PhysicalSteps;
 import com.yu1745.chemicaladdon.reactor.SpillLogic;
 import com.yu1745.chemicaladdon.reactor.StirShaftMath;
 import com.yu1745.chemicaladdon.reactor.StirringHeadBlockEntity;
@@ -124,6 +129,8 @@ public class ChemicalAddonGameTests {
 		event.register(VesselHardwareGameTests.class);
 		event.register(ReactorChemistryGameTests.class);
 		event.register(ParityGameTests.class);
+		event.register(NativeSeparationGameTests.class);
+		event.register(NativeDisplayGameTests.class);
 	}
 
 	// ------------------------------------------------------------------ reactor
@@ -163,14 +170,13 @@ public class ChemicalAddonGameTests {
 		// the vessel live; the default below-trigger setpoint (pH 8) fires when a
 		// caustic feed is neutralised past it — the titration/carbonisation
 		// endpoint as a redstone event. Empty-hand right-click flips direction.
-		ResourceLocation water = Solution.WATER;
 		ReactorControllerBlockEntity reactor = buildReactorWithGauge(helper, AllBlocks.PH_GAUGE.get());
 		PhGaugeBlockEntity gauge = (PhGaugeBlockEntity) helper.getBlockEntity(new BlockPos(3, 2, 1));
 		helper.assertTrue(gauge != null && gauge.getMasterPos() != null, "the pH wall gauge must be bound");
 
 		// caustic feed: [OH⁻]=0.1 → pH 13 (legacy fallback; engine snapshot after
 		// the first reactor tick reads ~14 — both are "strongly caustic")
-		reactor.getTank().fill(Mixture.create(Map.of(water, 300), Map.of("Na+1", 30, "OH-1", 30), 360),
+		reactor.getTank().fill(GameTestFixtures.declared(.3, Map.of("NaOH", .03), 360),
 			FluidAction.EXECUTE);
 		gauge.tick();
 		helper.assertTrue(gauge.isAttached() && gauge.getPh() >= 13,
@@ -181,7 +187,7 @@ public class ChemicalAddonGameTests {
 		// 1.69 mol vs Na 30 g = 1.30 mol → net −0.39 eq → pH ≈ 0.7). Engine
 		// semantics: 1 part = 1 g，等 part 酸碱不等于等摩尔——过量酸才越过终点。
 		//（part 电中性硬防线：H 与 Cl 同 part 数成对写入）
-		reactor.getTank().fill(Mixture.create(Map.of(water, 300), Map.of("H+1", 60, "Cl-1", 60), 420),
+		reactor.getTank().fill(GameTestFixtures.declared(.3, Map.of("HCl", .06), 420),
 			FluidAction.EXECUTE);
 		// （旧版此处断言「未求解时读酸性」——那是在断言 legacy 的瞬时读数；
 		// 引擎权威后过流读数依赖快照时机，不再断言过渡态）
@@ -192,7 +198,7 @@ public class ChemicalAddonGameTests {
 				helper.assertTrue(gauge.isAlarm(), "pH fell to/below the setpoint 8: the endpoint event fires");
 				gauge.toggleTriggerDirection(); // empty-hand right-click in-world
 				helper.assertTrue(!gauge.isAlarm(), "above-trigger at pH 1 vs 8: alarm off after the toggle");
-				helper.assertTrue(gauge.analogSignal() == gauge.getPh() && gauge.getPh() <= 4,
+				helper.assertTrue(gauge.analogSignal() == gauge.getPh() + 1 && gauge.getPh() <= 4,
 					"comparator: 1 level = 1 pH (got " + gauge.analogSignal() + " pH " + gauge.getPh() + ")");
 			})
 			.thenSucceed();
@@ -203,12 +209,11 @@ public class ChemicalAddonGameTests {
 		// S04 (U17, redefined as the Baumé hydrometer): °Bé = declared linear
 		// function of total dissolved units / water units — species-blind. The
 		// curve-saturated brine (2 × 0.36 f.u./water) anchors 30 °Bé.
-		ResourceLocation water = Solution.WATER;
 		ReactorControllerBlockEntity reactor = buildReactorWithGauge(helper, AllBlocks.BAUME_GAUGE.get());
 		BaumeGaugeBlockEntity gauge = (BaumeGaugeBlockEntity) helper.getBlockEntity(new BlockPos(3, 2, 1));
 
 		// exactly saturated NaCl brine: (144 + 144)/400 = 0.72 → 30 °Bé
-		reactor.getTank().fill(Mixture.create(Map.of(water, 400), Map.of("Na+1", 144, "Cl-1", 144), 688),
+		reactor.getTank().fill(GameTestFixtures.declared(.4, Map.of("NaCl", .144), 688),
 			FluidAction.EXECUTE);
 		gauge.tick();
 		helper.assertTrue(gauge.isAttached() && gauge.getBaume() == 30,
@@ -216,7 +221,7 @@ public class ChemicalAddonGameTests {
 		helper.assertTrue(gauge.isAlarm(), "30°Bé vs setpoint 24: the concentration endpoint fires");
 
 		reactor.getTank().clear();
-		reactor.getTank().fill(Mixture.create(Map.of(water, 400), Map.of("Na+1", 72, "Cl-1", 72), 544),
+		reactor.getTank().fill(GameTestFixtures.declared(.4, Map.of("NaCl", .072), 544),
 			FluidAction.EXECUTE);
 		gauge.tick();
 		helper.assertTrue(gauge.getBaume() == 15, "half concentration reads 15°Bé (got " + gauge.getBaume() + ")");
@@ -229,12 +234,11 @@ public class ChemicalAddonGameTests {
 		// S17 (U17): 4 bins over the suspended fraction (清/微浑/浑/浆), the
 		// settled bed excluded — clear liquor over a crystal bed reads clear.
 		// Default threshold 微浑 = the first-clouding cut-the-feed alarm.
-		ResourceLocation water = Solution.WATER;
 		ReactorControllerBlockEntity reactor = buildReactorWithGauge(helper, AllBlocks.TURBIDITY_GAUGE.get());
 		TurbidityGaugeBlockEntity gauge = (TurbidityGaugeBlockEntity) helper.getBlockEntity(new BlockPos(3, 2, 1));
 
 		// a clear solution: bin 0, no alarm
-		reactor.getTank().fill(Mixture.create(Map.of(water, 400), Map.of("Na+1", 50, "Cl-1", 50), 500),
+		reactor.getTank().fill(GameTestFixtures.declared(.4, Map.of("NaCl", .05), 500),
 			FluidAction.EXECUTE);
 		gauge.tick();
 		helper.assertTrue(gauge.isAttached() && gauge.getTurbidity() == 0, "a clear solution reads 清");
@@ -243,7 +247,8 @@ public class ChemicalAddonGameTests {
 		// suspended limestone (insoluble mineral): 200/800 = 25% → bin 3 (浆)
 		ResourceLocation limestone = new ResourceLocation(ChemicalAddon.MODID, "limestone");
 		reactor.getTank().clear();
-		reactor.getTank().fill(Mixture.create(Map.of(water, 800), Map.of(), Map.of(limestone, 200), 1000),
+		reactor.getTank().fill(GameTestFixtures.declaredSolid(.8, Map.of(), 1000, limestone.toString(), .2,
+			KernelSolutionState.SolidLocation.SUSPENDED),
 			FluidAction.EXECUTE);
 		gauge.tick();
 		helper.assertTrue(gauge.getTurbidity() == 3, "a 25% slurry reads 浆 (got " + gauge.getTurbidity() + ")");
@@ -261,13 +266,13 @@ public class ChemicalAddonGameTests {
 		LiquidLevelGaugeBlockEntity gauge = (LiquidLevelGaugeBlockEntity) helper.getBlockEntity(new BlockPos(3, 2, 1));
 
 		// 500 mB of water in the 1000 mB interior: 50 %, below the 80 % threshold
-		reactor.getTank().fill(new FluidStack(Fluids.WATER, 500), FluidAction.EXECUTE);
+		reactor.getTank().fill(GameTestFixtures.declared(.5, Map.of(), 500), FluidAction.EXECUTE);
 		gauge.tick();
 		helper.assertTrue(gauge.isAttached() && gauge.getLiquidPercent() == 50,
 			"half-full vessel reads 50% (got " + gauge.getLiquidPercent() + "%)");
 		helper.assertTrue(gauge.getThreshold() == 80, "default threshold must be 80% (got " + gauge.getThreshold() + "%)");
 		helper.assertTrue(!gauge.isAlarm(), "50% vs 80% threshold: no alarm");
-		helper.assertTrue(gauge.analogSignal() == 9, "comparator: 50% of the 80% full scale = 9 (got " + gauge.analogSignal() + ")");
+		helper.assertTrue(gauge.analogSignal() == 10, "comparator: live-zero scaled 50% of the 80% full scale = 10 (got " + gauge.analogSignal() + ")");
 
 		// a gas headspace must not raise the level: +100 mB oxygen on top of the
 		// 500 mB water — the level stays 50 % even though the tank holds 600 mB
@@ -278,7 +283,7 @@ public class ChemicalAddonGameTests {
 		helper.assertTrue(!gauge.isAlarm(), "gas headspace alone never trips the level alarm");
 
 		// more liquid reaches the threshold: +300 mB water → 800/1000 = 80 %
-		reactor.getTank().fill(new FluidStack(Fluids.WATER, 300), FluidAction.EXECUTE);
+		reactor.getTank().fill(GameTestFixtures.declared(.3, Map.of(), 300), FluidAction.EXECUTE);
 		gauge.tick();
 		helper.assertTrue(gauge.getLiquidPercent() == 80,
 			"800 mB liquid reads 80% even with a gas phase present (got " + gauge.getLiquidPercent() + "%)");
@@ -295,7 +300,7 @@ public class ChemicalAddonGameTests {
 		gauge.tick();
 		helper.assertTrue(gauge.isAttached() && gauge.getLiquidPercent() == 0 && !gauge.isAlarm(),
 			"a drained vessel reads 0% with no alarm");
-		helper.assertTrue(gauge.analogSignal() == 0, "drained vessel: comparator 0");
+		helper.assertTrue(gauge.analogSignal() == 1, "drained but valid vessel: live-zero comparator 1");
 		helper.setBlock(new BlockPos(2, 2, 1), Blocks.AIR.defaultBlockState());
 		gauge.tick();
 		helper.assertTrue(!gauge.isAttached() && gauge.getLiquidPercent() == 0,
@@ -311,7 +316,7 @@ public class ChemicalAddonGameTests {
 		// through the brick's master pointer and trips the alarm at 80 %.
 		ReactorControllerBlockEntity reactor = buildReactor5x5x5(helper);
 		// 27 interior blocks → 27000 mB capacity; 21600 mB water = 80 %
-		reactor.getTank().fill(new FluidStack(Fluids.WATER, 21600), FluidAction.EXECUTE);
+		reactor.getTank().fill(GameTestFixtures.declared(21.6, Map.of(), 21600), FluidAction.EXECUTE);
 
 		// mounted on the east wall brick at (5,2,2) — behind it is the brick,
 		// not the controller, so the read goes panel -> brick.getValidMaster -> reactor
@@ -341,11 +346,10 @@ public class ChemicalAddonGameTests {
 		// colour, lose the paper — "what is in there", never "how much".
 		buildReactor(helper);
 		ReactorControllerBlockEntity reactor = reactor(helper);
-		ResourceLocation water = Solution.WATER;
 
 		// an acid chloride liquor (HCl): litmus red, phenolphthalein colourless,
 		// AgNO₃ positive, no sulfate, no iron, no flame colours
-		reactor.getTank().fill(Mixture.create(Map.of(water, 500), Map.of("H+1", 100, "Cl-1", 100), 700),
+		reactor.getTank().fill(GameTestFixtures.declared(.5, Map.of("HCl", .1), 700),
 			FluidAction.EXECUTE);
 		helper.assertTrue(TestPaperItem.verdictKey(TestPaperItem.Kind.LITMUS, reactor).equals("paper.chemicaladdon.litmus_red"),
 			"litmus on acid reads red");
@@ -366,7 +370,7 @@ public class ChemicalAddonGameTests {
 		// the cobalt glass potassium's lilac wins over sodium's yellow
 		reactor.getTank().clear();
 		reactor.getTank().fill(
-			Mixture.create(Map.of(water, 500), Map.of("Na+1", 60, "OH-1", 60, "K+1", 40, "Cl-1", 40), 700),
+			GameTestFixtures.declared(.5, Map.of("NaOH", .06, "KCl", .04), 700),
 			FluidAction.EXECUTE);
 		helper.assertTrue(TestPaperItem.verdictKey(TestPaperItem.Kind.LITMUS, reactor).equals("paper.chemicaladdon.litmus_blue"),
 			"litmus on alkali reads blue");
@@ -377,7 +381,7 @@ public class ChemicalAddonGameTests {
 
 		// ferric contamination: the KSCN spot test runs blood red
 		reactor.getTank().clear();
-		reactor.getTank().fill(Mixture.create(Map.of(water, 500), Map.of("Fe+3", 30, "Cl-1", 90), 620),
+		reactor.getTank().fill(GameTestFixtures.declared(.5, Map.of("FeCl3", .03), 620),
 			FluidAction.EXECUTE);
 		helper.assertTrue(TestPaperItem.verdictKey(TestPaperItem.Kind.POTASSIUM_THIOCYANATE, reactor)
 			.equals("paper.chemicaladdon.kscn_positive"), "KSCN detects ferric iron");
@@ -385,63 +389,39 @@ public class ChemicalAddonGameTests {
 	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
-	public static void crystallizerEndpointIsPhysicalAndSelective(GameTestHelper helper) {
-		// M08 as the executor reading the S04 quantity (engine-level): boiling
-		// concentrates the liquor; at the °Bé setpoint the heat is cut; cooling
-		// + one seed grain crystallises ONLY the target species while the
-		// co-salt stays dissolved — "只析 A 不析 B" earned by the setpoint choice.
-		// Numbers: 2000 water + 240 KNO₃ + 12 NaCl (mB-equiv); endpoint 30°Bé
-		// (dissolved/water = 0.72) lands at ~700 water — KNO₃ at 240/700 = 0.343
-		// is past its 20°C curve (0.316), NaCl at 12/700 = 0.017 far under 0.36.
-		ResourceLocation water = Solution.WATER;
-		ResourceLocation kno3 = new ResourceLocation(ChemicalAddon.MODID, "potassium_nitrate");
+	public static void crystallizerEndpointEvaporatesNativeLiquor(GameTestHelper helper) {
+		// M08 engine path: a declared NaCl liquor is first solved, then the
+		// physical layer removes only native H2O. Cooling invokes the next native
+		// equilibrium step; no retired display-domain curve is allowed to invent
+		// crystals or ions.
 		ReactorTank tank = new ReactorTank(10000, () -> {});
-		FluidStack liquor = Mixture.create(
-			Map.of(water, 2000),
-			Map.of("K+1", 240, "NO3-1", 240, "Na+1", 12, "Cl-1", 12),
-			2504);
+		FluidStack liquor = GameTestFixtures.declared(2, Map.of("NaCl", 8d), 3000);
 		Temperature.set(liquor, 100);
 		tank.fill(liquor, FluidAction.EXECUTE);
+		double beforeWater = nativeWater(tank.getFluids().get(0));
 
-		// the crystalliser loop: boil (re-pinned = the burner's job) until the
-		// Baumé setpoint (30°Bé) is reached, condensing every vented unit
-		int baume = 0;
+		// The crystalliser loop keeps the heater pinned for 100 physical steps;
+		// every vented unit is returned to the condenser accounting.
 		long condensateMb = 0;
 		for (int i = 0; i < 100; i++) {
 			Temperature.set(tank.getFluids().get(0), 100); // below the endpoint the burner runs
 			long[] vented = new long[1];
-			RulesEngine.apply(tank, true, null, 1.0, vented);
+			nativeStep(tank, 100);
+			PhysicalSteps.apply(tank, true, null, 1.0, vented, 100);
 			condensateMb += vented[0] / Chemistry.UNIT_PER_MB;
-			baume = AbstractBaumeGaugeBlockEntity.baumeOf(tank);
-			if (baume >= 30) {
-				break; // endpoint: the burner is cut — the boil stops
-			}
 		}
-		helper.assertTrue(baume >= 30, "boiling must reach the °Bé setpoint (got " + baume + ")");
 		helper.assertTrue(condensateMb >= 1000, "the distillate is recovered as product (got " + condensateMb + " mB)");
-		helper.assertTrue(Mixture.deriveSedimentAmounts(tank.getFluids().get(0)).isEmpty(),
-			"a hot liquor at the endpoint holds everything dissolved");
-		helper.assertTrue(!Mixture.deriveSuspendedAmounts(tank.getFluids().get(0)).containsKey(kno3),
-			"no premature clouding before the endpoint");
+		helper.assertTrue(nativeWater(tank.getFluids().get(0)) < beforeWater,
+			"native water inventory falls only by recovered evaporate");
 
-		// cooled to ambient the liquor is metastable (1.09× over the curve is
-		// inside the nucleation gate — the stop-loss window); unseeded nothing moves
+		// Cooling is a real continuation from the RAW state and may precipitate
+		// Halite. The test checks the authoritative solid ledger rather than an
+		// old Sediment display map.
 		Temperature.set(tank.getFluids().get(0), 20);
-		RulesEngine.apply(tank);
-		helper.assertTrue(Mixture.deriveSedimentAmounts(tank.getFluids().get(0)).isEmpty(),
-			"the cooled endpoint liquor sits metastable unseeded");
-
-		// one seed grain of the target collapses it — and only the target
-		ItemStackHandler items = new ItemStackHandler(1);
-		items.setStackInSlot(0, new ItemStack(AllItems.POTASSIUM_NITRATE_GRAIN.get(), 1));
-		for (int i = 0; i < 50; i++) {
-			RulesEngine.apply(tank, false, items, 1.0);
-		}
-		int crystal = Mixture.deriveSedimentAmounts(tank.getFluids().get(0)).getOrDefault(kno3, 0);
-		helper.assertTrue(crystal >= 70 && crystal <= 95,
-			"the target crystallises at the endpoint (grain + excess, got " + crystal + " mB)");
-		helper.assertTrue(ionAmount(tank.getFluids().get(0), "Na+1") == 12,
-			"the co-salt stays fully dissolved (got " + ionAmount(tank.getFluids().get(0), "Na+1") + ")");
+		nativeStep(tank, 20);
+		helper.assertTrue(Mixture.engineSolution(tank.getFluids().get(0)).solids().stream()
+			.anyMatch(s -> s.speciesId().equals("chemicaladdon:rock_salt")),
+			"native Halite precipitation is written to the exact solid ledger");
 		helper.succeed();
 	}
 
@@ -478,12 +458,11 @@ public class ChemicalAddonGameTests {
 		helper.assertTrue(be.getSetpoint() == 24, "the default setpoint is 24°Bé (got " + be.getSetpoint() + ")");
 		be.setSetpointBe(30); // this run aims at full scale (see the engine-level test)
 
-		ResourceLocation water = Solution.WATER;
-		ResourceLocation kno3 = new ResourceLocation(ChemicalAddon.MODID, "potassium_nitrate");
-		FluidStack liquor = Mixture.create(
-			Map.of(water, 2000),
-			Map.of("K+1", 240, "NO3-1", 240, "Na+1", 12, "Cl-1", 12),
-			2504);
+		// Halite is a database-backed PHREEQC phase whose amount comes directly
+		// from the native equilibrium state.
+		ResourceLocation halite = new ResourceLocation(ChemicalAddon.MODID, "rock_salt");
+		FluidStack liquor = GameTestFixtures.declared(2, Map.of("NaCl", 8d), 2504);
+		double initialNa = nativeTotal(liquor, "Na");
 		Temperature.set(liquor, 100);
 		be.getTank().fill(liquor, FluidAction.EXECUTE);
 		be.setPinnedTemperature(100); // the burner's job during concentration
@@ -507,40 +486,35 @@ public class ChemicalAddonGameTests {
 					.getAnalogOutputSignal(state, helper.getLevel(), absolute) == 15,
 					"the endpoint drives the redstone output to 15");
 			})
-			// the tail (cool → fast-forward → seed → crystallise) keeps the original
-			// fixed cadence: the seed lands at a proven thermal state, and polling
-			// the crystallisation tick proved to alter the co-salt behaviour (NaCl)
+			// Cooling after the heat cut leaves the endpoint through the same native
+			// continuation; halite phase inventory is written into the solid ledger.
 			.thenIdle(TICKS * 10)
 			.thenExecute(() -> {
 				helper.assertTrue(be.getTemperature() < 100,
 					"the endpoint cut the heat — the vessel is cooling (got " + be.getTemperature() + "°C)");
 				be.setPinnedTemperature(20); // fast-forward the cool to ambient (the debug stick)
 			})
-			.thenIdle(TICKS * 2)
-			.thenExecute(() -> {
-				// drop a seed grain through the item buffer (the player's hand)
-				be.getItems().setStackInSlot(0, new ItemStack(AllItems.POTASSIUM_NITRATE_GRAIN.get(), 1));
-			})
 			.thenIdle(TICKS * 15)
 			.thenExecute(() -> {
-				int crystal = Mixture.deriveSedimentAmounts(be.getTank().getFluids().get(0))
-					.getOrDefault(kno3, 0);
-				helper.assertTrue(crystal >= 70 && crystal <= 95,
-					"seeded at the endpoint only KNO₃ crystallises (got " + crystal + " mB)");
-				helper.assertTrue(ionAmount(be.getTank().getFluids().get(0), "Na+1") == 12,
-					"NaCl stays in the mother liquor (got " + ionAmount(be.getTank().getFluids().get(0), "Na+1") + ")");
+				FluidStack terminal = be.getTank().getFluids().get(0);
+				double haliteMol = Mixture.engineSolution(terminal).solids().stream()
+					.filter(s -> s.speciesId().equals(halite.toString()))
+					.mapToDouble(KernelSolutionState.SolidPhase::mol).sum();
+				helper.assertTrue(haliteMol > 0,
+					"native evaporative concentration precipitates Halite into the solid ledger");
+				helper.assertTrue(Math.abs(initialNa - nativeTotal(terminal, "Na") - haliteMol) < 1e-6,
+					"nonvolatile sodium is conserved between native mother liquor and Halite");
 			})
 			.thenSucceed();
 	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void reactorPublishesKernelSpeciation(GameTestHelper helper) {
-		// P7.4：内核 SI/相增量 → 化验行（护目镜 dev-assay 数据源）。石灰石过饱和场景：
-		// 沉淀后 SI ≈ 0（与固相平衡），moved > 0（析出）。
+		// P7.4：内核 SI/相增量 → 化验行（护目镜 dev-assay 数据源）。两拍后
+		// 化验行的 moved 是“本拍”相增量，稳定平衡会回到零；库存断言必须读
+		// canonical solid ledger，而非把最后一拍的零增量误判为未析出。
 		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
-		ResourceLocation water = Solution.WATER;
-		FluidStack mix = Mixture.create(Map.of(water, 1000),
-			Map.of("Ca+2", 300, "Cl-1", 300, "Na+1", 300, "CO3-2", 300), 2200);
+		FluidStack mix = GameTestFixtures.declared(1, Map.of("CaCl2", .15, "Na2CO3", .15), 2200);
 		be.getTank().fill(mix, FluidAction.EXECUTE);
 		helper.startSequence()
 			.thenIdle(TICKS * 2)
@@ -554,8 +528,14 @@ public class ChemicalAddonGameTests {
 				if (limestone != null) {
 					helper.assertTrue(Math.abs(limestone.si()) < 0.5,
 					"at equilibrium with the solid present SI ≈ 0 (got " + limestone.si() + ")");
-					helper.assertTrue(limestone.moved() > 0,
-					"limestone should have precipitated (moved " + limestone.moved() + ")");
+					FluidStack liquid = be.getTank().getFluids().stream().filter(Mixture::isMixture)
+						.findFirst().orElse(null);
+					double limestoneMol = liquid == null || Mixture.engineSolution(liquid) == null ? 0
+						: Mixture.engineSolution(liquid).solids().stream()
+							.filter(s -> s.speciesId().endsWith(":limestone"))
+							.mapToDouble(KernelSolutionState.SolidPhase::mol).sum();
+					helper.assertTrue(limestoneMol > 0,
+						"limestone must remain in the native solid ledger (last phase delta " + limestone.moved() + ")");
 			}
 			})
 			.thenSucceed();
@@ -563,13 +543,10 @@ public class ChemicalAddonGameTests {
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 40)
 	public static void reactorRunsEmergentChemistry(GameTestHelper helper) {
-		// the reactor tick must run the rules engine: H+ + Cl- + Na+ + OH- neutralises to Na+ + Cl- + water
+		// The reactor's native equilibrium step neutralises declared HCl and NaOH
+		// while retaining the sodium and chloride inventory.
 		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
-		ResourceLocation water = Solution.WATER;
-		FluidStack mix = Mixture.create(
-			Map.of(water, 1000),
-			Map.of("H+1", 500, "Cl-1", 500, "Na+1", 500, "OH-1", 500),
-			3000);
+		FluidStack mix = GameTestFixtures.declared(1, Map.of("HCl", .5, "NaOH", .5), 3000);
 		be.getTank().fill(mix, FluidAction.EXECUTE);
 		helper.startSequence()
 			.thenIdle(TICKS * 2)
@@ -608,24 +585,26 @@ public class ChemicalAddonGameTests {
 	public static void solutionMatchingIsConcentrationAware(GameTestHelper helper) {
 		// continuous concentration: 100 formula units (300 ion mB) + 300 water = C 1.0
 		ResourceLocation sulfuric = new ResourceLocation(ChemicalAddon.MODID, "sulfuric_acid");
-		ResourceLocation water = Solution.WATER;
 		ReactorTank tank = new ReactorTank(10000, () -> {});
-		FluidStack mix = Mixture.create(
-			Map.of(water, 300),
-			Map.of("H+1", 200, "SO4-2", 100),
-			600);
+		FluidStack mix = GameTestFixtures.declared(.3, Map.of("H2SO4", .1), 600);
 		tank.fill(mix, FluidAction.EXECUTE);
 
 		helper.assertTrue(tank.countSolution(sulfuric) == 300,
 			"solute ion amount should be 300 mB (got " + tank.countSolution(sulfuric) + ")");
 		double c = tank.concentrationOf(sulfuric);
-		helper.assertTrue(Math.abs(c - 1.0) < 1e-9, "concentration should be 1.0 (got " + c + ")");
+		// Native projection is a candidate-equilibrium observation, whose printed
+		// water mass carries sub-2e-9 numerical roundoff at this scale.
+		helper.assertTrue(Math.abs(c - 1.0) < 2e-9, "concentration should be 1.0 (got " + c + ")");
 
 		int drained = tank.drainSolution(sulfuric, 300, FluidAction.EXECUTE);
 		helper.assertTrue(drained == 300, "should drain 300 mB of solute ions (got " + drained + ")");
 		helper.assertTrue(!hasIon(tank, "H+1", 1) && !hasIon(tank, "SO4-2", 1),
 			"the acid ions should be consumed");
 		helper.assertTrue(hasSpecies(tank, "water", 300), "the solvent water should remain");
+		ReactorTank sulfateSalt = new ReactorTank(10000, () -> {});
+		sulfateSalt.fill(GameTestFixtures.declared(.3, Map.of("Na2SO4", .1), 600), FluidAction.EXECUTE);
+		helper.assertTrue(sulfateSalt.countSolution(sulfuric) == 0,
+			"sodium sulfate shares S but has no native acid alkalinity inventory");
 		helper.succeed();
 	}
 
@@ -635,20 +614,17 @@ public class ChemicalAddonGameTests {
 		// range) matches and consumes the dissolved ions end-to-end. Concentrated acid
 		// (C = 600 ion / 600 water = 1.0) satisfies minConcentration 0.5.
 		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
-		ResourceLocation water = Solution.WATER;
-		FluidStack mix = Mixture.create(
-			Map.of(water, 600),
-			Map.of("H+1", 400, "SO4-2", 200),
-			1200);
+		FluidStack mix = GameTestFixtures.declared(.6, Map.of("H2SO4", .2), 1200);
 		be.getTank().fill(mix, FluidAction.EXECUTE);
 		waitFor(helper.startSequence()
 				.thenIdle(TICKS * 5), // processingTime 100 ticks
-			() -> !hasIon(be.getTank(), "H+1", 1) && !hasIon(be.getTank(), "SO4-2", 1)
-				&& hasSpecies(be.getTank(), "water", 1200))
+			() -> be.getTank().countSolution(new ResourceLocation(ChemicalAddon.MODID, "sulfuric_acid")) == 0
+				&& nativeWater(be.getTank().getFluids().get(0)) >= 1.2)
 			.thenExecute(() -> {
-				helper.assertTrue(!hasIon(be.getTank(), "H+1", 1) && !hasIon(be.getTank(), "SO4-2", 1),
-					"the acid ions should be consumed by the solution ingredient");
-				helper.assertTrue(hasSpecies(be.getTank(), "water", 1200), "water should be produced");
+				helper.assertTrue(be.getTank().countSolution(new ResourceLocation(ChemicalAddon.MODID, "sulfuric_acid")) == 0,
+					"the native acid inventory should be consumed by the solution ingredient");
+				helper.assertTrue(nativeWater(be.getTank().getFluids().get(0)) >= 1.2,
+					"reaction water remains in the native solvent inventory");
 			})
 			.thenSucceed();
 	}
@@ -658,15 +634,18 @@ public class ChemicalAddonGameTests {
 		// SO3 + water -> concentrated sulfuric acid via "solutionOutputs" (600 ion mB at C=1.0)
 		ReactorControllerBlockEntity be = buildReactor5x5x5(helper);
 		be.getTank().fill(new FluidStack(AllFluids.SULFUR_TRIOXIDE.get().getSource(), 1000), FluidAction.EXECUTE);
-		be.getTank().fill(new FluidStack(Fluids.WATER, 600), FluidAction.EXECUTE);
+		// so2_absorption declares a 1000 mB water reactant. This is an explicit
+		// native kilogram inventory, not the retired display-domain water ratio.
+		be.getTank().fill(GameTestFixtures.declared(1, Map.of(), 1000), FluidAction.EXECUTE);
 		waitFor(helper.startSequence()
 				.thenIdle(TICKS * 5), // processingTime 100 ticks
-			() -> hasIon(be.getTank(), "H+1", 400) && hasIon(be.getTank(), "SO4-2", 200)
-				&& hasSpecies(be.getTank(), "water", 600))
+			() -> be.getTank().countSolution(new ResourceLocation(ChemicalAddon.MODID, "sulfuric_acid")) >= 600
+				&& nativeWater(be.getTank().getFluids().stream().filter(Mixture::isMixture).findFirst().orElseThrow()) >= .6)
 			.thenExecute(() -> {
-				helper.assertTrue(hasIon(be.getTank(), "H+1", 400) && hasIon(be.getTank(), "SO4-2", 200),
-					"concentrated acid should be produced as dissolved ions");
-				helper.assertTrue(hasSpecies(be.getTank(), "water", 600), "water should be the solvent");
+				helper.assertTrue(be.getTank().countSolution(new ResourceLocation(ChemicalAddon.MODID, "sulfuric_acid")) >= 600,
+					"concentrated acid is committed as native formula inventory");
+				FluidStack liquid = be.getTank().getFluids().stream().filter(Mixture::isMixture).findFirst().orElseThrow();
+				helper.assertTrue(nativeWater(liquid) >= .6, "water is retained by the native acid state");
 			})
 			.thenSucceed();
 	}
@@ -687,63 +666,28 @@ public class ChemicalAddonGameTests {
 	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
-	public static void mixtureWithIonsDerivesAndTransfers(GameTestHelper helper) {
-		// joint {Ions + Molecules} mixture: 10 water + 2 H+ + 1 SO4-2 = 13 parts over 1300 mB
-		ResourceLocation water = Solution.WATER;
-		FluidStack mix = Mixture.createLong(
-			Map.of(water, 10L),
-			Map.of("H+1", 2L, "SO4-2", 1L),
-			Map.of(), Map.of(), 1300);
-
-		helper.assertTrue(Mixture.getIons(mix).size() == 2, "mixture should carry ions");
-		helper.assertTrue(Mixture.isChargeNeutralLong(Mixture.getIons(mix)), "stored ions must be neutral");
-
-		Map<ResourceLocation, Integer> mol = Mixture.deriveAmounts(mix);
-		Map<String, Integer> ions = Mixture.deriveIonAmounts(mix);
-		helper.assertTrue(mol.getOrDefault(water, 0) == 1000, "water should derive to 1000 mB (got " + mol + ")");
-		helper.assertTrue(ions.getOrDefault("H+1", 0) == 200, "H+1 should derive to 200 mB (got " + ions + ")");
-		helper.assertTrue(ions.getOrDefault("SO4-2", 0) == 100, "SO4-2 should derive to 100 mB (got " + ions + ")");
-
-		int total = mol.values().stream().mapToInt(Integer::intValue).sum()
-			+ ions.values().stream().mapToInt(Integer::intValue).sum();
-		helper.assertTrue(total == 1300, "joint amounts must sum to the total (got " + total + ")");
-
-		// pump-style transfer: tag copied verbatim, amount shrinks — ratio never moves
+	public static void nativeMixtureTransfersRawInventory(GameTestHelper helper) {
+		FluidStack mix = GameTestFixtures.declared(1, Map.of("H2SO4", .1), 1300);
+		helper.assertTrue(Mixture.engineSolution(mix) != null, "declared mixture owns a RAW state");
+		double sulfur = nativeTotal(mix, "S");
 		FluidStack drained = mix.copy();
 		drained.setAmount(650);
-		Map<String, Integer> dIons = Mixture.deriveIonAmounts(drained);
-		helper.assertTrue(Mixture.isChargeNeutralLong(Mixture.getIons(drained)), "transferred ions stay neutral");
-		helper.assertTrue(dIons.getOrDefault("H+1", 0) == 100, "drained H+1 should be 100 mB (got " + dIons + ")");
-		helper.assertTrue(dIons.getOrDefault("SO4-2", 0) == 50, "drained SO4-2 should be 50 mB (got " + dIons + ")");
+		helper.assertTrue(Math.abs(nativeTotal(drained, "S") * 2 - sulfur) < 1e-9,
+			"pipe copy scales native total inventory without rebuilding ions");
 		helper.succeed();
 	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
-	public static void mixtureWithSuspendedDerivesAndTransfers(GameTestHelper helper) {
-		// Suspended (solid) domain: 600 water + 300 gypsum = 900 mB, ratio 2:1
-		ResourceLocation water = Solution.WATER;
+	public static void nativeSuspendedSolidTransfersWithRawLiquor(GameTestHelper helper) {
 		ResourceLocation gypsum = new ResourceLocation(ChemicalAddon.MODID, "gypsum");
-		FluidStack mix = Mixture.create(
-			Map.of(water, 600),
-			Map.of(),
-			Map.of(gypsum, 300),
-			900);
-
-		helper.assertTrue(Mixture.getSuspended(mix).containsKey(gypsum), "suspended solid should be stored");
-		helper.assertTrue(Mixture.getIons(mix).isEmpty(), "no ions in this mix");
-		helper.assertTrue(Mixture.deriveAmounts(mix).getOrDefault(water, 0) == 600,
-			"water should derive to 600 mB (got " + Mixture.deriveAmounts(mix) + ")");
-		helper.assertTrue(Mixture.deriveSuspendedAmounts(mix).getOrDefault(gypsum, 0) == 300,
-			"suspended gypsum should derive to 300 mB (got " + Mixture.deriveSuspendedAmounts(mix) + ")");
-		helper.assertTrue(Mixture.deriveIonAmounts(mix).isEmpty(), "ion domain should be empty");
-
-		// pump-style transfer: ratio tag copied verbatim — solid ratio never moves
+		FluidStack mix = GameTestFixtures.declaredSolid(.6, Map.of(), 900, gypsum.toString(), .3,
+			KernelSolutionState.SolidLocation.SUSPENDED);
 		FluidStack drained = mix.copy();
 		drained.setAmount(300);
-		helper.assertTrue(Mixture.deriveSuspendedAmounts(drained).getOrDefault(gypsum, 0) == 100,
-			"drained gypsum should keep the 1:2 ratio (got " + Mixture.deriveSuspendedAmounts(drained) + ")");
-		helper.assertTrue(Mixture.deriveAmounts(drained).getOrDefault(water, 0) == 200,
-			"drained water should keep the 1:2 ratio (got " + Mixture.deriveAmounts(drained) + ")");
+		helper.assertTrue(Math.abs(nativeSolidMol(drained) - .1) < 1e-9,
+			"pipe copy proportionally carries the exact suspended solid ledger");
+		helper.assertTrue(Math.abs(nativeWater(drained) - .2) < 1e-9,
+			"pipe copy proportionally carries RAW mother liquor");
 		helper.succeed();
 	}
 
@@ -751,19 +695,19 @@ public class ChemicalAddonGameTests {
 	public static void slurryZoneDrainConservesAllDomains(GameTestHelper helper) {
 		ReactorTank tank = new ReactorTank(10000, () -> {});
 		ResourceLocation gypsum = new ResourceLocation(ChemicalAddon.MODID, "gypsum");
-		FluidStack slurry = Mixture.createLong(
-			Map.of(Solution.WATER, 4000L),
-			Map.of("Na+1", 1000L, "Cl-1", 1000L),
-			Map.of(gypsum, 2000L), Map.of(), 8000);
+		FluidStack slurry = GameTestFixtures.declaredSolid(4, Map.of("NaCl", 1d), 8000,
+			gypsum.toString(), 2, KernelSolutionState.SolidLocation.SUSPENDED);
 		tank.fill(slurry, FluidAction.EXECUTE);
-		long before = mixtureDomainUnits(tank.getFluids());
+		double beforeWater = nativeWater(tank.getFluids().get(0));
+		double beforeNa = nativeTotal(tank.getFluids().get(0), "Na");
+		double beforeSolid = nativeSolidMol(tank.getFluids().get(0));
 		FluidStack out = tank.drainSlurryZone(2000, FluidAction.EXECUTE);
-		long remaining = mixtureDomainUnits(tank.getFluids());
-		long drained = mixtureDomainUnits(List.of(out));
-		helper.assertTrue(drained == 2000L * Chemistry.UNIT_PER_MB,
-			"one withdrawal budget is shared across domains (got " + drained + ")");
-		helper.assertTrue(before == remaining + drained,
-			"slurry-zone drain conserves all domains (" + before + " != " + remaining + " + " + drained + ")");
+		FluidStack remainder = tank.getFluids().get(0);
+		helper.assertTrue(out.getAmount() == 2000, "slurry draw returns the requested physical volume");
+		helper.assertTrue(Math.abs(beforeWater - nativeWater(out) - nativeWater(remainder)) < 1e-9
+			&& Math.abs(beforeNa - nativeTotal(out, "Na") - nativeTotal(remainder, "Na")) < 1e-9
+			&& Math.abs(beforeSolid - nativeSolidMol(out) - nativeSolidMol(remainder)) < 1e-9,
+			"slurry-zone draw conserves native water, dissolved inventory, and solids");
 		helper.succeed();
 	}
 
@@ -771,16 +715,19 @@ public class ChemicalAddonGameTests {
 	public static void underflowTailKeepsTargetSolidsFraction(GameTestHelper helper) {
 		ReactorTank tank = new ReactorTank(10000, () -> {});
 		ResourceLocation gypsum = new ResourceLocation(ChemicalAddon.MODID, "gypsum");
-		FluidStack settled = Mixture.createLong(Map.of(Solution.WATER, 3500L), Map.of(), Map.of(),
-			Map.of(gypsum, 500L), 4000);
+		FluidStack settled = GameTestFixtures.declaredSolid(3.5, Map.of(), 4000,
+			gypsum.toString(), .5, KernelSolutionState.SolidLocation.SEDIMENT);
 		tank.fill(settled, FluidAction.EXECUTE);
+		double initialWater = nativeWater(tank.getFluids().get(0));
 		FluidStack tail = tank.drainThickenedUnderflow(4000, 0.5, FluidAction.EXECUTE);
-		long solids = Mixture.deriveUnitSuspendedAmounts(tail).values().stream().mapToLong(Integer::longValue).sum();
-		long liquid = Mixture.deriveUnitAmounts(tail).values().stream().mapToLong(Integer::longValue).sum()
-			+ Mixture.deriveUnitIonAmounts(tail).values().stream().mapToLong(Integer::longValue).sum();
+		FluidStack remainder = tank.getFluids().get(0);
+		double expectedTailWater = initialWater * 500d / 4000d;
 		helper.assertTrue(tail.getAmount() == 1000, "a 500 mB bed yields only a 1000 mB 50% tail batch");
-		helper.assertTrue(solids == liquid && solids == 500L * Chemistry.UNIT_PER_MB,
-			"the final underflow batch remains 50% solids");
+		helper.assertTrue(Math.abs(nativeSolidMol(tail) - .5) < 1e-9
+			&& Math.abs(nativeWater(tail) - expectedTailWater) < 1e-9
+			&& Math.abs(initialWater - nativeWater(tail) - nativeWater(remainder)) < 1e-9,
+			"the 50% tail contains its 500 mB mother-liquor share (expected " + expectedTailWater
+				+ " kg, got " + nativeWater(tail) + ") and conserves raw water with its source remainder");
 		helper.succeed();
 	}
 
@@ -827,13 +774,9 @@ public class ChemicalAddonGameTests {
 			"the manifold remains drain-only on every face");
 		helper.assertTrue(plate.getCapability(ForgeCapabilities.ITEM_HANDLER, Direction.DOWN).isPresent(),
 			"plate pack bottom exposes cake extraction");
-		ResourceLocation water = Solution.WATER;
 		ResourceLocation bicarbonate = new ResourceLocation(ChemicalAddon.MODID, "sodium_bicarbonate");
-		FluidStack slurry = Mixture.create(
-			Map.of(water, 1000),
-			Map.of(),
-			Map.of(bicarbonate, 1000),
-			2000);
+		FluidStack slurry = GameTestFixtures.declaredSolid(1, Map.of(), 2000,
+			bicarbonate.toString(), 1, KernelSolutionState.SolidLocation.SUSPENDED);
 		feed.fill(slurry, FluidAction.EXECUTE);
 		GameTestSequence pressSequence = helper.startSequence()
 			.thenIdle(TICKS)
@@ -843,14 +786,15 @@ public class ChemicalAddonGameTests {
 			});
 		waitFor(pressSequence,
 			() -> !be.getItems().getStackInSlot(0).isEmpty()
-				&& be.getItems().getStackInSlot(0).is(AllItems.SODIUM_BICARBONATE.get())
-				&& hasSpecies(be.getOutput(), "water", 700))
+				&& be.getItems().getStackInSlot(0).is(AllItems.MIXED_RESIDUE.get())
+				&& MixedResidueItem.engineLiquor(be.getItems().getStackInSlot(0)) != null
+				&& Mixture.engineSolution(be.getOutput().getFluids().get(0)) != null)
 			.thenExecute(() -> {
 				helper.assertTrue(!be.getItems().getStackInSlot(0).isEmpty()
-					&& be.getItems().getStackInSlot(0).is(AllItems.SODIUM_BICARBONATE.get()),
-					"cake should be produced");
-				// U16.5: the 1000 mB cake carries 300 mB of pore water with it
-				helper.assertTrue(hasSpecies(be.getOutput(), "water", 700), "filtrate water should be produced");
+					&& be.getItems().getStackInSlot(0).is(AllItems.MIXED_RESIDUE.get()),
+					"cake preserves its engine-owned mother liquor");
+				helper.assertTrue(MixedResidueItem.engineLiquor(be.getItems().getStackInSlot(0)) != null,
+					"wet cake retains RAW pore liquor while the remaining RAW liquor becomes filtrate");
 			})
 			.thenSucceed();
 	}
@@ -1262,6 +1206,37 @@ public class ChemicalAddonGameTests {
 			total += ionAmount(stack, ionId);
 		}
 		return total >= minAmount;
+	}
+
+	/** One raw continuation and state commit, used only by native-engine fixtures. */
+	private static void nativeStep(ReactorTank tank, int temperatureC) {
+		TickDriver.Step step = TickDriver.step(tank.getFluids(), TickDriver.SECONDS_PER_STEP, temperatureC);
+		if (!step.valid || !WriteBack.firstOf(tank.getFluids(), step)) {
+			throw new IllegalStateException("native fixture step rejected: " + step.error);
+		}
+	}
+
+	private static KernelSolutionState actualState(FluidStack stack) {
+		KernelSolutionState state = Mixture.engineSolution(stack);
+		if (state == null) throw new IllegalStateException("fixture has no engine state");
+		var q = Kernel.get(); synchronized (q) { return state.atAmount(q, stack.getAmount()); }
+	}
+
+	private static double nativeWater(FluidStack stack) {
+		var q = Kernel.get(); synchronized (q) {
+			return EngineBridge.derive(q, actualState(stack), List.of(), List.of()).waterKg();
+		}
+	}
+
+	private static double nativeTotal(FluidStack stack, String component) {
+		var q = Kernel.get(); synchronized (q) {
+			return EngineBridge.derive(q, actualState(stack), List.of(component), List.of())
+				.totalMol().getOrDefault(component, Double.NaN);
+		}
+	}
+
+	private static double nativeSolidMol(FluidStack stack) {
+		return actualState(stack).solids().stream().mapToDouble(KernelSolutionState.SolidPhase::mol).sum();
 	}
 
 }

@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "bonus_rolls": 0.0,
+      "conditions": [
+        {
+          "condition": "minecraft:survives_explosion"
+        }
+      ],
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "chemicaladdon:solid_bed_gauge"
+        }
+      ],
+      "rolls": 1.0
+    }
+  ],
+  "random_sequence": "chemicaladdon:blocks/solid_bed_gauge"
+}

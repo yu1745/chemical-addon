@@ -1,10 +1,8 @@
 package com.yu1745.chemicaladdon.reactor;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.EnumSet;
-import java.util.Map;
 
 import javax.annotation.Nullable;
 
@@ -158,20 +156,44 @@ public class ElectrolyzerBlockEntity extends BlockEntity
 		onChanged();
 	}
 
-	/** The first electrolysis recipe whose inputs the cell holds (power ignored). */
+	/**
+	 * Select the most constrained matching cell recipe (power ignored).
+	 *
+	 * A native aqueous state contains solvent water, so a brine charge also
+	 * satisfies the generic water-electrolysis water ingredient.  Recipe-manager
+	 * iteration order is data-load order and is not a chemical priority.  Prefer
+	 * explicit dissolved-species constraints, then the remaining input
+	 * constraints, and use the recipe id only as a deterministic tie-breaker.
+	 */
 	@Nullable
 	private ChemicalReactionRecipe findRecipe() {
 		if (level == null) {
 			return null;
 		}
+		ChemicalReactionRecipe selected = null;
 		for (ChemicalReactionRecipe recipe : level.getRecipeManager()
 			.getAllRecipesFor(ReactionLogic.chemicalReactionType())) {
 			if (!matchesRecipe(recipe)) {
 				continue; // not a cell recipe — the vessel's business
 			}
-			return recipe;
+			if (selected == null || compareSpecificity(recipe, selected) > 0) {
+				selected = recipe;
+			}
 		}
-		return null;
+		return selected;
+	}
+
+	private static int compareSpecificity(ChemicalReactionRecipe left, ChemicalReactionRecipe right) {
+		int leftConstraints = left.getSolutions().size() * 1_000
+			+ left.getFluidIngredients().size() * 100 + left.getIngredients().size();
+		int rightConstraints = right.getSolutions().size() * 1_000
+			+ right.getFluidIngredients().size() * 100 + right.getIngredients().size();
+		int byConstraints = Integer.compare(leftConstraints, rightConstraints);
+		if (byConstraints != 0) {
+			return byConstraints;
+		}
+		// Lower lexical id wins ties so reload order cannot change production.
+		return right.getId().toString().compareTo(left.getId().toString());
 	}
 
 	private boolean haveIngredientsButNoPower() {
@@ -246,22 +268,24 @@ public class ElectrolyzerBlockEntity extends BlockEntity
 
 	private FluidStack createSolutionOutput(SolutionIngredient out, int temperature) {
 		Species species = SpeciesManager.get(out.speciesId());
-		if (species == null || !species.isSolution() || Double.isNaN(out.targetConcentration())) {
+		if (species == null || !species.isSolution() || !(out.targetConcentration() > 0)
+			|| !Double.isFinite(out.targetConcentration())) {
 			return FluidStack.EMPTY;
 		}
-		Map<ResourceLocation, Integer> molecules = new LinkedHashMap<>();
-		Map<String, Integer> ions = new LinkedHashMap<>();
-		species.expand(out.amount(), out.targetConcentration(), molecules, ions);
-		int total = 0;
-		for (int v : molecules.values()) {
-			total += v;
+		try {
+			int waterMb = (int) Math.round(out.amount() / out.targetConcentration());
+			if (waterMb <= 0) return FluidStack.EMPTY;
+			int total = Math.addExact(out.amount(), waterMb);
+			double formulaMol = out.amount() / (double) species.ionCount() / 1000d;
+			FluidStack mix = Mixture.fromDeclaredComposition(waterMb / 1000d,
+				com.yu1745.chemicaladdon.composition.parity.EngineBridge.declaredFeedForSpecies(out.speciesId(), formulaMol),
+				total, temperature, java.util.List.of());
+			Temperature.set(mix, temperature);
+			return mix;
+		} catch (RuntimeException ex) {
+			com.yu1745.chemicaladdon.ChemicalAddon.LOGGER.warn("Rejected electrolyzer solution output {}: {}", out.speciesId(), ex.getMessage());
+			return FluidStack.EMPTY;
 		}
-		for (int v : ions.values()) {
-			total += v;
-		}
-		FluidStack mix = Mixture.create(molecules, ions, total);
-		Temperature.set(mix, temperature);
-		return mix;
 	}
 
 	private void setStatus(CellStatus value) {
@@ -279,6 +303,11 @@ public class ElectrolyzerBlockEntity extends BlockEntity
 
 	public float getProgress() {
 		return progress;
+	}
+
+	@Nullable
+	public ResourceLocation getActiveRecipe() {
+		return activeRecipe;
 	}
 
 	public ReactorTank getTank() {

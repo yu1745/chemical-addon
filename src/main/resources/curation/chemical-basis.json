@@ -1,0 +1,17 @@
+{
+  "_doc": "Single boundary map: real neutral formula -> internal PHREEQC pseudo formula; native species -> game display ion. Do not expose Hyp/Sul/Nitra/Nitri outside chemengine.",
+  "elements": ["H","O","Na","K","Ca","Mg","Ba","Fe","Cu","Zn","Al","Ag","Mn","Pb","Ni","Co","S","N","C","P","Si","F","Cl","Br","I"],
+  "internalFormulae": {
+    "HCl": "HCl", "HNO3": "HNitra", "HNO2": "HNitri", "NaNO3": "NaNitra", "NH4NO3": "NH4Nitra", "KNO3": "KNitra", "AgNO3": "AgNitra", "NaNO2": "NaNitri", "NaOCl": "NaHyp", "Na2SO3": "Na2Sul", "CaSO3": "CaSul", "Ca(OCl)2": "CaHyp2", "Ca(NO3)2": "CaNitra2", "KMnO4": "KMnvii", "Na2S": "Na2Sulfide", "H2S": "H2Sulfide", "S": "Szero"
+  },
+  "components": {
+    "OCl":"Hyp", "SO3":"Sul", "NO3":"Nitra", "NO2":"Nitri", "MnO4":"Mnvii", "S-2":"Sulfide", "SO4":"S(6)", "HSO4":"S(6)", "NH4":"N(-3)", "CO3":"C(4)", "HCO3":"C(4)", "PO4":"P", "SiO3":"Si", "H":"H", "OH":"OH"
+  },
+  "displayIons": {
+    "H+":"H+1", "OH-":"OH-1", "Na+":"Na+1", "K+":"K+1", "Cl-":"Cl-1", "Ca+2":"Ca+2", "Mg+2":"Mg+2", "Ba+2":"Ba+2", "Fe+2":"Fe+2", "Fe+3":"Fe+3", "Cu+2":"Cu+2", "Zn+2":"Zn+2", "Al+3":"Al+3", "Ag+":"Ag+1", "Mn+2":"Mn+2", "Pb+2":"Pb+2", "Ni+2":"Ni+2", "Co+2":"Co+2", "F-":"F-1", "Br-":"Br-1", "I-":"I-1", "SO4-2":"SO4-2", "NH4+":"NH4+1", "HCO3-":"HCO3-1", "PO4-3":"PO4-3", "SiO3-2":"SiO3-2", "Hyp-":"OCl-1", "Sul-2":"SO3-2", "Nitra-":"NO3-1", "Nitri-":"NO2-1", "Mnvii-":"MnO4-1", "Sulfide-2":"S-2", "HSulfide-":"HS-1"
+  },
+  "phaseIons": {
+    "Al+3":"Al+3", "OH-1":"OH-", "Ba+2":"Ba+2", "CO3-2":"CO3-2", "SO4-2":"SO4-2", "Cu+2":"Cu+2", "Ca+2":"Ca+2", "Fe+3":"Fe+3", "Mg+2":"Mg+2", "Ag+1":"Ag+", "Cl-1":"Cl-", "Zn+2":"Zn+2",
+    "OCl-1":"Hyp-", "SO3-2":"Sul-2", "NO3-1":"Nitra-", "NO2-1":"Nitri-"
+  }
+}

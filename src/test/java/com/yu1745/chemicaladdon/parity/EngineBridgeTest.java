@@ -1,12 +1,9 @@
 package com.yu1745.chemicaladdon.parity;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import com.yu1745.chemicaladdon.composition.parity.EngineBridge;
 
 /**
  * P2 单位桥语义测试（headless）。
@@ -33,15 +30,6 @@ class EngineBridgeTest {
         assertEquals(36.46, g, 1e-9);
         double molHCl = g / 36.46;
         assertEquals(1.0, molHCl, 1e-9, "36.46 g HCl = 1 mol（拆 H 1 + Cl 1）");
-    }
-
-    @Test
-    @DisplayName("Feed 空语义")
-    void feedSemantics() {
-        EngineBridge.Feed f = new EngineBridge.Feed();
-        assertTrue(f.isEmpty());
-        f.waterKg = 1.0;
-        assertTrue(!f.isEmpty());
     }
 
     @Test

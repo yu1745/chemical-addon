@@ -13,6 +13,7 @@ import com.simibubi.create.foundation.blockEntity.behaviour.ValueSettingsBoard;
 import com.simibubi.create.foundation.blockEntity.behaviour.ValueSettingsFormatter;
 import com.simibubi.create.foundation.blockEntity.behaviour.scrollValue.ScrollValueBehaviour;
 import com.yu1745.chemicaladdon.vessel.ProcessReadings;
+import com.yu1745.chemicaladdon.control.ControlSignal;
 
 import net.createmod.catnip.animation.LerpedFloat;
 import net.minecraft.core.BlockPos;
@@ -56,6 +57,7 @@ import net.minecraft.world.phys.Vec3;
 public abstract class AbstractVesselGaugeBlockEntity extends SmartBlockEntity implements IHaveGoggleInformation {
 
 	protected ScrollValueBehaviour threshold;
+	protected ScrollValueBehaviour minimum;
 	private boolean attached = false;
 	private int value;
 	private boolean lastAlarm = false; // server-side, redstone transition tracking
@@ -130,7 +132,7 @@ public abstract class AbstractVesselGaugeBlockEntity extends SmartBlockEntity im
 	/** The dynamic span = threshold − rest reading. The alarm threshold IS the full
 	 *  scale, so the whole dial range follows the scrollable threshold. */
 	protected int dynamicSpan() {
-		return getThreshold() - analogZero();
+		return getThreshold() - getMinimum();
 	}
 
 	/** Target dial needle angle (° clockwise from 12 o'clock) for the current reading.
@@ -142,7 +144,7 @@ public abstract class AbstractVesselGaugeBlockEntity extends SmartBlockEntity im
 		if (span <= 0) {
 			return isAlarm() ? NEEDLE_SWEEP : 0;
 		}
-		return (getValue() - analogZero()) * NEEDLE_SWEEP / span;
+		return (getValue() - getMinimum()) * NEEDLE_SWEEP / span;
 	}
 
 	/** The needle's resting tint (ARGB) — the dial art's needle colour for this gauge type. */
@@ -169,7 +171,7 @@ public abstract class AbstractVesselGaugeBlockEntity extends SmartBlockEntity im
 				Direction side = getSide();
 				double along = dialOffset() - 0.5 / 16.0;
 				double x = 0.5 + side.getStepX() * along;
-				double y = 2.0 / 16.0;
+				double y = 4.0 / 16.0;
 				double z = 0.5 + side.getStepZ() * along;
 				return new Vec3(x, y, z);
 			}
@@ -186,6 +188,23 @@ public abstract class AbstractVesselGaugeBlockEntity extends SmartBlockEntity im
 		threshold.between(0, thresholdMaxSteps());
 		threshold.value = defaultThresholdSteps();
 		threshold.withFormatter(i -> (i * thresholdStep()) + thresholdUnit());
+		CenteredSideValueBoxTransform minimumSlot = new CenteredSideValueBoxTransform(this::isValueBoxSide) {
+			@Override public Vec3 getLocalOffset(LevelAccessor level, BlockPos pos, BlockState state) {
+				Direction side=getSide(); double along=dialOffset()-0.5/16.0;
+				return new Vec3(.5+side.getStepX()*along,12.0/16.0,.5+side.getStepZ()*along);
+			}
+		};
+		minimum = new ScrollValueBehaviour(Component.translatable("gauge.chemicaladdon.minimum"), this, minimumSlot) {
+			@Override public ValueSettingsBoard createBoard(Player player, BlockHitResult hitResult) {
+				return new ValueSettingsBoard(label, thresholdMaxSteps(), thresholdMilestoneSteps(),
+					ImmutableList.of(Component.literal(thresholdUnit())),
+					new ValueSettingsFormatter(v -> Component.literal((v.value()*thresholdStep())+thresholdUnit())));
+			}
+		};
+		minimum.between(0, thresholdMaxSteps());
+		minimum.value = Math.max(0, analogZero()/Math.max(1,thresholdStep()));
+		minimum.withFormatter(i -> (i*thresholdStep())+thresholdUnit());
+		behaviours.add(minimum);
 		behaviours.add(threshold);
 	}
 
@@ -197,6 +216,10 @@ public abstract class AbstractVesselGaugeBlockEntity extends SmartBlockEntity im
 	/** The alarm threshold in physical units, as set by world-in scrolling. */
 	public int getThreshold() {
 		return (threshold != null ? threshold.getValue() : defaultThresholdSteps()) * thresholdStep();
+	}
+
+	public int getMinimum() {
+		return (minimum != null ? minimum.getValue() : Math.max(0, analogZero()/Math.max(1,thresholdStep()))) * thresholdStep();
 	}
 
 	/** The last-read vessel value (physical units); {@link #ambientValue()} when not attached. */
@@ -278,7 +301,7 @@ public abstract class AbstractVesselGaugeBlockEntity extends SmartBlockEntity im
 
 	/** Strong redstone output: 15 on alarm, else 0. */
 	public int alarmSignal() {
-		return isAlarm() ? 15 : 0;
+		return analogSignal();
 	}
 
 	/** Comparator output: the reading scaled onto 0..15 against the dynamic span
@@ -287,8 +310,7 @@ public abstract class AbstractVesselGaugeBlockEntity extends SmartBlockEntity im
 		if (!attached) {
 			return 0;
 		}
-		int span = dynamicSpan();
-		return span <= 0 ? 0 : Mth.clamp((value - analogZero()) * 15 / span, 0, 15);
+		return ControlSignal.analog(value, getMinimum(), getThreshold());
 	}
 
 	/** The vessel gauge BE at {@code pos}, or null — shared redstone helper (all forms). */

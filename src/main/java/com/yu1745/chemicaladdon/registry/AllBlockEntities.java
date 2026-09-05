@@ -32,6 +32,11 @@ import com.yu1745.chemicaladdon.reactor.MeteringInletBlockEntity;
 import com.yu1745.chemicaladdon.reactor.LiquidLevelGaugePanelBlockEntity;
 import com.yu1745.chemicaladdon.reactor.TurbidityGaugeBlockEntity;
 import com.yu1745.chemicaladdon.reactor.TurbidityGaugePanelBlockEntity;
+import com.yu1745.chemicaladdon.control.PlcControllerBlockEntity;
+import com.yu1745.chemicaladdon.control.PlcIoBlockEntity;
+import com.yu1745.chemicaladdon.control.TestPaperDetectorBlockEntity;
+import com.yu1745.chemicaladdon.reactor.OrpGaugeBlockEntity;
+import com.yu1745.chemicaladdon.control.ProcessSensorBlockEntity;
 
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -193,7 +198,7 @@ public class AllBlockEntities {
 					.build(null));
 
 	public static final RegistryObject<BlockEntityType<StatusPortBlockEntity>> STATUS_PORT =
-			REGISTER.register("status_port",
+			REGISTER.register("process_state_transmitter",
 				() -> BlockEntityType.Builder.of(StatusPortBlockEntity::new, AllBlocks.STATUS_PORT.get())
 					.build(null));
 
@@ -201,6 +206,24 @@ public class AllBlockEntities {
 			REGISTER.register("metering_inlet",
 				() -> BlockEntityType.Builder.of(MeteringInletBlockEntity::new, AllBlocks.METERING_INLET.get())
 					.build(null));
+
+	public static final RegistryObject<BlockEntityType<PlcControllerBlockEntity>> PLC_CONTROLLER =
+		REGISTER.register("plc_controller", () -> BlockEntityType.Builder.of(
+			PlcControllerBlockEntity::new, AllBlocks.PLC_CONTROLLER.get()).build(null));
+
+	public static final RegistryObject<BlockEntityType<PlcIoBlockEntity>> PLC_IO =
+		REGISTER.register("plc_io", () -> BlockEntityType.Builder.of(
+			PlcIoBlockEntity::new, AllBlocks.PLC_IO.get()).build(null));
+
+	public static final RegistryObject<BlockEntityType<TestPaperDetectorBlockEntity>> TEST_PAPER_DETECTOR =
+		REGISTER.register("test_paper_detector", () -> BlockEntityType.Builder.of(
+			TestPaperDetectorBlockEntity::new, AllBlocks.TEST_PAPER_DETECTOR.get()).build(null));
+
+	public static final RegistryObject<BlockEntityType<OrpGaugeBlockEntity>> ORP_GAUGE =
+		REGISTER.register("orp_gauge",()->BlockEntityType.Builder.of(OrpGaugeBlockEntity::new,AllBlocks.ORP_GAUGE.get()).build(null));
+
+	public static final RegistryObject<BlockEntityType<ProcessSensorBlockEntity>> PROCESS_SENSOR =
+		REGISTER.register("process_sensor",()->BlockEntityType.Builder.of(ProcessSensorBlockEntity::new,AllBlocks.FLOW_METER.get(),AllBlocks.SOLID_BED_GAUGE.get()).build(null));
 
 	public static void register(IEventBus modEventBus) {
 		REGISTER.register(modEventBus);

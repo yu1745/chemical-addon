@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashMap;
 
 /**
  * 一个 IPhreeqc 原生实例的 Java 会话门面。
@@ -32,8 +33,29 @@ import java.util.Map;
 public final class IPhreeqc implements AutoCloseable {
 
     private static final IPhreeqcLib LIB = NativeLoader.lib();
+    /**
+     * SELECTED_OUTPUT -high_precision improves printed rows but also changes
+     * PHREEQC's instance-wide convergence tolerance. A shared session must not
+     * let a previous display observation make the next material transaction
+     * numerically stricter. State-changing scripts therefore begin from this
+     * explicit runtime baseline while retaining high-precision output where it
+     * is requested.
+     */
+    private static final String RUNTIME_KNOBS_INLINE = "KNOBS\n    -convergence_tolerance 1e-8\n";
+    private static final String RUNTIME_KNOBS = RUNTIME_KNOBS_INLINE + "END\n";
 
-    private final int id;
+    /** A complete, standalone solver reset command. */
+    public static String runtimeKnobsBlock() { return RUNTIME_KNOBS; }
+
+    /**
+     * Solver settings for an already-open PHREEQC input sequence. Callers must
+     * append a later trigger (for example KINETICS) and its terminating END.
+     */
+    public static String runtimeKnobsInline() { return RUNTIME_KNOBS_INLINE; }
+
+    private int id;
+    /** Formula weights are evaluated by the loaded PHREEQC database, then cached per session. */
+    private final Map<String, Double> formulaWeights = new HashMap<>();
     private boolean databaseLoaded;
     private boolean closed;
 
@@ -57,8 +79,8 @@ public final class IPhreeqc implements AutoCloseable {
         if (databaseLoaded) {
             return this;
         }
-        String db = Database.sitWithAddenda();
-        if (LIB.LoadDatabaseString(id, db) != 0) {
+		String db = Database.sitWithAddenda();
+		if (LIB.LoadDatabaseString(id, db) != 0) {
             throw new IPhreeqcException("数据库装载失败:\n" + errorText());
         }
         // UnLoadDatabase 会清空这些开关，必须在装载后（重）打开
@@ -72,19 +94,21 @@ public final class IPhreeqc implements AutoCloseable {
     /**
      * 执行输入脚本。
      *
-     * @throws IPhreeqcException rc &gt; 0（ERROR/FATAL）时抛出，携带原生错误文本；
-     *                           rc == 2（WARNING）不抛，警告在 {@link RunResult#warnings}
+     * @throws IPhreeqcException whenever native PHREEQC reports one or more
+     *                           errors. RunString returns the error count;
+     *                           it is not an IPQ_RESULT enum.
      */
     public synchronized RunResult run(String script) {
         ensureOpen();
-        loadDatabase();
+		loadDatabase();
         int rc = LIB.RunString(id, script);
         String err = errorText();
         List<String> lines = selectedOutputLines();
-        if (rc == 1 || rc == 3) {
+        if (rc != 0) {
+            resetAfterNativeError();
             throw new IPhreeqcException("RunString 失败 (rc=" + rc + "):\n" + err);
         }
-        return new RunResult(lines, rc == 2 ? err : "");
+        return new RunResult(lines, "");
     }
 
     // ==== G1c 门面：ChemState 互译 / DUMP 存档 / 恢复 ====
@@ -103,7 +127,7 @@ public final class IPhreeqc implements AutoCloseable {
         if (watch.length > 0) {
             script.append("    -molalities ").append(String.join("  ", watch)).append('\n');
         }
-        script.append("END\n");
+        script.append("END\n").append(RUNTIME_KNOBS);
         return run(script.toString());
     }
 
@@ -137,6 +161,7 @@ public final class IPhreeqc implements AutoCloseable {
         }
         int rc = LIB.RunString(id, "DUMP\n    -solution" + nums + "\n");
         if (rc != 0) {
+            resetAfterNativeError();
             throw new IPhreeqcException("DUMP 失败 (rc=" + rc + "):\n" + errorText());
         }
         return dumpText();
@@ -150,7 +175,229 @@ public final class IPhreeqc implements AutoCloseable {
      * 注意：仅 USE 无触发器不产生 punch 行。
      */
     public synchronized RunResult runRestored(String dumpText, String continuation) {
-        return run(dumpText + "\nEND\n" + continuation + "\nEND\n");
+        return run(RUNTIME_KNOBS + dumpText + "\nEND\n" + continuation + "\nEND\n");
+    }
+
+    /**
+     * Materialise a proportional amount of a {@code SOLUTION_RAW} reference
+     * solution. A raw dump is deliberately kept at a fixed reference volume in
+     * FluidStack NBT; a pipe drain copies that tag verbatim. PHREEQC's MIX_SOLUTION is the
+     * conservation-preserving conversion from that reference state to the actual
+     * amount in the receiving vessel.
+     *
+     * <p>The returned dump is an ordinary solution 1 dump whose inventory is
+     * {@code factor} times the input. Callers normally save it with a new
+     * reference amount equal to their current FluidStack amount.</p>
+     */
+    public synchronized String scaleRestored(String dumpText, double factor) {
+        if (!(factor > 0.0) || !Double.isFinite(factor)) {
+            throw new IllegalArgumentException("scale factor must be finite and positive: " + factor);
+        }
+        // MIX_SOLUTION only combines extensive inventory. Unlike MIX it does not
+        // equilibrate redox/speciation merely because a pipe split was read.
+        clearReactants();
+        run(RUNTIME_KNOBS + dumpText + "\nEND\n"
+                + "MIX_SOLUTION 2\n    1 " + String.format(java.util.Locale.ROOT, "%.17g", factor) + "\nEND\n");
+        String scaled = runDump(2);
+        // Continuations consistently address solution 1. SOLUTION_RAW has no
+        // cross-object references, so normalising its declaration is safe.
+        return scaled.replaceFirst("(?m)^SOLUTION_RAW\\s+2\\b", "SOLUTION_RAW 1");
+    }
+
+    /**
+     * Combine complete archived solutions without equilibrating them.  This is
+     * the only inventory operation used for pipe joins: {@code MIX} is
+     * deliberately forbidden because it immediately re-speciates/redoxes.
+     * Keys are complete {@code SOLUTION_RAW} blocks and values are their
+     * extensive multipliers.
+     */
+    public synchronized String mixSolutions(Map<String, Double> rawFactors) {
+        if (rawFactors == null || rawFactors.isEmpty()) {
+            throw new IllegalArgumentException("at least one solution is required");
+        }
+        clearReactants();
+        StringBuilder input = new StringBuilder(RUNTIME_KNOBS);
+        StringBuilder mix = new StringBuilder("MIX_SOLUTION 100\n");
+        int number = 1;
+        for (Map.Entry<String, Double> entry : rawFactors.entrySet()) {
+            String raw = entry.getKey();
+            double factor = entry.getValue() == null ? Double.NaN : entry.getValue();
+            if (raw == null || raw.isBlank() || !(factor > 0.0) || !Double.isFinite(factor)) {
+                throw new IllegalArgumentException("raw solution and positive finite factor are required");
+            }
+            input.append(renameRawSolution(raw, number)).append("\nEND\n");
+            mix.append("    ").append(number++).append(' ')
+                    .append(String.format(java.util.Locale.ROOT, "%.17g", factor)).append('\n');
+        }
+        run(input.append(mix).append("END\n").toString());
+        return renameRawSolution(runDump(100), 1);
+    }
+
+    /**
+     * Construct a new, explicitly declared aqueous feed. Keys are neutral
+     * PHREEQC REACTION formulae (for example NaCl, HCl, Ca(OH)2), values are
+     * total mol. A pure-water solution is the solvent, then REACTION adds the
+     * declared formula inventory; H/O and charge are consequently carried by
+     * the chemical formula, never discarded or replaced by pH charge.
+     */
+    public synchronized String declaredSolution(double waterKg, Map<String, Double> componentMol,
+            double temperatureC) {
+        if (!(waterKg > 0.0) || !Double.isFinite(waterKg) || !Double.isFinite(temperatureC)) {
+            throw new IllegalArgumentException("water and temperature must be finite; water must be positive");
+        }
+        clearReactants();
+        StringBuilder script = new StringBuilder(RUNTIME_KNOBS).append("SOLUTION 1 declared\n")
+                .append("    temp ").append(String.format(java.util.Locale.ROOT, "%.17g", temperatureC)).append('\n')
+                .append("    water ").append(String.format(java.util.Locale.ROOT, "%.17g", waterKg)).append(" kg\nEND\n");
+        boolean hasDeclaredMaterial = false;
+        if (componentMol != null) {
+            for (Map.Entry<String, Double> entry : componentMol.entrySet()) {
+                String component = entry.getKey();
+                double mol = entry.getValue() == null ? Double.NaN : entry.getValue();
+                if (!isReactionFormula(component) || !(mol >= 0.0) || !Double.isFinite(mol)) {
+                    throw new IllegalArgumentException("unsupported declared reaction formula: " + component);
+                }
+                hasDeclaredMaterial |= mol > 0.0;
+            }
+        }
+        if (hasDeclaredMaterial) {
+            script.append("USE solution 1\nREACTION 1 declared feed\n");
+            for (Map.Entry<String, Double> entry : componentMol.entrySet()) {
+                String component = entry.getKey();
+                double mol = entry.getValue();
+                if (mol > 0.0) {
+                    script.append("    ").append(component).append(' ')
+                            .append(String.format(java.util.Locale.ROOT, "%.17g", mol)).append('\n');
+                }
+            }
+            script.append("    1 mol\n");
+        }
+        run(script.append("SAVE solution 1\nEND\n").toString());
+        return renameRawSolution(runDump(1), 1);
+    }
+
+    /** Apply signed neutral-formula additions to an existing exact state. */
+    public synchronized String reactRestored(String raw, Map<String, Double> formulaMol) {
+        if (formulaMol == null || formulaMol.isEmpty()) throw new IllegalArgumentException("formula transaction is required");
+        clearReactants();
+        StringBuilder reaction = new StringBuilder(RUNTIME_KNOBS).append(raw).append("\nEND\nUSE solution 1\nREACTION 1 transaction\n");
+        boolean hasMaterial = false;
+        for (Map.Entry<String, Double> entry : formulaMol.entrySet()) {
+            double mol = entry.getValue() == null ? Double.NaN : entry.getValue();
+            if (!isReactionFormula(entry.getKey()) || !Double.isFinite(mol))
+                throw new IllegalArgumentException("unsupported reaction formula: " + entry.getKey());
+            if (mol != 0) {
+                hasMaterial = true;
+                reaction.append("    ").append(entry.getKey()).append(' ')
+                    .append(String.format(java.util.Locale.ROOT, "%.17g", mol)).append('\n');
+            }
+        }
+        if (!hasMaterial) reaction.append("    H2O 0\n");
+        run(reaction.append("    1 mol\nSAVE solution 1\nEND\n").toString());
+        return renameRawSolution(runDump(1), 1);
+    }
+
+    /**
+     * Observe native pH, pe, water, and requested aqueous species molalities.
+     * This is an isolated candidate-equilibrium observation, not a no-solve raw
+     * inspection: PHREEQC needs an explicit zero-mole reaction to emit a fresh
+     * selected-output row. It never DUMPs or publishes that candidate state.
+     */
+    public synchronized RunResult observeRestored(String raw, String... aqueousSpecies) {
+		return observeRestored(raw, List.of(), aqueousSpecies);
+	}
+
+    /** Observe named total components plus aqueous species using that candidate solve. */
+    public synchronized RunResult observeRestored(String raw, List<String> totalComponents, String... aqueousSpecies) {
+        StringBuilder selected = new StringBuilder("SELECTED_OUTPUT 1\n -high_precision true\n -pH true\n -pe true\n -water true\n");
+		if (totalComponents != null && !totalComponents.isEmpty())
+			selected.append(" -totals ").append(String.join(" ", totalComponents)).append('\n');
+        if (aqueousSpecies != null && aqueousSpecies.length > 0)
+            selected.append(" -molalities ").append(String.join(" ", aqueousSpecies)).append('\n');
+        // SELECTED_OUTPUT alone does not execute a simulation and IPhreeqc
+        // retains old output rows. Run a zero-mole water reaction as an explicit
+        // observation solve. It may equilibrate the in-session copy, but never
+        // writes a DUMP or changes the caller's RAW state.
+        clearReactants();
+        return run(raw + "\nEND\nUSE solution 1\nREACTION 1 observation\n    H2O 0\n    1 mol\n"
+                + selected
+                // The built-in ALK function exposes the native acid/base
+                // inventory independently of free H+/OH- speciation.
+                + "USER_PUNCH 1\n -headings native_alk_eq_per_kg\n -start\n 10 PUNCH ALK\n -end\nEND\n"
+                + RUNTIME_KNOBS);
+    }
+
+    /**
+     * Returns a gram formula weight as interpreted by the loaded PHREEQC
+     * database.  This deliberately uses BASIC {@code GFW} rather than a Java
+     * atomic-weight table, so transactions such as water evaporation share the
+     * engine's own H/O isotope and formula conventions.
+     */
+    public synchronized double formulaWeight(String formula) {
+        if (formula == null || !formula.matches("[A-Za-z][A-Za-z0-9_:()]*"))
+            throw new IllegalArgumentException("unsupported formula for native GFW: " + formula);
+        Double cached = formulaWeights.get(formula);
+        if (cached != null) return cached;
+        clearReactants();
+        RunResult result = run("SOLUTION 1 formula-weight probe\n"
+                + "    water 1 kg\n"
+                + "SELECTED_OUTPUT 1\n"
+                + "    -high_precision true\n"
+                + "USER_PUNCH 1\n"
+                + "    -headings native_gfw\n"
+                + "    -start\n"
+                + "    10 PUNCH GFW(\"" + formula + "\")\n"
+                + "    -end\nEND\n" + RUNTIME_KNOBS);
+        if (result.rowCount() == 0) throw new IPhreeqcException("native GFW probe produced no row for " + formula);
+        double weight = result.row(result.rowCount() - 1).d("native_gfw");
+        if (!(weight > 0) || !Double.isFinite(weight))
+            throw new IPhreeqcException("invalid native GFW for " + formula + ": " + weight);
+        formulaWeights.put(formula, weight);
+        return weight;
+    }
+
+    /** Remove every numbered reactant before a RAW transaction on the shared session. */
+    public synchronized void clearReactants() {
+        run("DELETE\n    -all\nEND\n");
+    }
+
+    /**
+     * PHREEQC may retain partially parsed master-species/reactant state after
+     * an input error. Do not reuse that native object: destroy it and create a
+     * fresh session. This is deliberately an error-path cost, and prevents an
+     * invalid declaration from affecting any later vessel transaction.
+     */
+    private void resetAfterNativeError() {
+        LIB.DestroyIPhreeqc(id);
+        int replacement = LIB.CreateIPhreeqc();
+        if (replacement < 0) throw new IPhreeqcException("CreateIPhreeqc failed while recovering: " + replacement);
+        id = replacement;
+        databaseLoaded = false;
+        formulaWeights.clear();
+    }
+
+    private static boolean isReactionFormula(String component) {
+        return component != null && component.matches("[A-Za-z][A-Za-z0-9_:()]*");
+    }
+
+    private static String renameRawSolution(String raw, int number) {
+        if (!raw.matches("(?s).*^SOLUTION_RAW\\s+\\d+\\b.*")) {
+            throw new IllegalArgumentException("missing SOLUTION_RAW block");
+        }
+        return raw.replaceFirst("(?m)^SOLUTION_RAW\\s+\\d+\\b", "SOLUTION_RAW " + number);
+    }
+
+    /** Replace only the archived solution temperature before a continuation. */
+    public static String withRestoredTemperature(String dumpText, double temperatureC) {
+        if (!Double.isFinite(temperatureC)) {
+            throw new IllegalArgumentException("temperature must be finite");
+        }
+        java.util.regex.Pattern tempLine = java.util.regex.Pattern.compile("(?m)^(\\s*-temp\\s+).*$" );
+        if (!tempLine.matcher(dumpText).find()) {
+            throw new IllegalArgumentException("SOLUTION_RAW has no -temp field");
+        }
+        String replacement = "$1" + String.format(java.util.Locale.ROOT, "%.17g", temperatureC);
+        return tempLine.matcher(dumpText).replaceFirst(replacement);
     }
 
     private String errorText() {

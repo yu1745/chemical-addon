@@ -1,5 +1,7 @@
 # Development Status
 
+> 2026-09：下文保留旧自研内核的历史状态，不代表当前运行时。当前运行时为 IPhreeqc + 原生状态 + 策展 KINETICS；代码完成态与本轮 I/Mn/S 验收以 [`../progress.md`](../progress.md) 为准。
+
 `PLAN.md` is the guiding development plan. This file summarizes the current status.
 
 ## Completed

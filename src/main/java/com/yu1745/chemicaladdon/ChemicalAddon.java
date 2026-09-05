@@ -9,6 +9,7 @@ import com.mojang.logging.LogUtils;
 import com.simibubi.create.foundation.data.CreateRegistrate;
 import com.yu1745.chemicaladdon.composition.SpeciesManager;
 import com.yu1745.chemicaladdon.network.AssaySyncPacket;
+import com.yu1745.chemicaladdon.network.PlcEditPacket;
 import com.yu1745.chemicaladdon.reactor.DecantHoseBlockEntity;
 import com.yu1745.chemicaladdon.recipe.AllRecipeTypes;
 import com.yu1745.chemicaladdon.registry.AllBlockEntities;
@@ -18,6 +19,7 @@ import com.yu1745.chemicaladdon.registry.AllCreativeModeTabs;
 import com.yu1745.chemicaladdon.registry.AllDebugItems;
 import com.yu1745.chemicaladdon.registry.AllFluids;
 import com.yu1745.chemicaladdon.registry.AllItems;
+import com.yu1745.chemicaladdon.registry.AllMenus;
 
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -35,6 +37,8 @@ import net.minecraftforge.network.NetworkDirection;
 import net.minecraftforge.network.NetworkRegistry;
 import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
+import net.minecraftforge.registries.ForgeRegistries;
+import net.minecraftforge.registries.MissingMappingsEvent;
 
 import org.slf4j.Logger;
 
@@ -55,8 +59,8 @@ public class ChemicalAddon {
 	/** Server-side: players who have toggled the assay overlay on. */
 	private static final Set<UUID> ASSAY_PLAYERS = new HashSet<>();
 
-	private static final SimpleChannel ASSAY_CHANNEL = NetworkRegistry.newSimpleChannel(
-		new net.minecraft.resources.ResourceLocation(MODID, "assay"), () -> "1", s -> true, s -> true);
+	private static final SimpleChannel NETWORK_CHANNEL = NetworkRegistry.newSimpleChannel(
+		new net.minecraft.resources.ResourceLocation(MODID, "main"), () -> "1", s -> true, s -> true);
 
 	private static final CreateRegistrate REGISTRATE = CreateRegistrate.create(MODID);
 
@@ -66,6 +70,7 @@ public class ChemicalAddon {
 		AllCreativeModeTabs.register(modBus);
 		AllRecipeTypes.register(modBus);
 		AllBlockEntities.register(modBus);
+		AllMenus.register(modBus);
 		AllFluids.register();
 		AllItems.register();
 		AllBlocks.register();
@@ -91,19 +96,23 @@ public class ChemicalAddon {
 		SpeciesManager.loadBuiltin();
 
 		// dev assay overlay network channel
-		ASSAY_CHANNEL.messageBuilder(AssaySyncPacket.class, 0, NetworkDirection.PLAY_TO_CLIENT)
+		NETWORK_CHANNEL.messageBuilder(AssaySyncPacket.class, 0, NetworkDirection.PLAY_TO_CLIENT)
 			.encoder(AssaySyncPacket::encode)
 			.decoder(AssaySyncPacket::decode)
 			.consumerMainThread(AssaySyncPacket::handle)
 			.add();
+		NETWORK_CHANNEL.messageBuilder(PlcEditPacket.class, 1, NetworkDirection.PLAY_TO_SERVER)
+			.encoder(PlcEditPacket::encode).decoder(PlcEditPacket::decode)
+			.consumerMainThread(PlcEditPacket::handle).add();
 
 		// /chemicaladdon assay (and /ca assay) — creative/op only, toggles the assay overlay
 		MinecraftForge.EVENT_BUS.addListener((RegisterCommandsEvent event) -> registerAssayCommand(event.getDispatcher()));
+		MinecraftForge.EVENT_BUS.addListener(ChemicalAddon::remapRenamedBlocks);
 
 		// re-sync the assay state when a player joins
 		MinecraftForge.EVENT_BUS.addListener((PlayerEvent.PlayerLoggedInEvent event) -> {
 			if (event.getEntity() instanceof ServerPlayer sp) {
-				ASSAY_CHANNEL.send(PacketDistributor.PLAYER.with(() -> sp),
+				NETWORK_CHANNEL.send(PacketDistributor.PLAYER.with(() -> sp),
 					new AssaySyncPacket(ASSAY_PLAYERS.contains(sp.getUUID())));
 			}
 		});
@@ -152,12 +161,28 @@ public class ChemicalAddon {
 		} else {
 			ASSAY_PLAYERS.remove(id);
 		}
-		ASSAY_CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new AssaySyncPacket(on));
+		NETWORK_CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new AssaySyncPacket(on));
 		source.sendSuccess(() -> Component.literal("Assay overlay: " + (on ? "ON" : "OFF")), false);
 		return 1;
 	}
 
 	public static CreateRegistrate registrate() {
 		return REGISTRATE;
+	}
+
+	/** Preserve worlds made before status_port was renamed to describe its broader role. */
+	private static void remapRenamedBlocks(MissingMappingsEvent event) {
+		for (MissingMappingsEvent.Mapping<net.minecraft.world.level.block.Block> mapping
+			: event.getMappings(ForgeRegistries.Keys.BLOCKS, MODID)) {
+			if (mapping.getKey().getPath().equals("status_port")) mapping.remap(AllBlocks.STATUS_PORT.get());
+		}
+		for (MissingMappingsEvent.Mapping<net.minecraft.world.item.Item> mapping
+			: event.getMappings(ForgeRegistries.Keys.ITEMS, MODID)) {
+			if (mapping.getKey().getPath().equals("status_port")) mapping.remap(AllBlocks.STATUS_PORT.get().asItem());
+		}
+	}
+
+	public static void sendToServer(Object packet) {
+		NETWORK_CHANNEL.sendToServer(packet);
 	}
 }

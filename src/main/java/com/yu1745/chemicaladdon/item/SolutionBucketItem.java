@@ -6,6 +6,9 @@ import java.util.Map;
 
 import com.yu1745.chemicaladdon.composition.Species;
 import com.yu1745.chemicaladdon.composition.SpeciesManager;
+import com.yu1745.chemicaladdon.composition.Solution;
+import com.yu1745.chemicaladdon.composition.parity.EngineBridge;
+import com.yu1745.chemicaladdon.composition.parity.KernelSolutionState;
 import com.yu1745.chemicaladdon.fluid.Mixture;
 
 import net.minecraft.ChatFormatting;
@@ -57,23 +60,33 @@ public class SolutionBucketItem extends Item {
 			Map<String, Integer> ions = new LinkedHashMap<>();
 			Map<ResourceLocation, Integer> suspended = new LinkedHashMap<>();
 			species.packBucket(CAPACITY, molecules, ions, suspended);
-			int total = 0;
-			for (int v : molecules.values()) {
-				total += v;
+			// This is an external declaration, not a display-to-chemistry
+			// conversion.  The bucket's authored species and its water quantity are
+			// sufficient to construct one fresh native state; unknown models leave
+			// the bucket empty rather than placing an unverifiable mixture.
+			try {
+				double waterKg = molecules.getOrDefault(Solution.WATER, 0) / 1000d;
+				if (!(waterKg > 0)) throw new IllegalArgumentException("bucket has no water");
+				Map<String, Double> declared = species.isSolution()
+					? EngineBridge.declaredFeedForSpecies(speciesId,
+						ions.values().stream().mapToInt(Integer::intValue).sum() / (double) species.ionCount() / 1000d)
+					: Map.of();
+				java.util.List<KernelSolutionState.SolidPhase> solids = new java.util.ArrayList<>();
+				for (Map.Entry<ResourceLocation, Integer> solid : suspended.entrySet()) {
+					solids.add(new KernelSolutionState.SolidPhase(solid.getKey().toString(), solid.getValue() / 1000d,
+						KernelSolutionState.SolidLocation.SUSPENDED));
+				}
+				FluidStack mix = Mixture.fromDeclaredComposition(waterKg, declared, CAPACITY, 25, solids);
+				// the creative bucket carries the mode's known tint (distinct per species);
+				// once poured the mixture colour is re-derived from its actual contents
+				if (species.color() != 0) {
+					mix.getOrCreateTag().putInt(Mixture.KEY_COLOR, 0xFF000000 | species.color());
+				}
+				stack.getOrCreateTag().put(FluidHandlerItemStack.FLUID_NBT_KEY, mix.writeToNBT(new CompoundTag()));
+			} catch (RuntimeException ex) {
+				com.yu1745.chemicaladdon.ChemicalAddon.LOGGER.error("Cannot create engine-backed bucket {}: {}", speciesId, ex.getMessage());
+				return stack;
 			}
-			for (int v : ions.values()) {
-				total += v;
-			}
-			for (int v : suspended.values()) {
-				total += v;
-			}
-			FluidStack mix = Mixture.create(molecules, ions, suspended, total);
-			// the creative bucket carries the mode's known tint (distinct per species);
-			// once poured the mixture colour is re-derived from its actual contents
-			if (species.color() != 0) {
-				mix.getOrCreateTag().putInt(Mixture.KEY_COLOR, 0xFF000000 | species.color());
-			}
-			stack.getOrCreateTag().put(FluidHandlerItemStack.FLUID_NBT_KEY, mix.writeToNBT(new CompoundTag()));
 		}
 		return stack;
 	}

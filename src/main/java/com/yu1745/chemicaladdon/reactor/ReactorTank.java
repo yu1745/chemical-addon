@@ -9,10 +9,14 @@ import java.util.function.Consumer;
 import javax.annotation.Nullable;
 
 import com.simibubi.create.foundation.fluid.FluidIngredient;
+import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.composition.Chemistry;
 import com.yu1745.chemicaladdon.composition.Solution;
 import com.yu1745.chemicaladdon.composition.Species;
 import com.yu1745.chemicaladdon.composition.SpeciesManager;
+import com.yu1745.chemicaladdon.composition.parity.EngineBridge;
+import com.yu1745.chemicaladdon.composition.parity.Kernel;
+import com.yu1745.chemicaladdon.composition.parity.KernelSolutionState;
 import com.yu1745.chemicaladdon.fluid.Mixture;
 import com.yu1745.chemicaladdon.fluid.Miscibility;
 import com.yu1745.chemicaladdon.fluid.Temperature;
@@ -32,6 +36,7 @@ import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.capability.IFluidHandler;
 import net.minecraftforge.fluids.capability.IFluidHandler.FluidAction;
 import net.minecraftforge.registries.ForgeRegistries;
+import com.yu1745.chemengine.kernel.IPhreeqc;
 
 /**
  * Multi-fluid tank inside a reaction vessel (smeltery-style: arbitrary fluids
@@ -125,6 +130,30 @@ public class ReactorTank implements IFluidHandler {
 		if (resource.isEmpty()) {
 			return 0;
 		}
+		// A reactor never stores a bare water phase: ordinary Forge water is an
+		// explicit external declaration at this boundary and becomes a native
+		// aqueous batch before it can meet any other feed.
+		if (!Mixture.isMixture(resource) && sourceOf(resource.getFluid()) == Fluids.WATER) {
+			try {
+				resource = Mixture.fromDeclaredComposition(resource.getAmount() / 1000d, Map.of(),
+					resource.getAmount(), Temperature.get(resource), java.util.List.of());
+			} catch (RuntimeException ex) {
+				ChemicalAddon.LOGGER.warn("Rejected external water declaration: {}", ex.getMessage());
+				return 0;
+			}
+		}
+		if (Mixture.isMixture(resource) && Mixture.engineSolution(resource) == null) {
+			ChemicalAddon.LOGGER.warn("Rejected mixture fill without EngineSolutionRaw");
+			return 0;
+		}
+		if (!Mixture.isMixture(resource) && Miscibility.AQUEOUS.equals(Miscibility.groupOf(resource))) {
+			ResourceLocation id = ForgeRegistries.FLUIDS.getKey(sourceOf(resource.getFluid()));
+			if (id == null || (!Solution.WATER.equals(id)
+				&& (SpeciesManager.get(id) == null || !SpeciesManager.get(id).isElectrolyte()))) {
+				ChemicalAddon.LOGGER.warn("Rejected external aqueous feed without a declared engine model: {}", id);
+				return 0;
+			}
+		}
 		int amount = Math.min(resource.getAmount(), capacity - getTotalAmount());
 		if (amount <= 0) {
 			return 0;
@@ -148,6 +177,22 @@ public class ReactorTank implements IFluidHandler {
 					onChanged.run();
 					return amount;
 				}
+				// Independently declared aqueous inputs have distinct RAW tags even
+				// when both are water. Merge them through MIX_SOLUTION immediately so
+				// Forge's ordinary same-fluid stacking behaviour is retained.
+				if (incomingMix && Mixture.isMixture(f)
+					&& Miscibility.AQUEOUS.equals(Miscibility.groupOf(f))
+					&& Miscibility.AQUEOUS.equals(Miscibility.groupOf(resource))) {
+					FluidStack incoming = resource.copy();
+					incoming.setAmount(amount);
+					FluidStack merged = mergeGroup(List.of(f, incoming));
+					if (!merged.isEmpty()) {
+						int index = fluids.indexOf(f);
+						fluids.set(index, merged);
+						onChanged.run();
+						return amount;
+					}
+				}
 				// same pure fluid: stack it and blend the temperature (amount-weighted)
 				if (!incomingMix && !Mixture.isMixture(f) && f.getFluid() == fluid) {
 					int blended = Temperature.merge(Temperature.get(f), f.getAmount(),
@@ -159,8 +204,12 @@ public class ReactorTank implements IFluidHandler {
 				}
 			}
 			// new entry — preserve the resource's NBT so a mixture's ratio travels with it
-			FluidStack copy = resource.copy();
+			// The registry can hand recipes/pipes a flowing variant. Store the source
+			// variant promised by sourceOf so later gas/product checks do not split a
+			// single physical phase by Forge's still/flowing implementation detail.
+			FluidStack copy = incomingMix ? resource.copy() : new FluidStack(fluid, amount);
 			copy.setAmount(amount);
+			if (!incomingMix) Temperature.set(copy, Temperature.get(resource));
 			fluids.add(copy);
 			onChanged.run();
 		}
@@ -258,27 +307,18 @@ public class ReactorTank implements IFluidHandler {
 	 *         may still draw (never negative)
 	 */
 	public int clearLiquidAvailable() {
-		long liquidUnits = 0;
-		long poreUnits = 0;
-		for (FluidStack stack : fluids) {
-			if (!Mixture.isMixture(stack)) {
-				continue;
-			}
-			for (int v : Mixture.deriveUnitAmounts(stack).values()) {
-				liquidUnits += v;
-			}
-			for (int v : Mixture.deriveUnitIonAmounts(stack).values()) {
-				liquidUnits += v;
-			}
-			for (int v : Mixture.deriveUnitSedimentAmounts(stack).values()) {
-				poreUnits += v;
-			}
-			for (int v : Mixture.deriveUnitSuspendedAmounts(stack).values()) {
-				poreUnits += v;
-			}
+		if (containsEngineBackedMixture()) {
+			long liquid = 0;
+			for (FluidStack stack : fluids) if (Mixture.isMixture(stack)) liquid += stack.getAmount();
+			long pore = Math.round((engineSolidUnits(KernelSolutionState.SolidLocation.SEDIMENT)
+					+ engineSolidUnits(KernelSolutionState.SolidLocation.SUSPENDED))
+					* RulesEngine.CAKE_LIQUOR_FRACTION);
+			return (int) Math.max(0, liquid - pore / Chemistry.UNIT_PER_MB);
 		}
-		long floorUnits = Math.round(poreUnits * RulesEngine.CAKE_LIQUOR_FRACTION);
-		return (int) Math.max(0, (liquidUnits - Math.min(floorUnits, liquidUnits)) / Chemistry.UNIT_PER_MB);
+		// Separation is defined only for an engine-owned aqueous ledger. Oil/gas
+		// and malformed display-only mixtures must not enter the retired domain
+		// reconstruction path.
+		return 0;
 	}
 
 	/**
@@ -291,133 +331,8 @@ public class ReactorTank implements IFluidHandler {
 	 * proportional solids too).
 	 */
 	public FluidStack decantClear(int maxDrainMb, FluidAction action) {
-		long available = (long) clearLiquidAvailable() * Chemistry.UNIT_PER_MB;
-		long take = Math.min((long) maxDrainMb * Chemistry.UNIT_PER_MB, available);
-		if (take <= 0) {
-			return FluidStack.EMPTY;
-		}
-		// aggregate the liquid across mixtures (one physical pot) + weighted temperature
-		Map<ResourceLocation, Long> liquidMol = new LinkedHashMap<>();
-		Map<String, Long> liquidIons = new LinkedHashMap<>();
-		long totalLiquid = 0;
-		long weightedTemp = 0;
-		int mixtureMb = 0;
-		for (FluidStack stack : fluids) {
-			if (!Mixture.isMixture(stack)) {
-				continue;
-			}
-			mixtureMb += stack.getAmount();
-			weightedTemp += (long) Temperature.get(stack) * stack.getAmount();
-			for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveUnitAmounts(stack).entrySet()) {
-				liquidMol.merge(e.getKey(), (long) e.getValue(), Long::sum);
-				totalLiquid += e.getValue();
-			}
-			for (Map.Entry<String, Integer> e : Mixture.deriveUnitIonAmounts(stack).entrySet()) {
-				liquidIons.merge(e.getKey(), (long) e.getValue(), Long::sum);
-				totalLiquid += e.getValue();
-			}
-		}
-		if (totalLiquid <= 0) {
-			return FluidStack.EMPTY;
-		}
-		// proportional shares of the drawn liquid, summing exactly to take
-		Map<ResourceLocation, Long> molTake = new LinkedHashMap<>();
-		Map<String, Long> ionTake = new LinkedHashMap<>();
-		long assigned = 0;
-		ResourceLocation largestMol = null;
-		String largestIon = null;
-		for (Map.Entry<ResourceLocation, Long> e : liquidMol.entrySet()) {
-			long share = take * e.getValue() / totalLiquid;
-			molTake.put(e.getKey(), share);
-			assigned += share;
-			if (largestMol == null || share > molTake.get(largestMol)) {
-				largestMol = e.getKey();
-			}
-		}
-		for (Map.Entry<String, Long> e : liquidIons.entrySet()) {
-			long share = take * e.getValue() / totalLiquid;
-			ionTake.put(e.getKey(), share);
-			assigned += share;
-			if (largestIon == null || share > ionTake.get(largestIon)) {
-				largestIon = e.getKey();
-			}
-		}
-		long remainder = take - assigned;
-		if (largestIon != null && (largestMol == null || ionTake.get(largestIon) >= molTake.get(largestMol))) {
-			ionTake.merge(largestIon, remainder, Long::sum);
-		} else if (largestMol != null) {
-			molTake.merge(largestMol, remainder, Long::sum);
-		}
-
-		// the drawn sample (a pure-liquid mixture; collapses in the receiver if single-component)
-		Map<ResourceLocation, Integer> outMol = new LinkedHashMap<>();
-		for (Map.Entry<ResourceLocation, Long> e : molTake.entrySet()) {
-			if (e.getValue() > 0) {
-				outMol.put(e.getKey(), (int) Math.min(e.getValue(), Integer.MAX_VALUE));
-			}
-		}
-		Map<String, Integer> outIons = new LinkedHashMap<>();
-		for (Map.Entry<String, Long> e : ionTake.entrySet()) {
-			if (e.getValue() > 0) {
-				outIons.put(e.getKey(), (int) Math.min(e.getValue(), Integer.MAX_VALUE));
-			}
-		}
-		int temperature = Temperature.fromWeightedSum(weightedTemp, mixtureMb);
-		FluidStack out = Mixture.create(outMol, outIons, (int) (take / Chemistry.UNIT_PER_MB));
-		Temperature.set(out, temperature);
-		if (action.simulate()) {
-			return out;
-		}
-
-		// subtract the shares from each mixture stack, solids untouched (greedy
-		// exact integers, rebuilt wholesale — the extractSolids pattern)
-		List<FluidStack> rebuilt = new ArrayList<>();
-		boolean changed = false;
-		for (FluidStack stack : fluids) {
-			if (!Mixture.isMixture(stack)) {
-				rebuilt.add(stack);
-				continue;
-			}
-			Map<ResourceLocation, Integer> molecules = new LinkedHashMap<>(Mixture.deriveUnitAmounts(stack));
-			Map<String, Integer> ionsMap = new LinkedHashMap<>(Mixture.deriveUnitIonAmounts(stack));
-			boolean touched = false;
-			for (Map.Entry<ResourceLocation, Integer> e : molecules.entrySet()) {
-				long need = molTake.getOrDefault(e.getKey(), 0L);
-				if (need <= 0) {
-					continue;
-				}
-				long remove = Math.min(need, e.getValue());
-				molTake.merge(e.getKey(), -remove, Long::sum);
-				molecules.put(e.getKey(), (int) (e.getValue() - remove));
-				touched = true;
-			}
-			for (Map.Entry<String, Integer> e : ionsMap.entrySet()) {
-				long need = ionTake.getOrDefault(e.getKey(), 0L);
-				if (need <= 0) {
-					continue;
-				}
-				long remove = Math.min(need, e.getValue());
-				ionTake.merge(e.getKey(), -remove, Long::sum);
-				ionsMap.put(e.getKey(), (int) (e.getValue() - remove));
-				touched = true;
-			}
-			if (!touched) {
-				rebuilt.add(stack);
-				continue;
-			}
-			replaceWith(rebuilt, molecules, ionsMap,
-				Mixture.deriveUnitSuspendedAmounts(stack), Mixture.deriveUnitSedimentAmounts(stack),
-				Temperature.get(stack));
-			changed = true;
-		}
-		if (changed) {
-			fluids.clear();
-			fluids.addAll(rebuilt);
-			removeEmpty();
-			collapseIfNeeded();
-			onChanged.run();
-		}
-		return out;
+		if (containsEngineBackedMixture()) return engineDraw(maxDrainMb, action, false, false, true, Double.NaN);
+		return FluidStack.EMPTY;
 	}
 
 	/**
@@ -545,6 +460,12 @@ public class ReactorTank implements IFluidHandler {
 			if (fluids.size() == 1) {
 				FluidStack only = fluids.get(0);
 				if (Mixture.isMixture(only)) {
+					// The raw reference can contain trace solutes below the display
+					// projection. It must remain a mixture even if the four legacy
+					// domains presently look like pure water.
+					if (Mixture.engineSolution(only) != null) {
+						return;
+					}
 					int comps = Mixture.getMolecules(only).size() + Mixture.getIons(only).size()
 						+ Mixture.getSuspended(only).size() + Mixture.getSediment(only).size();
 					if (comps == 0) {
@@ -587,6 +508,11 @@ public class ReactorTank implements IFluidHandler {
 			}
 			if (!merged.isEmpty()) {
 				settled.add(merged);
+			} else if (members.stream().anyMatch(Mixture::isMixture)) {
+				// A kernel transaction failed.  Retain the original states verbatim;
+				// dropping a group here would turn an unsupported feed into material
+				// loss while still looking like a normal successful collapse.
+				settled.addAll(members);
 			}
 		}
 		// densest liquid first (it sinks); gases are the lightest phase, kept last
@@ -625,6 +551,30 @@ public class ReactorTank implements IFluidHandler {
 	 * Returns {@link FluidStack#EMPTY} when every member was corrupt.
 	 */
 	private FluidStack mergeGroup(List<FluidStack> members) {
+		// Aqueous inventory is never rebuilt from the display domains.  Every
+		// member is materialised at its actual amount and combined through
+		// PHREEQC MIX_SOLUTION, preserving the complete archived pools.
+		if (Miscibility.AQUEOUS.equals(Miscibility.groupOf(members.get(0)))) {
+			try {
+				IPhreeqc q = Kernel.get();
+				synchronized (q) {
+				List<KernelSolutionState> states = new ArrayList<>();
+				long weightedTemp = 0;
+				for (FluidStack member : members) {
+					states.add(engineStateFor(q, member));
+					weightedTemp += (long) Temperature.get(member) * member.getAmount();
+				}
+				KernelSolutionState merged = KernelSolutionState.merge(q, states);
+				FluidStack target = Mixture.create(Map.of(Solution.WATER, merged.referenceMb()), merged.referenceMb());
+				Mixture.setEngineSolution(target, merged);
+				Temperature.set(target, Temperature.fromWeightedSum(weightedTemp, merged.referenceMb()));
+				return target;
+				}
+			} catch (RuntimeException ex) {
+				ChemicalAddon.LOGGER.warn("Rejected unsupported aqueous merge: {}", ex.getMessage());
+				return FluidStack.EMPTY;
+			}
+		}
 		Map<ResourceLocation, Integer> molecules = new LinkedHashMap<>();
 		Map<String, Integer> ions = new LinkedHashMap<>();
 		Map<ResourceLocation, Integer> suspended = new LinkedHashMap<>();
@@ -678,6 +628,26 @@ public class ReactorTank implements IFluidHandler {
 		return target;
 	}
 
+	/** Convert only a newly-declared external aqueous material to engine state. */
+	private static KernelSolutionState engineStateFor(IPhreeqc q, FluidStack stack) {
+		if (Mixture.isMixture(stack)) {
+			KernelSolutionState state = Mixture.engineSolution(stack);
+			if (state == null) throw new IllegalArgumentException("mixture has no engine state");
+			return state.scale(q, stack.getAmount());
+		}
+		ResourceLocation id = ForgeRegistries.FLUIDS.getKey(sourceOf(stack.getFluid()));
+		if (id == null) throw new IllegalArgumentException("unregistered external fluid");
+		if (Solution.WATER.equals(id)) {
+			return KernelSolutionState.fromDeclaredFeed(q, stack.getAmount() / 1000d, Map.of(), stack.getAmount());
+		}
+		Species species = SpeciesManager.get(id);
+		if (species == null || !species.isElectrolyte()) {
+			throw new IllegalArgumentException("no declared aqueous model for " + id);
+		}
+		return KernelSolutionState.fromDeclaredFeed(q, stack.getAmount() / 1000d,
+			EngineBridge.declaredFeedForSpecies(id, stack.getAmount() / 1000d), stack.getAmount());
+	}
+
 	/** Replace a single-component mixture with the equivalent pure fluid stack. */
 	private void degradeSingleComponentMixture(FluidStack mixture) {
 		Map.Entry<ResourceLocation, Integer> only =
@@ -695,8 +665,19 @@ public class ReactorTank implements IFluidHandler {
 	/** Total mB matching the ingredient, looking inside mixture components too. */
 	public int countIngredient(FluidIngredient ingredient) {
 		int total = 0;
+		String nativeFormula = nativeFormulaForIngredient(ingredient);
+		Species nativeSpecies = nativeSpeciesForIngredient(ingredient);
 		for (FluidStack stack : fluids) {
 			if (Mixture.isMixture(stack)) {
+				KernelSolutionState state = Mixture.engineSolution(stack);
+				if (state != null) {
+					if ("H2O".equals(nativeFormula)) {
+						total += nativeWaterMb(state, stack.getAmount());
+					} else if (nativeSpecies != null) {
+						total += nativeFormulaMb(nativeSpecies, state, stack.getAmount());
+					}
+					continue;
+				}
 				for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveAmounts(stack).entrySet()) {
 					Fluid cf = ForgeRegistries.FLUIDS.getValue(e.getKey());
 					if (cf != null && cf != Fluids.EMPTY && ingredient.test(new FluidStack(cf, e.getValue()))) {
@@ -721,6 +702,9 @@ public class ReactorTank implements IFluidHandler {
 		if (required <= 0) {
 			return 0;
 		}
+		// A native REACTION is an all-or-nothing inventory transaction.  Check the
+		// whole vessel before touching a pure stack so failed mixed feeds are net-zero.
+		if (containsEngineBackedMixture() && countIngredient(ingredient) < required) return 0;
 		int remaining = required;
 		// pure entries first (prefer not to dissolve a mixture if a pure stack suffices)
 		for (FluidStack stack : fluids) {
@@ -734,6 +718,49 @@ public class ReactorTank implements IFluidHandler {
 				}
 				remaining -= take;
 			}
+		}
+		// Pure gas/oil has already been withdrawn above.  Do not let the old
+		// display-domain component loop mutate an engine-backed aqueous batch.
+		if (remaining > 0 && containsEngineBackedMixture()) {
+			String formula = nativeFormulaForIngredient(ingredient);
+			if (formula != null) {
+				List<FluidStack> aqueous = fluids.stream().filter(Mixture::isMixture)
+					.filter(stack -> Mixture.engineSolution(stack) != null).toList();
+				if (aqueous.isEmpty()) return required - remaining;
+				try {
+					IPhreeqc q = Kernel.get(); synchronized (q) {
+						List<KernelSolutionState> actualStates = new ArrayList<>();
+						int aqueousMb = 0;
+						for (FluidStack stack : aqueous) {
+							actualStates.add(Mixture.engineSolution(stack).scale(q, stack.getAmount()));
+							aqueousMb += stack.getAmount();
+						}
+						KernelSolutionState actual = KernelSolutionState.merge(q, actualStates);
+						KernelSolutionState next = "H2O".equals(formula)
+							? actual.evaporateWater(q, remaining / 1000d)
+							: actual.removeDeclaredFeed(q, Map.of(formula, remaining / 1000d));
+						if (action.execute()) {
+							FluidStack target = aqueous.get(0);
+							if ("H2O".equals(formula)) {
+								int left = aqueousMb - remaining;
+								if (left <= 0) throw new IllegalArgumentException("water drain emptied aqueous batch");
+								target.setAmount(left);
+								next = new KernelSolutionState(next.raw(), left, next.solids());
+							}
+							Mixture.setEngineSolution(target, next);
+							for (int i = 1; i < aqueous.size(); i++) aqueous.get(i).setAmount(0);
+							removeEmpty();
+							onChanged.run();
+						}
+					}
+					return required;
+				} catch (RuntimeException ex) { return required - remaining; }
+			}
+			if (action.execute()) {
+				removeEmpty();
+				onChanged.run();
+			}
+			return required - remaining;
 		}
 		// then mixture components
 		for (FluidStack stack : fluids) {
@@ -794,19 +821,50 @@ public class ReactorTank implements IFluidHandler {
 		return required - remaining;
 	}
 
+	@Nullable
+	private static String nativeFormulaForIngredient(FluidIngredient ingredient) {
+		if (ingredient.test(new FluidStack(Fluids.WATER, 1))) return "H2O";
+		Species species = nativeSpeciesForIngredient(ingredient);
+		return species == null ? null : species.engineFormula();
+	}
+
+	@Nullable
+	private static Species nativeSpeciesForIngredient(FluidIngredient ingredient) {
+		for (Species species : SpeciesManager.all()) {
+			Fluid fluid = ForgeRegistries.FLUIDS.getValue(species.id());
+			if (fluid != null && fluid != Fluids.EMPTY && ingredient.test(new FluidStack(fluid, 1)))
+				return species.engineFormula() == null ? null : species;
+		}
+		return null;
+	}
+
+	private static int nativeWaterMb(KernelSolutionState state, int amountMb) {
+		try {
+			IPhreeqc q = Kernel.get(); synchronized (q) {
+				return (int) Math.min(Integer.MAX_VALUE, Math.floor(EngineBridge.derive(q,
+					state.scale(q, amountMb), List.of(), List.of()).waterKg() * 1000d + 1e-9));
+			}
+		} catch (RuntimeException ignored) { return 0; }
+	}
+
+	private static int nativeFormulaMb(Species species, KernelSolutionState state, int amountMb) {
+		try {
+			IPhreeqc q = Kernel.get(); synchronized (q) {
+				return (int) Math.min(Integer.MAX_VALUE, Math.floor(nativeFormulaMol(species,
+					state.scale(q, amountMb), q) * 1000d + 1e-9));
+			}
+		} catch (RuntimeException ignored) { return 0; }
+	}
+
 	/** mB of a solution species' solute ions (mole-equivalents) formable from the vessel's dissolved ions. */
 	public int countSolution(ResourceLocation speciesId) {
 		Species species = SpeciesManager.get(speciesId);
 		if (species == null || !species.isSolution()) {
 			return 0;
 		}
-		int total = 0;
-		for (FluidStack stack : fluids) {
-			if (Mixture.isMixture(stack)) {
-				total += species.equivalentIonMb(Mixture.deriveIonAmounts(stack));
-			}
-		}
-		return total;
+		return containsEngineBackedMixture()
+			? (int) Math.min(Integer.MAX_VALUE, Math.round(nativeFormulaMol(species) * species.ionCount() * 1000d))
+			: 0;
 	}
 
 	/**
@@ -818,15 +876,88 @@ public class ReactorTank implements IFluidHandler {
 		if (species == null || !species.isSolution()) {
 			return 0;
 		}
-		int ionMb = 0;
-		int waterMb = 0;
-		for (FluidStack stack : fluids) {
-			if (Mixture.isMixture(stack)) {
-				ionMb += species.equivalentIonMb(Mixture.deriveIonAmounts(stack));
-				waterMb += Mixture.deriveAmounts(stack).getOrDefault(Solution.WATER, 0);
+		if (!containsEngineBackedMixture()) return 0;
+		double waterKg = nativeWaterKg();
+		return waterKg > 0 ? nativeFormulaMol(species) * species.ionCount() / waterKg : 0;
+	}
+
+	/** Native inventory view for recipe matching; never consults display NBT. */
+	private double nativeFormulaMol(Species species) {
+		try {
+			IPhreeqc q = Kernel.get();
+			synchronized (q) {
+				double total = 0;
+				for (FluidStack stack : fluids) if (Mixture.isMixture(stack)) {
+					KernelSolutionState state = Mixture.engineSolution(stack);
+					if (state == null) return 0;
+					total += nativeFormulaMol(species, state.scale(q, stack.getAmount()), q);
+				}
+				return total;
 			}
+		} catch (RuntimeException ex) {
+			ChemicalAddon.LOGGER.warn("Native solution view failed for {}: {}", species.solute(), ex.getMessage());
+			return 0;
 		}
-		return waterMb > 0 ? (double) ionMb / waterMb : 0.0;
+	}
+
+	/**
+	 * Formula units in one already materialised native state. This uses conserved
+	 * non-H/O component totals plus PHREEQC's native alkalinity inventory for
+	 * acids/bases: free H+/OH- cannot measure a feed after protonation or
+	 * hydrolysis, while component totals alone would make Na2SO4 look like H2SO4.
+	 */
+	private static double nativeFormulaMol(Species species, KernelSolutionState state, IPhreeqc q) {
+		java.util.Set<String> components = new java.util.LinkedHashSet<>();
+		int acidEquivalents = 0;
+		int baseEquivalents = 0;
+		for (Species.IonComponent ion : species.ions()) {
+			if ("H".equals(ion.ion().symbol())) { acidEquivalents += ion.count(); continue; }
+			if ("OH".equals(ion.ion().symbol())) { baseEquivalents += ion.count(); continue; }
+			String component = EngineBridge.phreeqcComponent(ion.ion().symbol());
+			if (component == null) return 0;
+			components.add(component);
+		}
+		if (components.isEmpty()) return 0;
+		var view = EngineBridge.derive(q, state, components, java.util.List.of());
+		java.util.Map<String, Double> totals = view.totalMol();
+		double available = Double.POSITIVE_INFINITY;
+		for (Species.IonComponent ion : species.ions()) {
+			if ("H".equals(ion.ion().symbol()) || "OH".equals(ion.ion().symbol())) continue;
+			String key = EngineBridge.phreeqcComponent(ion.ion().symbol());
+			available = Math.min(available, totals.getOrDefault(key, 0d) / ion.count());
+		}
+		if (acidEquivalents > 0) available = Math.min(available,
+			Math.max(0d, -view.alkalinityEq() / acidEquivalents));
+		if (baseEquivalents > 0) available = Math.min(available,
+			Math.max(0d, view.alkalinityEq() / baseEquivalents));
+		return Double.isFinite(available) ? Math.max(0d, available) : 0d;
+	}
+
+	private double nativeWaterKg() {
+		try {
+			IPhreeqc q = Kernel.get();
+			synchronized (q) {
+				double water = 0;
+				for (FluidStack stack : fluids) if (Mixture.isMixture(stack)) {
+					KernelSolutionState state = Mixture.engineSolution(stack);
+					if (state == null) return 0;
+					water += EngineBridge.derive(q, state.scale(q, stack.getAmount()), java.util.List.of(), java.util.List.of()).waterKg();
+				}
+				return water;
+			}
+		} catch (RuntimeException ex) { return 0; }
+	}
+
+	/** Actual water inventory, derived from native states rather than their
+	 * display cache. Pure water phases remain supported for non-reactor users. */
+	public int waterInventoryMb() {
+		long total = 0;
+		for (FluidStack stack : fluids) {
+			if (Mixture.isMixture(stack) && Mixture.engineSolution(stack) != null)
+				total += nativeWaterMb(Mixture.engineSolution(stack), stack.getAmount());
+			else if (sourceOf(stack.getFluid()) == Fluids.WATER) total += stack.getAmount();
+		}
+		return (int) Math.min(Integer.MAX_VALUE, total);
 	}
 
 	/**
@@ -840,53 +971,44 @@ public class ReactorTank implements IFluidHandler {
 		if (species == null || !species.isSolution() || required <= 0) {
 			return 0;
 		}
-		int remaining = required;
-		int ic = species.ionCount();
-		for (FluidStack stack : fluids) {
-			if (!Mixture.isMixture(stack) || remaining <= 0) {
-				continue;
-			}
-			Map<String, Integer> ionAmounts = Mixture.deriveIonAmounts(stack);
-			long formulaUnits = species.formulaUnits(ionAmounts);
-			if (formulaUnits <= 0 || formulaUnits == Long.MAX_VALUE) {
-				continue;
-			}
-			long need = (remaining + ic - 1L) / ic;
-			long take = Math.min(formulaUnits, need);
-			int takeMb = (int) (take * ic);
-			if (action.execute()) {
-				Map<ResourceLocation, Integer> mol = Mixture.deriveAmounts(stack);
-				Map<ResourceLocation, Integer> susp = Mixture.deriveSuspendedAmounts(stack);
-				Map<ResourceLocation, Integer> sed = Mixture.deriveSedimentAmounts(stack);
-				for (Species.IonComponent c : species.ions()) {
-					ionAmounts.merge(c.ion().id(), (int) (-take * c.count()), Integer::sum);
+		if (containsEngineBackedMixture()) {
+			// Neutral formula removal is a native signed REACTION.  We first obtain
+			// the immutable candidate; only EXECUTE installs it, so an undersupplied
+			// or unsupported formula is net-zero.
+			List<FluidStack> aqueous = fluids.stream().filter(Mixture::isMixture)
+				.filter(stack -> Mixture.engineSolution(stack) != null).toList();
+			// Gas/oil bystanders are separate phases and must survive an aqueous
+			// recipe withdrawal. More than one aqueous state needs an explicit
+			// merge transaction instead of choosing one arbitrarily.
+			if (aqueous.size() != 1) return 0;
+			FluidStack liquid = aqueous.get(0);
+			KernelSolutionState state = Mixture.engineSolution(liquid);
+			try {
+				IPhreeqc q = Kernel.get();
+				synchronized (q) {
+					KernelSolutionState actual = state.scale(q, liquid.getAmount());
+					double formulaMol = required / (species.ionCount() * 1000d);
+					KernelSolutionState changed;
+					changed = actual.removeDeclaredFeed(q,
+						EngineBridge.declaredFeedForSpecies(speciesId, formulaMol));
+					if (action.execute()) Mixture.setEngineSolution(liquid, changed);
 				}
-				ionAmounts.values().removeIf(v -> v <= 0);
-				mol.values().removeIf(v -> v <= 0);
-				susp.values().removeIf(v -> v <= 0);
-				sed.values().removeIf(v -> v <= 0);
-				int newTotal = stack.getAmount() - takeMb;
-				int idx = fluids.indexOf(stack);
-				if (newTotal <= 0 || (mol.isEmpty() && ionAmounts.isEmpty() && susp.isEmpty() && sed.isEmpty())) {
-					fluids.set(idx, FluidStack.EMPTY);
-				} else {
-					// preserve suspended + sediment alongside the surviving molecules + ions
-					FluidStack replacement = Mixture.create(mol, ionAmounts, susp, sed, newTotal);
-					Temperature.set(replacement, Temperature.get(stack));
-					fluids.set(idx, replacement);
-				}
+				return required;
+			} catch (RuntimeException ex) {
+				ChemicalAddon.LOGGER.warn("Rejected native solution drain {}: {}", speciesId, ex.getMessage());
+				return 0;
 			}
-			remaining -= takeMb;
 		}
-		if (action.execute()) {
-			removeEmpty();
-			onChanged.run();
-		}
-		return required - remaining;
+		return 0;
 	}
 
 	private void removeEmpty() {
 		fluids.removeIf(f -> f.getAmount() <= 0);
+	}
+
+	/** True when legacy display-domain mutations are forbidden for this tank. */
+	public boolean containsEngineBackedMixture() {
+		return fluids.stream().anyMatch(stack -> Mixture.isMixture(stack) && Mixture.engineSolution(stack) != null);
 	}
 
 	/** Drops stacks that were drained down to zero (public: structure-break paths
@@ -932,248 +1054,128 @@ public class ReactorTank implements IFluidHandler {
 	}
 
 	/**
-	 * Whole-lump extraction with U16.5 entrainment and an optional displacement
-	 * wash. The extracted lump drags along its pore liquor —
-	 * {@link RulesEngine#CAKE_LIQUOR_FRACTION} of the extracted volume, a
-	 * proportional share of the vessel's current liquid — so a "pure" item is
-	 * only earned when that entrained liquor is clean (water only). Supplying a
-	 * {@code washTank} of plain water (the filter press's rinse line) pushes
-	 * wash water through the cake: each pore-volume displaces
-	 * {@link RulesEngine#WASH_DISPLACEMENT} of the mother liquor (remaining
-	 * liquor scales geometrically; the spent wash water joins the filtrate).
+	 * Exact native solid extraction with a wet-cake mother-liquor payload. When
+	 * an engine-backed rinse tank and filtrate are both available, one pore
+	 * volume is fully mixed with the cake liquor, the original pore volume stays
+	 * on the cake, and the displaced volume becomes native filtrate.
 	 *
-	 * @param washTank optional tank whose plain water is used for displacement
-	 *        washing (fully consumed up to a useful maximum); null = no wash
-	 * @param filtrate optional tank receiving the spent wash water; null = discard
+	 * @param washTank optional native, solid-free rinse liquor; null = no wash
+	 * @param filtrate required receiver for a rinse transaction; null leaves the cake unwashed
 	 */
 	public long extractSolids(Consumer<ItemStack> sink, boolean sedimentDomain,
 		@Nullable ReactorTank washTank, @Nullable ReactorTank filtrate) {
-		// aggregate the domain across the vessel's mixtures (one physical pot)
-		Map<ResourceLocation, Long> units = new LinkedHashMap<>();
-		for (FluidStack stack : fluids) {
-			if (!Mixture.isMixture(stack)) {
-				continue;
-			}
-			Map<ResourceLocation, Integer> domain = sedimentDomain
-				? Mixture.deriveUnitSedimentAmounts(stack)
-				: Mixture.deriveUnitSuspendedAmounts(stack);
-			for (Map.Entry<ResourceLocation, Integer> e : domain.entrySet()) {
-				units.merge(e.getKey(), (long) e.getValue(), Long::sum);
-			}
-		}
-		long total = 0;
-		for (long v : units.values()) {
-			total += v;
-		}
-		// this method aggregates the UNIT grid (deriveUnit* views), so the item
-		// denomination must be unit-scale too — RulesEngine.ITEM_UNITS is the
-		// quanta-grid twin used by the solver paths
+		if (containsEngineBackedMixture()) return extractEngineSolids(sink, sedimentDomain, washTank, filtrate);
+		return 0;
+	}
+
+	/** Engine-ledger solid extraction. Aqueous raw state is deliberately left in
+	 * the vessel here; cake-liquor persistence is handled by the filter adapter,
+	 * never reconstructed from display ions. */
+	private long extractEngineSolids(Consumer<ItemStack> sink, boolean sedimentDomain,
+			@Nullable ReactorTank washTank, @Nullable ReactorTank filtrate) {
+		KernelSolutionState.SolidLocation location = sedimentDomain
+			? KernelSolutionState.SolidLocation.SEDIMENT : KernelSolutionState.SolidLocation.SUSPENDED;
+		long units = engineSolidUnits(location);
 		long itemUnits = (long) RulesEngine.MB_PER_ITEM * Chemistry.UNIT_PER_MB;
-		long items = total / itemUnits;
-		if (items <= 0) {
-			return 0; // sub-item remainder only: the heirloom seed stays put
-		}
-		long extracted = items * itemUnits;
-
-		// ---- U16.5 entrainment: the lump's pore liquor rides along ----
-		// proportional shares of the vessel's liquid (water + solutes + ions),
-		// summing exactly to the entrained volume
-		Map<ResourceLocation, Long> molTake = new LinkedHashMap<>();
-		Map<String, Long> ionTake = new LinkedHashMap<>();
-		long totalLiquid = 0;
-		for (FluidStack stack : fluids) {
-			if (!Mixture.isMixture(stack)) {
-				continue;
-			}
-			for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveUnitAmounts(stack).entrySet()) {
-				molTake.merge(e.getKey(), (long) e.getValue(), Long::sum);
-				totalLiquid += e.getValue();
-			}
-			for (Map.Entry<String, Integer> e : Mixture.deriveUnitIonAmounts(stack).entrySet()) {
-				ionTake.merge(e.getKey(), (long) e.getValue(), Long::sum);
-				totalLiquid += e.getValue();
-			}
-		}
-		long entrained = Math.min(Math.round(extracted * RulesEngine.CAKE_LIQUOR_FRACTION), totalLiquid);
-		if (entrained > 0) {
-			// scale the aggregated liquid shares down to the entrained volume,
-			// handing the rounding remainder to the largest single entry
-			long assigned = 0;
-			ResourceLocation largestMol = null;
-			String largestIon = null;
-			for (Map.Entry<ResourceLocation, Long> e : molTake.entrySet()) {
-				e.setValue(entrained * e.getValue() / totalLiquid);
-				assigned += e.getValue();
-				if (largestMol == null || e.getValue() > molTake.get(largestMol)) {
-					largestMol = e.getKey();
-				}
-			}
-			for (Map.Entry<String, Long> e : ionTake.entrySet()) {
-				e.setValue(entrained * e.getValue() / totalLiquid);
-				assigned += e.getValue();
-				if (largestIon == null || e.getValue() > ionTake.get(largestIon)) {
-					largestIon = e.getKey();
-				}
-			}
-			long remainder = entrained - assigned;
-			if (largestIon != null && (largestMol == null || ionTake.get(largestIon) >= molTake.get(largestMol))) {
-				ionTake.merge(largestIon, remainder, Long::sum);
-			} else if (largestMol != null) {
-				molTake.merge(largestMol, remainder, Long::sum);
-			}
-		}
-
-		// ---- displacement wash (filter press rinse line) ----
-		if (entrained > 0 && washTank != null) {
-			FluidStack wash = washWater(washTank);
-			if (!wash.isEmpty()) {
-				long available = (long) wash.getAmount() * Chemistry.UNIT_PER_MB;
-				long used = Math.min(available,
-					(long) Math.ceil(entrained * RulesEngine.MAX_WASH_PORE_VOLUMES));
-				double factor = Math.pow(1 - RulesEngine.WASH_DISPLACEMENT, (double) used / entrained);
-				for (Map.Entry<ResourceLocation, Long> e : molTake.entrySet()) {
-					e.setValue(Math.round(e.getValue() * factor));
-				}
-				for (Map.Entry<String, Long> e : ionTake.entrySet()) {
-					e.setValue(Math.round(e.getValue() * factor));
-				}
-				int usedMb = (int) (used / Chemistry.UNIT_PER_MB);
-				washTank.drain(new FluidStack(wash.getFluid(), usedMb), FluidAction.EXECUTE);
-				if (filtrate != null && usedMb > 0) {
-					filtrate.fill(new FluidStack(wash.getFluid(), usedMb), FluidAction.EXECUTE);
-				}
-			}
-		}
-		molTake.values().removeIf(v -> v <= 0);
-		ionTake.values().removeIf(v -> v <= 0);
-
-		// the pure/residue verdict reads composition only, never concentration:
-		// water is the invisible solvent; any ion or solute in the pores makes
-		// the cake a residue no matter how dilute
-		boolean cleanLiquor = ionTake.isEmpty()
-			&& molTake.keySet().stream().allMatch(k -> k.equals(Solution.WATER));
-		Map<ResourceLocation, Long> take = new LinkedHashMap<>();
-		if (units.size() == 1 && cleanLiquor) {
-			Map.Entry<ResourceLocation, Long> only = units.entrySet().iterator().next();
-			Item item = ForgeRegistries.ITEMS.getValue(only.getKey());
-			if (item == null || item == Items.AIR) {
-				return 0; // single species without a registered item is not extractable
-			}
-			emitStacks(sink, new ItemStack(item), items);
-			take.put(only.getKey(), extracted);
-		} else {
-			// residue: the cake's solids (full-domain ratio parts, U15) plus its
-			// pore liquor (ions + solutes recorded; water implicit — U16.5)
-			Map<String, Long> liquor = new LinkedHashMap<>(ionTake);
-			for (Map.Entry<ResourceLocation, Long> e : molTake.entrySet()) {
-				if (!e.getKey().equals(Solution.WATER)) {
-					liquor.put(MixedResidueItem.LIQUOR_SOLUTE_PREFIX + e.getKey(), e.getValue());
-				}
-			}
-			long waterUnits = molTake.getOrDefault(Solution.WATER, 0L);
-			emitStacks(sink, MixedResidueItem.of(units, liquor, waterUnits), items);
-			// proportional shares of the extracted lump, summing exactly
-			long assigned = 0;
-			Map.Entry<ResourceLocation, Long> largest = null;
-			for (Map.Entry<ResourceLocation, Long> e : units.entrySet()) {
-				long share = extracted * e.getValue() / total;
-				take.put(e.getKey(), share);
-				assigned += share;
-				if (largest == null || e.getValue() > largest.getValue()) {
-					largest = e;
-				}
-			}
-			take.merge(largest.getKey(), extracted - assigned, Long::sum);
-		}
-
-		// subtract the taken units from each mixture stack (greedy: exact
-		// integers), rebuilding the stack list wholesale — setContents replaces
-		// the whole tank, so a per-stack write must not run inside the loop
-		List<FluidStack> rebuilt = new ArrayList<>();
+		long items = units / itemUnits;
+		if (items <= 0) return 0;
+		double fraction = (double) (items * itemUnits) / units;
+		long extractedUnits = 0;
 		boolean changed = false;
-		for (FluidStack stack : fluids) {
-			if (!Mixture.isMixture(stack)) {
-				rebuilt.add(stack);
-				continue;
-			}
-			Map<ResourceLocation, Integer> domain = new LinkedHashMap<>(sedimentDomain
-				? Mixture.deriveUnitSedimentAmounts(stack)
-				: Mixture.deriveUnitSuspendedAmounts(stack));
-			Map<ResourceLocation, Integer> molecules = new LinkedHashMap<>(Mixture.deriveUnitAmounts(stack));
-			Map<String, Integer> ionsMap = new LinkedHashMap<>(Mixture.deriveUnitIonAmounts(stack));
-			boolean touched = false;
-			for (Map.Entry<ResourceLocation, Integer> e : domain.entrySet()) {
-				long need = take.getOrDefault(e.getKey(), 0L);
-				if (need <= 0) {
-					continue;
+		for (FluidStack stack : fluids) if (Mixture.isMixture(stack)) {
+			KernelSolutionState stored = Mixture.engineSolution(stack);
+			if (stored == null || stack.getAmount() <= 0) continue;
+			try {
+				IPhreeqc q = Kernel.get();
+				KernelSolutionState next, liquor, washRemainder = null, washCakeLiquor = null, washEffluent = null;
+				FluidStack washSource = null;
+				int washMb = 0;
+				List<KernelSolutionState.SolidPhase> extracted = new ArrayList<>();
+				int liquorMb;
+				synchronized (q) {
+					// A Forge stack can be a proportional copy whose stored reference is
+					// larger than its current amount.  All stock arithmetic must begin
+					// from that actual amount; otherwise the cake and remainder have
+					// incompatible RAW reference volumes.
+					KernelSolutionState actual = stored.scale(q, stack.getAmount());
+					List<KernelSolutionState.SolidPhase> remain = new ArrayList<>();
+					for (var solid : actual.solids()) {
+						if (solid.location() != location) { remain.add(solid); continue; }
+						double taken = solid.mol() * fraction;
+						if (taken <= 0) { remain.add(solid); continue; }
+						extracted.add(new KernelSolutionState.SolidPhase(solid.speciesId(), taken, location));
+						remain.add(new KernelSolutionState.SolidPhase(solid.speciesId(), solid.mol() - taken, location));
+					}
+					if (extracted.isEmpty()) continue;
+					liquorMb = Math.min(stack.getAmount() - 1, Math.max(0,
+						(int) Math.round(stack.getAmount() * fraction * RulesEngine.CAKE_LIQUOR_FRACTION)));
+					if (liquorMb > 0) {
+						KernelSolutionState.ProportionalRemoval split = actual.removeProportionally(q, liquorMb);
+						liquor = split.removed().withSolids(List.of());
+						next = split.remainder().withSolids(remain);
+					} else {
+						liquor = null;
+						next = actual.withSolids(remain);
+					}
+					// One fully-mixed native wash: mix the retained pore liquor with
+					// fresh rinse, keep the original pore volume on the cake, and send
+					// exactly the displaced rinse volume to filtrate.  No display ions
+					// participate in this transaction.
+					if (liquor != null && washTank != null && filtrate != null) for (FluidStack candidate : washTank.fluids) {
+						if (!Mixture.isMixture(candidate) || candidate.getAmount() <= 1) continue;
+						KernelSolutionState storedWash = Mixture.engineSolution(candidate);
+						if (storedWash == null || !storedWash.solids().isEmpty()) continue;
+						washMb = Math.min(liquorMb, candidate.getAmount() - 1);
+						if (washMb <= 0) continue;
+						KernelSolutionState actualWash = storedWash.scale(q, candidate.getAmount());
+						KernelSolutionState washTaken = actualWash.removeProportionally(q, washMb).removed();
+						washRemainder = actualWash.removeProportionally(q, washMb).remainder();
+						KernelSolutionState mixed = KernelSolutionState.merge(q, List.of(liquor, washTaken));
+						KernelSolutionState.ProportionalRemoval rinsed = mixed.removeProportionally(q, liquorMb);
+						washCakeLiquor = rinsed.removed();
+						washEffluent = rinsed.remainder();
+						washSource = candidate;
+						break;
+					}
 				}
-				long remove = Math.min(need, e.getValue());
-				take.merge(e.getKey(), -remove, Long::sum);
-				domain.put(e.getKey(), (int) (e.getValue() - remove));
-				touched = true;
-			}
-			for (Map.Entry<ResourceLocation, Integer> e : molecules.entrySet()) {
-				long need = molTake.getOrDefault(e.getKey(), 0L);
-				if (need <= 0) {
-					continue;
+				FluidStack effluent = FluidStack.EMPTY;
+				if (washEffluent != null) {
+					effluent = new FluidStack(Mixture.fluid(), washMb);
+					Mixture.setEngineSolution(effluent, washEffluent);
+					// A backed-up or absent filtrate disables the optional rinse before
+					// any input is committed; it never consumes wash water invisibly.
+					if (filtrate.fill(effluent.copy(), FluidAction.SIMULATE) != washMb) {
+						washSource = null; washRemainder = null; washCakeLiquor = null; washEffluent = null;
+						effluent = FluidStack.EMPTY;
+					}
 				}
-				long remove = Math.min(need, e.getValue());
-				molTake.merge(e.getKey(), -remove, Long::sum);
-				molecules.put(e.getKey(), (int) (e.getValue() - remove));
-				touched = true;
-			}
-			for (Map.Entry<String, Integer> e : ionsMap.entrySet()) {
-				long need = ionTake.getOrDefault(e.getKey(), 0L);
-				if (need <= 0) {
-					continue;
+				if (washCakeLiquor != null) liquor = washCakeLiquor;
+				// Construct and hand off the output before mutating the tank. A sink
+				// exception therefore leaves its input inventory intact and is not
+				// reported as extracted material.
+				ItemStack cake = new ItemStack(com.yu1745.chemicaladdon.registry.AllItems.MIXED_RESIDUE.get());
+				MixedResidueItem.withEngineSolids(cake, extracted);
+				if (liquor != null) MixedResidueItem.withEngineLiquor(cake, liquor);
+				sink.accept(cake);
+				if (liquorMb > 0) stack.shrink(liquorMb);
+				Mixture.setEngineSolution(stack, next);
+				if (washSource != null) {
+					washSource.shrink(washMb);
+					Mixture.setEngineSolution(washSource, washRemainder);
+					if (filtrate.fill(effluent, FluidAction.EXECUTE) != washMb)
+						throw new IllegalStateException("filtrate changed after native wash preflight");
 				}
-				long remove = Math.min(need, e.getValue());
-				ionTake.merge(e.getKey(), -remove, Long::sum);
-				ionsMap.put(e.getKey(), (int) (e.getValue() - remove));
-				touched = true;
+				for (var solid : extracted) extractedUnits += Math.round(solid.mol() * SOLID_UNITS_PER_MOL);
+				changed = true;
+			} catch (RuntimeException ex) {
+				ChemicalAddon.LOGGER.warn("Engine cake extraction rejected: {}", ex.getMessage());
 			}
-			if (!touched) {
-				rebuilt.add(stack);
-				continue;
-			}
-			Map<ResourceLocation, Integer> susp = sedimentDomain
-				? Mixture.deriveUnitSuspendedAmounts(stack) : domain;
-			Map<ResourceLocation, Integer> sed = sedimentDomain ? domain : Mixture.deriveUnitSedimentAmounts(stack);
-			replaceWith(rebuilt, molecules, ionsMap, susp, sed, Temperature.get(stack));
-			changed = true;
 		}
-		if (changed) {
-			fluids.clear();
-			fluids.addAll(rebuilt);
-			removeEmpty();
-			collapseIfNeeded(); // degrade a single-component remainder to a pure fluid
-			onChanged.run();
-		}
-		return extracted;
+		if (changed) onChanged.run();
+		return extractedUnits;
 	}
 
-	/** The wash tank's plain water stack (a rinse line takes only clean water), or empty. */
-	private static FluidStack washWater(ReactorTank tank) {
-		for (FluidStack stack : tank.getFluids()) {
-			if (!Mixture.isMixture(stack) && stack.getFluid() == Fluids.WATER) {
-				return stack;
-			}
-		}
-		return FluidStack.EMPTY;
-	}
-
-	/** Emit {@code count} copies of {@code proto} to the sink in legal stack sizes. */
-	private static void emitStacks(Consumer<ItemStack> sink, ItemStack proto, long count) {
-		while (count > 0) {
-			int n = (int) Math.min(count, proto.getMaxStackSize());
-			ItemStack stack = proto.copy();
-			stack.setCount(n);
-			sink.accept(stack);
-			count -= n;
-		}
-	}
-
-	// ------------------------------------------------- basin domain transfers (C)
+		// ------------------------------------------------- basin domain transfers (C)
 
 	/** Replace the whole fluid list for an atomic process write-back. */
 	public void setFluids(List<FluidStack> stacks) {
@@ -1186,239 +1188,80 @@ public class ReactorTank implements IFluidHandler {
 
 	/** Total unit-grid mass of the suspended (slurry) domain across all mixtures. */
 	public long suspendedUnits() {
-		long total = 0;
-		for (FluidStack stack : fluids) {
-			if (!Mixture.isMixture(stack)) {
-				continue;
-			}
-			for (int v : Mixture.deriveUnitSuspendedAmounts(stack).values()) {
-				total += v;
-			}
-		}
-		return total;
+		if (containsEngineBackedMixture()) return engineSolidUnits(KernelSolutionState.SolidLocation.SUSPENDED);
+		return 0;
 	}
 
-	/** Total unit-grid mass of the settled bed (Sediment domain) across all mixtures. */
+	/** Total settled native solid inventory; rawless mixtures are not separable. */
 	public long sedimentUnits() {
-		long total = 0;
-		for (FluidStack stack : fluids) {
-			if (!Mixture.isMixture(stack)) {
-				continue;
-			}
-			for (int v : Mixture.deriveUnitSedimentAmounts(stack).values()) {
-				total += v;
-			}
-		}
-		return total;
+		return containsEngineBackedMixture() ? engineSolidUnits(KernelSolutionState.SolidLocation.SEDIMENT) : 0;
 	}
 
-	/**
-	 * 施工包 C gravity settling: move up to {@code maxUnits} of suspended solids
-	 * into the settled bed (Suspended → Sediment, per-species proportional). The
-	 * liquid stays put and nothing leaves the tank — the settling basin's
-	 * slow-flux separation primitive. Returns the units actually moved.
-	 */
+	/** Native-only solid-location transfer. */
+	private long transferDomain(boolean suspendedToSediment, long maxUnits, FluidAction action) {
+		return containsEngineBackedMixture() ? transferEngineSolids(suspendedToSediment, maxUnits, action) : 0;
+	}
+
+	/** Settle suspended native solids into the sediment ledger. */
 	public long settleSuspended(long maxUnits, FluidAction action) {
 		return transferDomain(true, maxUnits, action);
 	}
 
-	/**
-	 * 施工包 C churn: kick up to {@code maxUnits} of the settled bed back into
-	 * suspension (Sediment → Suspended, proportional) — the physical answer to an
-	 * overdrawn surface lift. Returns the units actually resuspended.
-	 */
+	/** Resuspend settled native solids for an overdrawn basin or underflow. */
 	public long resuspendSediment(long maxUnits, FluidAction action) {
 		return transferDomain(false, maxUnits, action);
 	}
 
-	/** Shared Suspended↔Sediment transfer (per-stack proportional largest-remainder). */
-	private long transferDomain(boolean suspendedToSediment, long maxUnits, FluidAction action) {
-		if (maxUnits <= 0) {
-			return 0;
-		}
-		// aggregate the SOURCE domain across mixtures (one physical pot)
-		Map<ResourceLocation, Long> source = new LinkedHashMap<>();
+	/* Engine-owned solid ledger. One mol maps to the historical 1000 part basis,
+	 * then to the unit grid; this conversion is used only for throughput/item
+	 * denomination, never to reconstruct aqueous chemistry. */
+	private static final double SOLID_UNITS_PER_MOL = 1000d * Chemistry.UNIT_PER_MB;
+	private long engineSolidUnits(KernelSolutionState.SolidLocation location) {
 		long total = 0;
-		for (FluidStack stack : fluids) {
-			if (!Mixture.isMixture(stack)) {
-				continue;
-			}
-			Map<ResourceLocation, Integer> domain = suspendedToSediment
-				? Mixture.deriveUnitSuspendedAmounts(stack)
-				: Mixture.deriveUnitSedimentAmounts(stack);
-			for (Map.Entry<ResourceLocation, Integer> e : domain.entrySet()) {
-				source.merge(e.getKey(), (long) e.getValue(), Long::sum);
-				total += e.getValue();
-			}
-		}
-		long take = Math.min(maxUnits, total);
-		if (take <= 0) {
-			return 0;
-		}
-		Map<ResourceLocation, Long> shares = shareOf(source, take);
-		if (action.simulate()) {
-			return take;
-		}
-		// per-stack: subtract this stack's share from the source domain and add it
-		// to the target domain (the unit mass simply changes register in place)
-		List<FluidStack> rebuilt = new ArrayList<>();
-		boolean changed = false;
-		for (FluidStack stack : fluids) {
-			if (!Mixture.isMixture(stack)) {
-				rebuilt.add(stack);
-				continue;
-			}
-			Map<ResourceLocation, Integer> from = new LinkedHashMap<>(suspendedToSediment
-				? Mixture.deriveUnitSuspendedAmounts(stack)
-				: Mixture.deriveUnitSedimentAmounts(stack));
-			// the stack's ACTUAL removal — captured before the shared budget is
-			// consumed: subtracting mutates the shares map, so re-reading it after
-			// the loop would add nothing to the target domain (mass would vanish)
-			Map<ResourceLocation, Long> removed = new LinkedHashMap<>();
-			for (Map.Entry<ResourceLocation, Long> e : shares.entrySet()) {
-				long remove = Math.min(e.getValue(), from.getOrDefault(e.getKey(), 0));
-				if (remove <= 0) {
-					continue;
-				}
-				e.setValue(e.getValue() - remove);
-				from.put(e.getKey(), (int) (from.get(e.getKey()) - remove));
-				removed.merge(e.getKey(), remove, Long::sum);
-			}
-			if (removed.isEmpty()) {
-				rebuilt.add(stack);
-				continue;
-			}
-			Map<ResourceLocation, Integer> suspended = suspendedToSediment
-				? from : addInto(Mixture.deriveUnitSuspendedAmounts(stack), removed);
-			Map<ResourceLocation, Integer> sediment = suspendedToSediment
-				? addInto(Mixture.deriveUnitSedimentAmounts(stack), removed) : from;
-			replaceWith(rebuilt, Mixture.deriveUnitAmounts(stack), Mixture.deriveUnitIonAmounts(stack),
-				suspended, sediment, Temperature.get(stack));
-			changed = true;
-		}
-		if (changed) {
-			fluids.clear();
-			fluids.addAll(rebuilt);
-			removeEmpty();
-			collapseIfNeeded();
-			onChanged.run();
-		}
-		return take;
-	}
-
-	/** Merge a unit share map into an int unit map (mutation-free). */
-	private static Map<ResourceLocation, Integer> addInto(Map<ResourceLocation, Integer> into,
-		Map<ResourceLocation, Long> shares) {
-		Map<ResourceLocation, Integer> out = new LinkedHashMap<>(into);
-		for (Map.Entry<ResourceLocation, Long> e : shares.entrySet()) {
-			if (e.getValue() > 0) {
-				out.merge(e.getKey(), (int) Math.min(e.getValue(), Integer.MAX_VALUE), Integer::sum);
-			}
-		}
-		return out;
-	}
-
-	/** Largest-remainder proportional split of {@code take} over {@code src}. */
-	private static <K> Map<K, Long> shareOf(Map<K, Long> src, long take) {
-		long total = 0;
-		for (long v : src.values()) {
-			total += v;
-		}
-		Map<K, Long> out = new LinkedHashMap<>();
-		if (total <= 0 || take <= 0) {
-			return out;
-		}
-		long assigned = 0;
-		K largest = null;
-		for (Map.Entry<K, Long> e : src.entrySet()) {
-			long s = take * e.getValue() / total;
-			out.put(e.getKey(), s);
-			assigned += s;
-			if (largest == null || s > out.get(largest)) {
-				largest = e.getKey();
-			}
-		}
-		if (largest != null) {
-			out.merge(largest, take - assigned, Long::sum);
-		}
-		out.values().removeIf(v -> v <= 0);
-		return out;
-	}
-
-	private static long totalOf(Map<?, Long> values) {
-		long total = 0;
-		for (long value : values.values()) {
-			total += value;
+		for (FluidStack stack : fluids) if (Mixture.isMixture(stack)) {
+			KernelSolutionState state = Mixture.engineSolution(stack);
+			if (state == null) continue;
+			double factor = (double) stack.getAmount() / state.referenceMb();
+			for (var solid : state.solids())
+				if (solid.location() == location) total += Math.round(solid.mol() * factor * SOLID_UNITS_PER_MOL);
 		}
 		return total;
 	}
 
-	/**
+	private long transferEngineSolids(boolean suspendedToSediment, long maxUnits, FluidAction action) {
+		KernelSolutionState.SolidLocation from = suspendedToSediment
+			? KernelSolutionState.SolidLocation.SUSPENDED : KernelSolutionState.SolidLocation.SEDIMENT;
+		KernelSolutionState.SolidLocation to = suspendedToSediment
+			? KernelSolutionState.SolidLocation.SEDIMENT : KernelSolutionState.SolidLocation.SUSPENDED;
+		long available = engineSolidUnits(from), take = Math.min(maxUnits, available);
+		if (take <= 0 || action.simulate()) return take;
+		double fraction = (double) take / available;
+		for (FluidStack stack : fluids) if (Mixture.isMixture(stack)) {
+			KernelSolutionState state = Mixture.engineSolution(stack);
+			if (state == null) continue;
+			IPhreeqc q = Kernel.get();
+			synchronized (q) { state = state.scale(q, stack.getAmount()); }
+			List<KernelSolutionState.SolidPhase> changed = new ArrayList<>();
+			for (var solid : state.solids()) {
+				if (solid.location() != from) { changed.add(solid); continue; }
+				double moved = solid.mol() * fraction;
+				changed.add(new KernelSolutionState.SolidPhase(solid.speciesId(), solid.mol() - moved, from));
+				changed.add(new KernelSolutionState.SolidPhase(solid.speciesId(), moved, to));
+			}
+			Mixture.setEngineSolution(stack, state.withSolids(changed));
+		}
+		onChanged.run();
+		return take;
+	}
+
+				/**
 	 * 施工包 C slurry-zone draw: a proportional sample of the liquid (molecules +
 	 * ions) AND the suspended solids — what a surface lift that punches through
 	 * the supernatant actually pulls. The settled bed (Sediment) stays put.
 	 */
 	public FluidStack drainSlurryZone(int maxDrainMb, FluidAction action) {
-		if (maxDrainMb <= 0) {
-			return FluidStack.EMPTY;
-		}
-		Map<ResourceLocation, Long> liquidMol = new LinkedHashMap<>();
-		Map<String, Long> liquidIons = new LinkedHashMap<>();
-		Map<ResourceLocation, Long> suspended = new LinkedHashMap<>();
-		long total = 0;
-		long weightedTemp = 0;
-		int mixtureMb = 0;
-		for (FluidStack stack : fluids) {
-			if (!Mixture.isMixture(stack)) {
-				continue;
-			}
-			mixtureMb += stack.getAmount();
-			weightedTemp += (long) Temperature.get(stack) * stack.getAmount();
-			for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveUnitAmounts(stack).entrySet()) {
-				liquidMol.merge(e.getKey(), (long) e.getValue(), Long::sum);
-				total += e.getValue();
-			}
-			for (Map.Entry<String, Integer> e : Mixture.deriveUnitIonAmounts(stack).entrySet()) {
-				liquidIons.merge(e.getKey(), (long) e.getValue(), Long::sum);
-				total += e.getValue();
-			}
-			for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveUnitSuspendedAmounts(stack).entrySet()) {
-				suspended.merge(e.getKey(), (long) e.getValue(), Long::sum);
-				total += e.getValue();
-			}
-		}
-		if (total <= 0) {
-			return FluidStack.EMPTY;
-		}
-		long take = Math.min((long) maxDrainMb * Chemistry.UNIT_PER_MB, total);
-		// Allocate the single withdrawal budget across all three domains before
-		// splitting it among species. Giving every domain the full budget would
-		// make a slurry sample contain up to three times what was removed.
-		long molUnits = totalOf(liquidMol);
-		long ionUnits = totalOf(liquidIons);
-		long suspUnits = totalOf(suspended);
-		long molBudget = take * molUnits / total;
-		long ionBudget = take * ionUnits / total;
-		long suspBudget = take * suspUnits / total;
-		long remainder = take - molBudget - ionBudget - suspBudget;
-		long add = Math.min(remainder, molUnits - molBudget);
-		molBudget += add;
-		remainder -= add;
-		add = Math.min(remainder, ionUnits - ionBudget);
-		ionBudget += add;
-		remainder -= add;
-		suspBudget += Math.min(remainder, suspUnits - suspBudget);
-		Map<ResourceLocation, Long> molTake = shareOf(liquidMol, molBudget);
-		Map<String, Long> ionTake = shareOf(liquidIons, ionBudget);
-		Map<ResourceLocation, Long> suspTake = shareOf(suspended, suspBudget);
-		FluidStack out = Mixture.createLong(molTake, ionTake, suspTake, Map.of(),
-			Math.max(1, (int) Math.round((double) take / Chemistry.UNIT_PER_MB)));
-		Temperature.set(out, Temperature.fromWeightedSum(weightedTemp, mixtureMb));
-		if (action.simulate()) {
-			return out;
-		}
-		subtractSharesAndRebuild(molTake, ionTake, suspTake, Map.of());
-		return out;
+		if (containsEngineBackedMixture()) return engineDraw(maxDrainMb, action, true, false, false, Double.NaN);
+		return FluidStack.EMPTY;
 	}
 
 	/**
@@ -1428,149 +1271,116 @@ public class ReactorTank implements IFluidHandler {
 	 * underflow port runs dry until sludge accumulates).
 	 */
 	public FluidStack drainThickenedUnderflow(int maxDrainMb, double solidsFraction, FluidAction action) {
-		if (maxDrainMb <= 0) {
+		if (containsEngineBackedMixture()) return engineDraw(maxDrainMb, action, false, true, false, solidsFraction);
+		return FluidStack.EMPTY;
+	}
+
+	/** Native aqueous split plus an optional independent solid-location transfer. */
+	private FluidStack engineDraw(int requestedMb, FluidAction action, boolean suspended, boolean sediment,
+			boolean protectPore, double targetSolidsFraction) {
+		FluidStack source = null;
+		for (FluidStack stack : fluids) if (Mixture.isMixture(stack)) { source = stack; break; }
+		if (source == null) return FluidStack.EMPTY;
+		KernelSolutionState state = Mixture.engineSolution(source);
+		if (state == null || source.getAmount() <= 0) return FluidStack.EMPTY;
+		boolean hasAnySolid = !state.solids().isEmpty();
+		int maxDraw = hasAnySolid ? source.getAmount() - 1 : source.getAmount();
+		int totalVolume = Math.min(requestedMb, maxDraw);
+		if (totalVolume <= 0) return FluidStack.EMPTY;
+		KernelSolutionState.SolidLocation location = sediment ? KernelSolutionState.SolidLocation.SEDIMENT
+			: KernelSolutionState.SolidLocation.SUSPENDED;
+		long localSolidUnits = 0;
+		double materialized = (double) source.getAmount() / state.referenceMb();
+		if (suspended || sediment) for (var solid : state.solids()) if (solid.location() == location)
+			localSolidUnits += Math.round(solid.mol() * materialized * SOLID_UNITS_PER_MOL);
+		long solidMoveUnits = 0;
+		if (suspended || sediment) {
+			if (sediment && Double.isFinite(targetSolidsFraction)) {
+				double f = Math.max(0d, Math.min(0.999999d, targetSolidsFraction));
+				solidMoveUnits = Math.min(localSolidUnits, Math.round(totalVolume * Chemistry.UNIT_PER_MB * f));
+				// The bed may not contain enough solids for the requested volume. Keep
+				// the requested concentration by shortening the tail batch instead of
+				// diluting it with arbitrary mother liquor.
+				if (f > 0 && solidMoveUnits < Math.round(totalVolume * Chemistry.UNIT_PER_MB * f))
+					totalVolume = Math.min(totalVolume, (int) Math.floor(solidMoveUnits / (f * Chemistry.UNIT_PER_MB)));
+			} else {
+				solidMoveUnits = Math.min(localSolidUnits,
+					Math.round((double) localSolidUnits * totalVolume / source.getAmount()));
+			}
+		}
+		// Suspended slurry is a liquid carrier with an independent solid ledger:
+		// transporting half its solids does not consume half its Forge fluid volume.
+		// Only a deliberately thickened sediment underflow allocates its requested
+		// volume between liquor and solids.
+		int solidVolume = sediment && Double.isFinite(targetSolidsFraction)
+			? (int) Math.min(totalVolume, Math.round((double) solidMoveUnits / Chemistry.UNIT_PER_MB)) : 0;
+		int liquorVolume = totalVolume - solidVolume;
+		if (protectPore) {
+			int clear = clearLiquidAvailable();
+			if (liquorVolume > clear) {
+				// Keep the requested slurry ratio while respecting the retained pore liquor.
+				if (totalVolume == 0) return FluidStack.EMPTY;
+				totalVolume = (int) Math.floor((double) totalVolume * clear / liquorVolume);
+				solidVolume = (int) Math.min(totalVolume, Math.round((double) solidMoveUnits * totalVolume / Math.max(1, requestedMb) / Chemistry.UNIT_PER_MB));
+				liquorVolume = totalVolume - solidVolume;
+			}
+		}
+		// A mixture FluidStack must never carry a copied full RAW state with zero
+		// mother liquor. Pure solids leave through extractEngineSolids instead.
+		if (totalVolume <= 0 || liquorVolume <= 0) return FluidStack.EMPTY;
+		try {
+			IPhreeqc q = Kernel.get();
+			synchronized (q) {
+				// First materialise any Create-style proportional copy. Subsequent
+				// liquor scales are relative to this actual vessel inventory, never
+				// to a stale NBT reference amount.
+				KernelSolutionState actual = state.scale(q, source.getAmount());
+				// RAW tracks aqueous mother liquor only; referenceMb tracks the physical
+				// transport volume including its accompanying solid domain.
+				KernelSolutionState liquorRaw = liquorVolume > 0 ? actual.scale(q, liquorVolume) : null;
+				KernelSolutionState remainderRaw = source.getAmount() > totalVolume
+					? actual.scale(q, source.getAmount() - liquorVolume) : null;
+				List<KernelSolutionState.SolidPhase> outSolids = new ArrayList<>();
+				List<KernelSolutionState.SolidPhase> remainSolids = new ArrayList<>();
+				double solidFraction = localSolidUnits == 0 ? 0 : (double) solidMoveUnits / localSolidUnits;
+				for (var solid : actual.solids()) {
+					boolean moves = suspended && solid.location() == KernelSolutionState.SolidLocation.SUSPENDED
+							|| sediment && solid.location() == KernelSolutionState.SolidLocation.SEDIMENT;
+					double actualMol = solid.mol();
+					if (moves) {
+						double moved = actualMol * solidFraction;
+						// A thickener underflow physically reslurries settled material so
+						// the downstream filter press sees a suspended sludge domain.
+						KernelSolutionState.SolidLocation outputLocation = sediment
+							? KernelSolutionState.SolidLocation.SUSPENDED : solid.location();
+						outSolids.add(new KernelSolutionState.SolidPhase(solid.speciesId(), moved, outputLocation));
+						remainSolids.add(new KernelSolutionState.SolidPhase(solid.speciesId(), actualMol - moved, solid.location()));
+					} else remainSolids.add(new KernelSolutionState.SolidPhase(solid.speciesId(), actualMol, solid.location()));
+				}
+				KernelSolutionState liquor = new KernelSolutionState(liquorRaw.raw(), totalVolume, outSolids);
+				KernelSolutionState remainder = remainderRaw == null ? null : new KernelSolutionState(remainderRaw.raw(),
+					source.getAmount() - totalVolume, remainSolids);
+				FluidStack out = new FluidStack(Mixture.fluid(), totalVolume);
+				Mixture.setMolecules(out, Map.of(Solution.WATER, (long) liquorVolume));
+				Mixture.setEngineSolution(out, liquor);
+				Temperature.set(out, Temperature.get(source));
+				if (action.execute()) {
+					if (remainder == null) fluids.remove(source);
+					else {
+						source.setAmount(source.getAmount() - totalVolume);
+						Mixture.setEngineSolution(source, remainder);
+					}
+					onChanged.run();
+				}
+				return out;
+			}
+		} catch (RuntimeException ex) {
+			ChemicalAddon.LOGGER.warn("Rejected engine liquid split: {}", ex.getMessage());
 			return FluidStack.EMPTY;
 		}
-		Map<ResourceLocation, Long> bed = new LinkedHashMap<>();
-		Map<ResourceLocation, Long> liquidMol = new LinkedHashMap<>();
-		Map<String, Long> liquidIons = new LinkedHashMap<>();
-		long bedUnits = 0;
-		long liquidUnits = 0;
-		long weightedTemp = 0;
-		int mixtureMb = 0;
-		for (FluidStack stack : fluids) {
-			if (!Mixture.isMixture(stack)) {
-				continue;
-			}
-			mixtureMb += stack.getAmount();
-			weightedTemp += (long) Temperature.get(stack) * stack.getAmount();
-			for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveUnitSedimentAmounts(stack).entrySet()) {
-				bed.merge(e.getKey(), (long) e.getValue(), Long::sum);
-				bedUnits += e.getValue();
-			}
-			for (Map.Entry<ResourceLocation, Integer> e : Mixture.deriveUnitAmounts(stack).entrySet()) {
-				liquidMol.merge(e.getKey(), (long) e.getValue(), Long::sum);
-				liquidUnits += e.getValue();
-			}
-			for (Map.Entry<String, Integer> e : Mixture.deriveUnitIonAmounts(stack).entrySet()) {
-				liquidIons.merge(e.getKey(), (long) e.getValue(), Long::sum);
-				liquidUnits += e.getValue();
-			}
-		}
-		if (bedUnits <= 0) {
-			return FluidStack.EMPTY;
-		}
-		double fraction = Math.max(0.000001, Math.min(1.0, solidsFraction));
-		long requestedUnits = (long) maxDrainMb * Chemistry.UNIT_PER_MB;
-		long byBed = (long) Math.floor(bedUnits / fraction);
-		long byLiquid = fraction >= 1.0 ? Long.MAX_VALUE
-			: (long) Math.floor(liquidUnits / (1.0 - fraction));
-		long outUnits = Math.min(requestedUnits, Math.min(byBed, byLiquid));
-		long solids = Math.min(Math.round(outUnits * fraction), bedUnits);
-		long liquid = Math.min(outUnits - solids, liquidUnits);
-		if (solids <= 0) {
-			return FluidStack.EMPTY;
-		}
-		Map<ResourceLocation, Long> bedTake = shareOf(bed, solids);
-		Map<ResourceLocation, Long> molTake = liquid > 0 ? shareOf(liquidMol, liquid) : Map.of();
-		Map<String, Long> ionTake = liquid > 0 ? shareOf(liquidIons, liquid) : Map.of();
-		// the bed leaves as SUSPENDED solids: pumping the sludge reslurries it
-		FluidStack out = Mixture.createLong(molTake, ionTake, bedTake, Map.of(),
-			Math.max(1, (int) Math.round((double) (solids + liquid) / Chemistry.UNIT_PER_MB)));
-		Temperature.set(out, Temperature.fromWeightedSum(weightedTemp, mixtureMb));
-		if (action.simulate()) {
-			return out;
-		}
-		subtractSharesAndRebuild(molTake, ionTake, Map.of(), bedTake);
-		return out;
 	}
 
-	/** Subtract the given unit shares from every mixture (greedy per stack) and rebuild the tank. */
-	private void subtractSharesAndRebuild(Map<ResourceLocation, Long> molTake, Map<String, Long> ionTake,
-		Map<ResourceLocation, Long> suspTake, Map<ResourceLocation, Long> sedTake) {
-		List<FluidStack> rebuilt = new ArrayList<>();
-		boolean changed = false;
-		for (FluidStack stack : fluids) {
-			if (!Mixture.isMixture(stack)) {
-				rebuilt.add(stack);
-				continue;
-			}
-			Map<ResourceLocation, Integer> molecules = new LinkedHashMap<>(Mixture.deriveUnitAmounts(stack));
-			Map<String, Integer> ions = new LinkedHashMap<>(Mixture.deriveUnitIonAmounts(stack));
-			Map<ResourceLocation, Integer> susp = new LinkedHashMap<>(Mixture.deriveUnitSuspendedAmounts(stack));
-			Map<ResourceLocation, Integer> sed = new LinkedHashMap<>(Mixture.deriveUnitSedimentAmounts(stack));
-			boolean touched = subtractUnits(molecules, molTake);
-			touched |= subtractUnits(ions, ionTake);
-			touched |= subtractUnits(susp, suspTake);
-			touched |= subtractUnits(sed, sedTake);
-			if (!touched) {
-				rebuilt.add(stack);
-				continue;
-			}
-			replaceWith(rebuilt, molecules, ions, susp, sed, Temperature.get(stack));
-			changed = true;
-		}
-		if (changed) {
-			fluids.clear();
-			fluids.addAll(rebuilt);
-			removeEmpty();
-			collapseIfNeeded();
-			onChanged.run();
-		}
-	}
-
-	/** Greedy exact-integer subtraction of a unit share map; mutates {@code from}. */
-	private static <K> boolean subtractUnits(Map<K, Integer> from, Map<K, Long> take) {
-		boolean touched = false;
-		for (Map.Entry<K, Long> e : take.entrySet()) {
-			long remove = Math.min(e.getValue(), from.getOrDefault(e.getKey(), 0));
-			if (remove <= 0) {
-				continue;
-			}
-			e.setValue(e.getValue() - remove);
-			from.put(e.getKey(), (int) (from.get(e.getKey()) - remove));
-			touched = true;
-		}
-		return touched;
-	}
-
-	/**
-	 * Append a mixture rebuilt from unit-domain maps to {@code out} (single pure
-	 * molecular species degrades to a plain stack, mirroring
-	 * {@link #setContents}); an all-empty result appends nothing.
-	 */
-	private static void replaceWith(List<FluidStack> out, Map<ResourceLocation, Integer> molecules,
-		Map<String, Integer> ions, Map<ResourceLocation, Integer> suspended, Map<ResourceLocation, Integer> sediment,
-		int temperature) {
-		molecules.values().removeIf(v -> v <= 0);
-		ions.values().removeIf(v -> v <= 0);
-		suspended.values().removeIf(v -> v <= 0);
-		sediment.values().removeIf(v -> v <= 0);
-		if (molecules.isEmpty() && ions.isEmpty() && suspended.isEmpty() && sediment.isEmpty()) {
-			return;
-		}
-		if (molecules.size() == 1 && ions.isEmpty() && suspended.isEmpty() && sediment.isEmpty()) {
-			Map.Entry<ResourceLocation, Integer> only = molecules.entrySet().iterator().next();
-			Fluid pf = ForgeRegistries.FLUIDS.getValue(only.getKey());
-			if (pf != null && pf != Fluids.EMPTY) {
-				FluidStack pure = new FluidStack(pf, only.getValue() / Chemistry.UNIT_PER_MB);
-				Temperature.set(pure, temperature);
-				out.add(pure);
-				return;
-			}
-		}
-		long totalUnits = 0;
-		for (int v : molecules.values()) totalUnits += v;
-		for (int v : ions.values()) totalUnits += v;
-		for (int v : suspended.values()) totalUnits += v;
-		for (int v : sediment.values()) totalUnits += v;
-		FluidStack rebuilt = Mixture.create(molecules, ions, suspended, sediment,
-			Math.max(1, (int) Math.round((double) totalUnits / Chemistry.UNIT_PER_MB)));
-		Temperature.set(rebuilt, temperature);
-		out.add(rebuilt);
-	}
-
-	/**
+				/**
 	 * Replace the entire contents with the given molecular + ionic amounts
 	 * (mole-equivalents). A single pure molecular species becomes a pure stack;
 	 * anything else becomes one {@link Mixture}. Used by the rules engine to write
@@ -1756,10 +1566,14 @@ public class ReactorTank implements IFluidHandler {
 		}
 	}
 
-	public CompoundTag serializeNBT() {		CompoundTag tag = new CompoundTag();
+	public CompoundTag serializeNBT() {
+		CompoundTag tag = new CompoundTag();
 		ListTag list = new ListTag();
 		for (FluidStack f : fluids) {
-			list.add(f.writeToNBT(new CompoundTag()));
+			// Forge FluidStack.writeToNBT retains its tag by reference. Candidate
+			// transactions mutate EngineSolutionRaw, so persistence needs its own
+			// deep snapshot rather than an alias of the source stack's NBT.
+			list.add(f.writeToNBT(new CompoundTag()).copy());
 		}
 		tag.put("fluids", list);
 		return tag;
@@ -1769,7 +1583,18 @@ public class ReactorTank implements IFluidHandler {
 		fluids.clear();
 		ListTag list = tag.getList("fluids", Tag.TAG_COMPOUND);
 		for (int i = 0; i < list.size(); i++) {
-			FluidStack f = FluidStack.loadFluidStackFromNBT(list.getCompound(i));
+			// Forge loadFluidStackFromNBT retains the nested Tag as well; callers'
+			// persistence tags must never become mutable tank state.
+			FluidStack f = FluidStack.loadFluidStackFromNBT(list.getCompound(i).copy());
+			// There is no legacy reconstruction path.  The four display domains
+			// deliberately cannot recreate a PHREEQC state (redox, complexes and
+			// charge pools would be invented).  A pre-release save carrying an old
+			// mixture is rejected visibly instead of being accepted and silently
+			// changing chemistry on its first tick.
+			if (Mixture.isMixture(f) && Mixture.engineSolution(f) == null) {
+				ChemicalAddon.LOGGER.error("Rejected legacy mixture without EngineSolutionRaw while loading reactor tank");
+				continue;
+			}
 			if (!f.isEmpty()) {
 				fluids.add(f);
 			}

@@ -11,11 +11,11 @@
       "entries": [
         {
           "type": "minecraft:item",
-          "name": "chemicaladdon:status_port"
+          "name": "chemicaladdon:test_paper_detector"
         }
       ],
       "rolls": 1.0
     }
   ],
-  "random_sequence": "chemicaladdon:blocks/status_port"
+  "random_sequence": "chemicaladdon:blocks/test_paper_detector"
 }

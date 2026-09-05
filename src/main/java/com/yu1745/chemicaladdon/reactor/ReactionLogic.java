@@ -171,13 +171,58 @@ final class ReactionLogic {
 		return reactor.getTank().countIngredient(ingredient) >= ingredient.getRequiredAmount();
 	}
 
-	static void completeRecipe(ReactorControllerBlockEntity reactor, ChemicalReactionRecipe recipe) {
+	/** Commits the complete recipe transaction, returning false without consuming
+	 * progress or inventory when an engine-backed operation rejects it. */
+	static boolean completeRecipe(ReactorControllerBlockEntity reactor, ChemicalReactionRecipe recipe) {
 		ReactorTank tank = reactor.getTank();
 		var items = reactor.getItems();
+		// Build the fluid side on an isolated copy first.  The kernel-backed tank
+		// may reject a declared feed it cannot represent; recipe completion must
+		// then be a net-zero operation, never consume an item and manufacture the
+		// outputs anyway.
+		ReactorTank candidate = new ReactorTank(tank.getTankCapacity(0), () -> {});
+		candidate.deserializeNBT(tank.serializeNBT());
 		// capture the vessel's temperature before consuming inputs, so the products
 		// inherit it (they form in the hot/cold vessel, not at ambient)
 		int vesselTemp = reactor.getTemperature();
-		// consume item inputs (1 per ingredient)
+		// Consume and produce every fluid on the candidate.  Each drain is checked
+		// even though matching ran earlier: the tank can explicitly reject an
+		// unsupported kernel material transaction.
+		for (FluidIngredient fluid : recipe.getFluidIngredients()) {
+			if (candidate.drainIngredient(fluid, fluid.getRequiredAmount(), IFluidHandler.FluidAction.EXECUTE)
+				!= fluid.getRequiredAmount()) return false;
+		}
+		for (SolutionIngredient sol : recipe.getSolutions()) {
+			if (candidate.drainSolution(sol.speciesId(), sol.amount(), IFluidHandler.FluidAction.EXECUTE)
+				!= sol.amount()) return false;
+		}
+		for (FluidStack out : recipe.getFluidResults()) {
+			FluidStack copy = out.copy();
+			Temperature.set(copy, vesselTemp);
+			if (candidate.fill(copy, IFluidHandler.FluidAction.EXECUTE) != copy.getAmount()) return false;
+		}
+		for (SolutionIngredient out : recipe.getSolutionOutputs()) {
+			Species species = SpeciesManager.get(out.speciesId());
+			if (species == null || !species.isSolution() || !(out.targetConcentration() > 0)
+				|| !Double.isFinite(out.targetConcentration())) {
+				return false;
+			}
+			try {
+				int total = out.amount() + (int) Math.round(out.amount() / out.targetConcentration());
+				double waterKg = (total - out.amount()) / 1000d;
+				double formulaMol = out.amount() / (double) species.ionCount() / 1000d;
+				FluidStack mix = Mixture.fromDeclaredComposition(waterKg,
+					com.yu1745.chemicaladdon.composition.parity.EngineBridge.declaredFeedForSpecies(out.speciesId(), formulaMol),
+					total, vesselTemp, java.util.List.of());
+				if (candidate.fill(mix, IFluidHandler.FluidAction.EXECUTE) != mix.getAmount()) return false;
+			} catch (RuntimeException ex) {
+				ChemicalAddon.LOGGER.warn("Rejected solution output {}: {}", out.speciesId(), ex.getMessage());
+				return false;
+			}
+		}
+		candidate.collapseIfNeeded();
+		// The fluid transaction succeeded.  Now commit it and consume items.
+		tank.deserializeNBT(candidate.serializeNBT());
 		for (Ingredient ingredient : recipe.getIngredients()) {
 			for (int i = 0; i < items.getSlots(); i++) {
 				ItemStack stack = items.getStackInSlot(i);
@@ -188,53 +233,14 @@ final class ReactionLogic {
 				}
 			}
 		}
-		// consume fluid inputs (mixture-aware: draws from pure stacks first,
-		// then from mixture components, so a recipe can consume a species that is
-		// dissolved in the mix)
-		for (FluidIngredient fluid : recipe.getFluidIngredients()) {
-			tank.drainIngredient(fluid, fluid.getRequiredAmount(), IFluidHandler.FluidAction.EXECUTE);
-		}
-		// consume solution-species inputs (matched against the dissolved ions)
-		for (SolutionIngredient sol : recipe.getSolutions()) {
-			tank.drainSolution(sol.speciesId(), sol.amount(), IFluidHandler.FluidAction.EXECUTE);
-		}
-		// item outputs (chance-based)
 		for (ProcessingOutput output : recipe.getRollableResults()) {
 			ItemStack out = output.getStack();
-			if (out.isEmpty() || (output.getChance() < 1 && reactor.getLevel().random.nextFloat() >= output.getChance())) {
-				continue;
-			}
+			if (out.isEmpty() || (output.getChance() < 1 && reactor.getLevel().random.nextFloat() >= output.getChance())) continue;
 			ItemStack remainder = ItemHandlerHelper.insertItemStacked(items, out.copy(), false);
 			if (!remainder.isEmpty() && reactor.getLevel() != null) {
 				BlockPos pos = reactor.getBlockPos();
 				Containers.dropItemStack(reactor.getLevel(), pos.getX(), pos.getY(), pos.getZ(), remainder);
 			}
-		}
-		// fluid outputs (pure fluids only — solutions go through solutionOutputs)
-		for (FluidStack out : recipe.getFluidResults()) {
-			Temperature.set(out, vesselTemp);
-			tank.fill(out.copy(), IFluidHandler.FluidAction.EXECUTE);
-		}
-		// solution-species outputs: expand straight into ions + water at the target
-		// concentration (ion mB / water mB)
-		for (SolutionIngredient out : recipe.getSolutionOutputs()) {
-			Species species = SpeciesManager.get(out.speciesId());
-			if (species == null || !species.isSolution() || Double.isNaN(out.targetConcentration())) {
-				continue;
-			}
-			Map<ResourceLocation, Integer> molecules = new LinkedHashMap<>();
-			Map<String, Integer> ions = new LinkedHashMap<>();
-			species.expand(out.amount(), out.targetConcentration(), molecules, ions);
-			int total = 0;
-			for (int v : molecules.values()) {
-				total += v;
-			}
-			for (int v : ions.values()) {
-				total += v;
-			}
-			FluidStack mix = Mixture.create(molecules, ions, total);
-			Temperature.set(mix, vesselTemp);
-			tank.fill(mix, IFluidHandler.FluidAction.EXECUTE);
 		}
 		// heat effect (exothermic raises temperature) — U1/G2: the reaction
 		// happens throughout the fluid body, so every phase takes the delta
@@ -256,13 +262,13 @@ final class ReactionLogic {
 		}
 		if (recipe.getDeltaHeat() != 0) {
 			tank.collapseIfNeeded();
-			long totalUnits = 0;
+			long totalMb = 0;
 			for (FluidStack stack : tank.getFluids()) {
-				totalUnits += (long) stack.getAmount() * Chemistry.UNIT_PER_MB;
+				totalMb += stack.getAmount();
 			}
-			if (totalUnits > 0) {
+			if (totalMb > 0) {
 				int delta = (int) Math
-					.round((double) recipe.getDeltaHeat() * RulesEngine.ITEM_UNITS / totalUnits);
+					.round((double) recipe.getDeltaHeat() * 1000d / totalMb);
 				for (FluidStack stack : tank.getFluids()) {
 					int t = Math.max(ReactorControllerBlockEntity.AMBIENT_TEMP,
 						Math.min(ReactorControllerBlockEntity.MAX_TEMP, Temperature.get(stack) + delta));
@@ -270,6 +276,7 @@ final class ReactionLogic {
 				}
 			}
 		}
+		return true;
 	}
 
 	@SuppressWarnings("unchecked")

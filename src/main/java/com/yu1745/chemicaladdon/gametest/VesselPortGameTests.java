@@ -301,13 +301,13 @@ public class VesselPortGameTests {
 		helper.assertTrue(vessel.getBlockPos().equals(port.getMasterPos()),
 			"assembly must bind the status port to the controller");
 		// the fixed comparator mapping is locked as a pure function
-		helper.assertTrue(StatusPortBlockEntity.comparatorFor("not_assembled") == 0
-				&& StatusPortBlockEntity.comparatorFor("reacting") == 4
-				&& StatusPortBlockEntity.comparatorFor("temperature") == 8
-				&& StatusPortBlockEntity.comparatorFor("output_full") == 12
-				&& StatusPortBlockEntity.comparatorFor("no_recipe") == 15
+		helper.assertTrue(StatusPortBlockEntity.comparatorFor("not_assembled") == 1
+				&& StatusPortBlockEntity.comparatorFor("reacting") == 2
+				&& StatusPortBlockEntity.comparatorFor("temperature") == 3
+				&& StatusPortBlockEntity.comparatorFor("output_full") == 4
+				&& StatusPortBlockEntity.comparatorFor("no_recipe") == 5
 				&& StatusPortBlockEntity.comparatorFor(null) == 0,
-			"the fixed comparator mapping must be NOT_ASSEMBLED=0/REACTING=4/TEMPERATURE=8/OUTPUT_FULL=12/NO_RECIPE=15");
+			"the fixed live enum must be NOT_ASSEMBLED=1/REACTING=2/TEMPERATURE=3/OUTPUT_FULL=4/NO_RECIPE=5");
 		// a stray unbound port anywhere else must stay silent
 		BlockPos stray = new BlockPos(9, 1, 9);
 		helper.setBlock(stray, AllBlocks.STATUS_PORT.get().defaultBlockState());
@@ -323,8 +323,8 @@ public class VesselPortGameTests {
 					"an empty assembled reactor must publish NO_RECIPE (got " + port.getStatusName() + ")");
 				helper.assertTrue(strongSignalOf(helper, portPos) == 15,
 					"an attached non-running status must emit strong 15 (got " + strongSignalOf(helper, portPos) + ", status=" + port.getStatusName() + ")");
-				helper.assertTrue(comparatorSignalOf(helper, portPos) == 15,
-					"NO_RECIPE must map to comparator 15");
+				helper.assertTrue(comparatorSignalOf(helper, portPos) == 5,
+					"NO_RECIPE must map to comparator enum 5");
 			})
 			.thenSucceed();
 	}
@@ -344,10 +344,10 @@ public class VesselPortGameTests {
 			.thenExecute(() -> {
 				helper.assertTrue("reacting".equals(port.getStatusName()),
 					"a running batch must publish REACTING (got " + port.getStatusName() + ")");
-				helper.assertTrue(strongSignalOf(helper, portPos) == 0,
-					"REACTING must NOT emit the completion edge (strong stays 0)");
-				helper.assertTrue(comparatorSignalOf(helper, portPos) == 4,
-					"REACTING must map to comparator 4 (got " + comparatorSignalOf(helper, portPos) + ")");
+				helper.assertTrue(strongSignalOf(helper, portPos) == 1,
+					"REACTING must remain healthy live-zero without emitting completion");
+				helper.assertTrue(comparatorSignalOf(helper, portPos) == 2,
+					"REACTING must map to comparator enum 2 (got " + comparatorSignalOf(helper, portPos) + ")");
 			})
 			// past the 80-t batch completion of the B1 fixture — poll for the first
 			// tick the status leaves REACTING
@@ -406,4 +406,3 @@ public class VesselPortGameTests {
 			.thenSucceed();
 	}
 }
-

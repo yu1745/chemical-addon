@@ -24,10 +24,30 @@ import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.function.BooleanSupplier;
+import java.util.Map;
 
 /** Small package-level fixtures shared by split GameTest suites. */
 final class GameTestFixtures {
 	private GameTestFixtures() {
+	}
+
+	/** Authored native input only: neutral PHREEQC formulae and explicit water. */
+	static FluidStack declared(double waterKg, Map<String, Double> formulaMol, int amountMb) {
+		return Mixture.fromDeclaredComposition(waterKg, formulaMol, amountMb, 25, java.util.List.of());
+	}
+
+	/** Native fixture with exact solid mol/location; never encodes solids in display NBT. */
+	static FluidStack declaredSolid(double waterKg, Map<String, Double> formulaMol, int amountMb,
+			String solidId, double solidMol,
+			com.yu1745.chemicaladdon.composition.parity.KernelSolutionState.SolidLocation location) {
+		return Mixture.fromDeclaredComposition(waterKg, formulaMol, amountMb, 25,
+			java.util.List.of(new com.yu1745.chemicaladdon.composition.parity.KernelSolutionState.SolidPhase(solidId, solidMol, location)));
+	}
+
+	/** Native fixture for multiple exact solid ledgers. */
+	static FluidStack declaredSolid(double waterKg, Map<String, Double> formulaMol, int amountMb,
+			java.util.List<com.yu1745.chemicaladdon.composition.parity.KernelSolutionState.SolidPhase> solids) {
+		return Mixture.fromDeclaredComposition(waterKg, formulaMol, amountMb, 25, solids);
 	}
 
 	static ReactorControllerBlockEntity reactor(GameTestHelper helper) {
@@ -182,6 +202,8 @@ final class GameTestFixtures {
 	}
 
 	static boolean hasFluid(ReactorTank tank, Fluid fluid, int minAmount) {
+		if (fluid == net.minecraft.world.level.material.Fluids.WATER)
+			return tank.waterInventoryMb() >= minAmount;
 		return tank.getFluids().stream().anyMatch(stack -> stack.getFluid() == fluid && stack.getAmount() >= minAmount);
 	}
 

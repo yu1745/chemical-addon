@@ -4,9 +4,9 @@ import java.util.List;
 
 import javax.annotation.Nullable;
 
-import com.yu1745.chemicaladdon.composition.Analyte;
-import com.yu1745.chemicaladdon.composition.Chemistry;
-import com.yu1745.chemicaladdon.composition.Solution;
+import com.yu1745.chemicaladdon.composition.parity.EngineBridge;
+import com.yu1745.chemicaladdon.composition.parity.Kernel;
+import com.yu1745.chemicaladdon.composition.parity.KernelSolutionState;
 import com.yu1745.chemicaladdon.fluid.Mixture;
 
 import net.minecraft.core.BlockPos;
@@ -15,7 +15,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.material.Fluids;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraft.ChatFormatting;
 
@@ -167,19 +166,19 @@ public abstract class AbstractPhGaugeBlockEntity extends AbstractVesselGaugeBloc
 		if (s.valid) {
 			return com.yu1745.chemicaladdon.composition.parity.EngineReadings.phSteps(s);
 		}
-		long h = 0;
-		long oh = 0;
-		long water = 0;
+		KernelSolutionState state = null;
 		for (FluidStack stack : tank.getFluids()) {
 			if (Mixture.isMixture(stack)) {
-				h += (long) Mixture.deriveUnitIonAmounts(stack).getOrDefault("H+1", 0);
-				oh += (long) Mixture.deriveUnitIonAmounts(stack).getOrDefault("OH-1", 0);
-				water += (long) Mixture.deriveUnitAmounts(stack).getOrDefault(Solution.WATER, 0);
-			} else if (stack.getFluid() == Fluids.WATER) {
-				water += (long) stack.getAmount() * Chemistry.UNIT_PER_MB;
+				if (state != null || (state = Mixture.engineSolution(stack)) == null) return 7;
 			}
 		}
-		return Analyte.ph(h, oh, water);
+		if (state == null) return 7;
+		try {
+			double ph = EngineBridge.derive(Kernel.get(), state, List.of()).ph();
+			return Math.max(0, Math.min(14, (int) Math.round(ph)));
+		} catch (RuntimeException ignored) {
+			return 7;
+		}
 	}
 
 	/** The pH gauge BE at {@code pos}, or null — shared redstone helper (both forms). */

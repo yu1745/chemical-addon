@@ -7,6 +7,7 @@ import static com.yu1745.chemicaladdon.gametest.GameTestFixtures.waitFor;
 import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.composition.Solution;
 import com.yu1745.chemicaladdon.fluid.Mixture;
+import com.yu1745.chemicaladdon.recipe.ChemicalReactionRecipe;
 import com.yu1745.chemicaladdon.reactor.CompressorBlockEntity;
 import com.yu1745.chemicaladdon.reactor.ElectrolyzerBlockEntity;
 import com.yu1745.chemicaladdon.reactor.HeatExchangerBlockEntity;
@@ -22,6 +23,7 @@ import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.gametest.framework.GameTestSequence;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.Fluids;
@@ -139,28 +141,91 @@ public class SupportMachineGameTests {
 	public static void electrolyzerRunsBothCellLines(GameTestHelper helper) {
 		helper.setBlock(new BlockPos(4, 1, 4), AllBlocks.ELECTROLYZER.get().defaultBlockState());
 		ElectrolyzerBlockEntity cell = (ElectrolyzerBlockEntity) helper.getBlockEntity(new BlockPos(4, 1, 4));
-		FluidStack brine = Mixture.create(Map.of(Solution.WATER, 2000), Map.of("Na+1", 200, "Cl-1", 200), 2200);
+		FluidStack brine = GameTestFixtures.declared(2, Map.of("NaCl", .2), 2200);
 		cell.getTank().fill(brine, FluidAction.EXECUTE);
+		ResourceLocation brineId = new ResourceLocation(ChemicalAddon.MODID, "brine");
+		ResourceLocation chlorAlkali = new ResourceLocation(ChemicalAddon.MODID,
+			"chemical_reaction/chlor_alkali_electrolysis");
+		var liveRecipe = cell.getLevel().getRecipeManager().byKey(chlorAlkali).orElseThrow();
+		helper.assertTrue(liveRecipe instanceof ChemicalReactionRecipe,
+			"chlor-alkali fixture must resolve the live chemical recipe");
+		ChemicalReactionRecipe chlorRecipe = (ChemicalReactionRecipe) liveRecipe;
+		helper.assertTrue(chlorRecipe.getSolutions().size() == 1
+			&& brineId.equals(chlorRecipe.getSolutions().get(0).speciesId()),
+			"chlor-alkali must carry its explicit brine constraint");
+		int requiredWater = chlorRecipe.getFluidIngredients().get(0).getRequiredAmount();
+		int requiredBrine = chlorRecipe.getSolutions().get(0).amount();
+		helper.assertTrue(cell.getTank().waterInventoryMb() >= requiredWater
+			&& cell.getTank().countSolution(brineId) >= requiredBrine,
+			"fresh brine inventory must satisfy chlor-alkali water=" + requiredWater
+				+ " and brine=" + requiredBrine + "; inventory water="
+				+ cell.getTank().waterInventoryMb() + ", brine=" + cell.getTank().countSolution(brineId));
+		helper.assertTrue(matchesCellRecipe(cell, chlorRecipe),
+			"chlor-alkali must match before its first tick; water=" + cell.getTank().waterInventoryMb()
+				+ ", brine=" + cell.getTank().countSolution(brineId));
+		helper.assertTrue(chlorAlkali.equals(selectedCellRecipe(cell)),
+			"the selector must prefer the matching solute-constrained recipe before its first tick; selected="
+				+ selectedCellRecipe(cell));
+		int waterBeforePreflight = cell.getTank().waterInventoryMb();
+		int brineBeforePreflight = cell.getTank().countSolution(brineId);
 		for (int i = 0; i < 4; i++) cell.getEnergy().receiveEnergy(2000, false);
 		helper.setBlock(new BlockPos(8, 1, 8), AllBlocks.ELECTROLYZER.get().defaultBlockState());
 		ElectrolyzerBlockEntity waterCell = (ElectrolyzerBlockEntity) helper.getBlockEntity(new BlockPos(8, 1, 8));
 		waterCell.getTank().fill(new FluidStack(Fluids.WATER, 600), FluidAction.EXECUTE);
 		for (int i = 0; i < 4; i++) waterCell.getEnergy().receiveEnergy(2000, false);
-		waitFor(helper.startSequence().thenIdle(TICKS), () -> hasFluidIn(cell.getTank(), AllFluids.HYDROGEN.get().getSource(), 100)
+		waitFor(helper.startSequence().thenIdle(10).thenExecute(() -> {
+			// completedTank is a preflight candidate. It runs before this 100-tick
+			// batch completes and must not consume source state through shared NBT.
+			helper.assertTrue(cell.getTank().waterInventoryMb() == waterBeforePreflight
+				&& cell.getTank().countSolution(brineId) == brineBeforePreflight
+				&& cell.getEnergy().getEnergyStored() == 8_000,
+				"electrolyzer preflight must preserve source brine and FE; water="
+					+ cell.getTank().waterInventoryMb() + ", brine=" + cell.getTank().countSolution(brineId)
+					+ ", FE=" + cell.getEnergy().getEnergyStored());
+		}), () -> hasFluidIn(cell.getTank(), AllFluids.HYDROGEN.get().getSource(), 100)
 			&& hasFluidIn(waterCell.getTank(), AllFluids.HYDROGEN.get().getSource(), 200))
 			.thenExecute(() -> {
-				helper.assertTrue(hasFluidIn(cell.getTank(), AllFluids.CHLORINE.get().getSource(), 100), "chlor-alkali vents chlorine");
-				helper.assertTrue(hasIon(cell.getTank(), "OH-1", 100) && hasIon(cell.getTank(), "Na+1", 100), "the caustic liquor lands as dissolved ions");
+				helper.assertTrue(chlorAlkali.equals(cell.getActiveRecipe()),
+					"brine must select the solute-constrained chlor-alkali recipe; selected="
+						+ cell.getActiveRecipe() + ", caustic=" + cell.getTank()
+						.countSolution(new ResourceLocation(ChemicalAddon.MODID, "caustic_soda_solution")));
+				helper.assertTrue(hasFluidIn(cell.getTank(), AllFluids.CHLORINE.get().getSource(), 100),
+					"chlor-alkali vents chlorine; selected=" + cell.getActiveRecipe());
+				helper.assertTrue(cell.getTank().countSolution(new ResourceLocation(ChemicalAddon.MODID, "caustic_soda_solution")) >= 200,
+					"the declared 200 mB caustic output must remain available as native alkali inventory");
 				helper.assertTrue(hasFluidIn(waterCell.getTank(), AllFluids.OXYGEN.get().getSource(), 100), "water electrolysis vents oxygen");
 				helper.assertTrue(cell.getEnergy().getEnergyStored() == 4000, "the cell pays its FE per batch");
 			}).thenSucceed();
+	}
+
+	/** Diagnose the cell's private complete-input gate without broadening its runtime API. */
+	private static boolean matchesCellRecipe(ElectrolyzerBlockEntity cell, ChemicalReactionRecipe recipe) {
+		try {
+			var method = ElectrolyzerBlockEntity.class.getDeclaredMethod("matchesRecipe", ChemicalReactionRecipe.class);
+			method.setAccessible(true);
+			return (boolean) method.invoke(cell, recipe);
+		} catch (ReflectiveOperationException ex) {
+			throw new AssertionError("Cannot inspect the electrolyzer input gate", ex);
+		}
+	}
+
+	@javax.annotation.Nullable
+	private static ResourceLocation selectedCellRecipe(ElectrolyzerBlockEntity cell) {
+		try {
+			var method = ElectrolyzerBlockEntity.class.getDeclaredMethod("findRecipe");
+			method.setAccessible(true);
+			ChemicalReactionRecipe selected = (ChemicalReactionRecipe) method.invoke(cell);
+			return selected == null ? null : selected.getId();
+		} catch (ReflectiveOperationException ex) {
+			throw new AssertionError("Cannot inspect the electrolyzer recipe selector", ex);
+		}
 	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 40)
 	public static void electrolyzerStallsWithoutPowerThenResumes(GameTestHelper helper) {
 		helper.setBlock(new BlockPos(4, 1, 4), AllBlocks.ELECTROLYZER.get().defaultBlockState());
 		ElectrolyzerBlockEntity cell = (ElectrolyzerBlockEntity) helper.getBlockEntity(new BlockPos(4, 1, 4));
-		cell.getTank().fill(Mixture.create(Map.of(Solution.WATER, 2000), Map.of("Na+1", 200, "Cl-1", 200), 2200), FluidAction.EXECUTE);
+		cell.getTank().fill(GameTestFixtures.declared(2, Map.of("NaCl", .2), 2200), FluidAction.EXECUTE);
 		waitFor(helper.startSequence().thenIdle(TICKS * 2), () -> cell.getStatus() == ElectrolyzerBlockEntity.CellStatus.NO_POWER)
 			.thenExecute(() -> {
 				helper.assertTrue(cell.getTank().getTotalAmount() == 2200, "a powerless cell consumes nothing");

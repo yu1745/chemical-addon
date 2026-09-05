@@ -9,6 +9,7 @@ import javax.annotation.Nullable;
 import com.yu1745.chemicaladdon.composition.Chemistry;
 import com.yu1745.chemicaladdon.fluid.IonColors;
 import com.yu1745.chemicaladdon.fluid.SolidColors;
+import com.yu1745.chemicaladdon.composition.parity.KernelSolutionState;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.CompoundTag;
@@ -67,6 +68,11 @@ public class MixedResidueItem extends Item {
 
 	/** Liquor-map key prefix for molecular solutes (rest are bare ion ids). */
 	public static final String LIQUOR_SOLUTE_PREFIX = "s:";
+	/** Exact raw mother-liquor payload; never reconstructed from the cosmetic liquor map. */
+	public static final String TAG_ENGINE_LIQUOR_RAW = "EngineLiquorRaw";
+	public static final String TAG_ENGINE_LIQUOR_MB = "EngineLiquorMb";
+	/** Exact solid ledger for wet-cake reinjection; cosmetic Solids is only a ratio view. */
+	public static final String TAG_ENGINE_SOLIDS = "EngineSolids";
 
 	public MixedResidueItem(Properties properties) {
 		super(properties);
@@ -125,6 +131,49 @@ public class MixedResidueItem extends Item {
 			}
 		}
 		return stack;
+	}
+
+	/** Attach a proportional engine-owned mother-liquor batch to a wet cake. */
+	public static ItemStack withEngineLiquor(ItemStack stack, KernelSolutionState liquor) {
+		if (stack.isEmpty() || liquor == null) throw new IllegalArgumentException("cake and liquor are required");
+		CompoundTag tag = stack.getOrCreateTag();
+		tag.putString(TAG_ENGINE_LIQUOR_RAW, liquor.raw());
+		tag.putInt(TAG_ENGINE_LIQUOR_MB, liquor.referenceMb());
+		return stack;
+	}
+
+	@Nullable
+	public static KernelSolutionState engineLiquor(ItemStack stack) {
+		CompoundTag tag = stack.getTag();
+		if (tag == null || !tag.contains(TAG_ENGINE_LIQUOR_RAW) || !tag.contains(TAG_ENGINE_LIQUOR_MB, 99)) return null;
+		try { return new KernelSolutionState(tag.getString(TAG_ENGINE_LIQUOR_RAW), tag.getInt(TAG_ENGINE_LIQUOR_MB)); }
+		catch (IllegalArgumentException ignored) { return null; }
+	}
+
+	/** Attach exact extracted solid mol inventory to a wet cake. */
+	public static ItemStack withEngineSolids(ItemStack stack, List<KernelSolutionState.SolidPhase> solids) {
+		if (stack.isEmpty() || solids == null) throw new IllegalArgumentException("cake and solids are required");
+		net.minecraft.nbt.ListTag list = new net.minecraft.nbt.ListTag();
+		for (KernelSolutionState.SolidPhase solid : solids) {
+			CompoundTag tag = new CompoundTag();
+			tag.putString("Species", solid.speciesId()); tag.putDouble("Mol", solid.mol());
+			tag.putString("Location", solid.location().name()); list.add(tag);
+		}
+		stack.getOrCreateTag().put(TAG_ENGINE_SOLIDS, list);
+		return stack;
+	}
+
+	/** Exact solid inventory; malformed payload is rejected rather than guessed from ratio parts. */
+	public static List<KernelSolutionState.SolidPhase> engineSolids(ItemStack stack) {
+		CompoundTag root = stack.getTag(); if (root == null) return List.of();
+		List<KernelSolutionState.SolidPhase> out = new java.util.ArrayList<>();
+		net.minecraft.nbt.ListTag encoded = root.getList(TAG_ENGINE_SOLIDS, net.minecraft.nbt.Tag.TAG_COMPOUND);
+		for (int i = 0; i < encoded.size(); i++) try {
+			CompoundTag tag = encoded.getCompound(i);
+			out.add(new KernelSolutionState.SolidPhase(tag.getString("Species"), tag.getDouble("Mol"),
+					KernelSolutionState.SolidLocation.valueOf(tag.getString("Location"))));
+		} catch (RuntimeException bad) { return List.of(); }
+		return List.copyOf(out);
 	}
 
 	/** The composition ratio parts (species id → part); empty when no NBT. */

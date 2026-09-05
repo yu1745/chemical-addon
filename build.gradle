@@ -152,6 +152,12 @@ dependencies {
     // NativeLoader 运行时解压（fat 分发时 jarJar 内嵌）
     implementation 'com.google.code.gson:gson:2.10.1'
     implementation 'net.java.dev.jna:jna:5.16.0'
+
+    // Sandboxed, in-world PLC JavaScript runtime. It is embedded in the mod;
+    // KubeJS is deliberately not required.
+    implementation(jarJar('org.mozilla:rhino:1.7.15')) {
+        jarJar.ranged(it, '[1.7.15,1.8)')
+    }
 }
 
 def configureJUnitTest = { Test task ->
@@ -182,6 +188,7 @@ tasks.register('modTest', Test) {
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     include 'com/yu1745/chemicaladdon/composition/**'
+    exclude 'com/yu1745/chemicaladdon/composition/parity/**'
     include 'com/yu1745/chemicaladdon/reactor/**'
     include 'com/yu1745/chemicaladdon/recipe/**'
 }
@@ -218,6 +225,7 @@ tasks.register('engineKernelTest', Test) {
     classpath = sourceSets.test.runtimeClasspath
     include 'com/yu1745/chemengine/kernel/**'
     include 'com/yu1745/chemicaladdon/parity/**'
+    include 'com/yu1745/chemicaladdon/composition/parity/**'
 }
 
 tasks.register('engineTest') {

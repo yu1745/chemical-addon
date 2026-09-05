@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "chemicaladdon:item/sulfur_dioxide_gas_paper"
+  }
+}

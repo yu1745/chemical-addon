@@ -11,13 +11,14 @@ import com.yu1745.chemengine.kernel.IPhreeqc;
  * <p>不复用会话的后果（2026-08 切换初版实测）：每反应拍 create+装库+求解+销毁，
  * GameTest 从 ~1 分钟劣化到 5–10 分钟。
  */
-final class Kernel {
+public final class Kernel {
 
 	private static volatile IPhreeqc session;
 
 	private Kernel() {}
 
-	static synchronized IPhreeqc get() {
+	/** Shared server-side session for engine-owned inventory transactions. */
+	public static synchronized IPhreeqc get() {
 		if (session == null) {
 			session = IPhreeqc.create();
 		}

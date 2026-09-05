@@ -1,6 +1,9 @@
 package com.yu1745.chemicaladdon.gametest;
 
 import com.yu1745.chemicaladdon.ChemicalAddon;
+import com.yu1745.chemicaladdon.composition.parity.EngineBridge;
+import com.yu1745.chemicaladdon.composition.parity.Kernel;
+import com.yu1745.chemicaladdon.composition.parity.KernelSolutionState;
 import com.yu1745.chemicaladdon.composition.Solution;
 import com.yu1745.chemicaladdon.fluid.FluidColors;
 import com.yu1745.chemicaladdon.fluid.IonColors;
@@ -38,10 +41,9 @@ public class CompositionGameTests {
 		// broke Create's isFluidEqual flow identity and stalled the pump. A settled
 		// phase must be left verbatim.
 		ReactorTank tank = new ReactorTank(10000, () -> {});
-		ResourceLocation water = Solution.WATER;
-		// ratio {5:2:1} (sum 8) with a total (1601) that 8 does NOT divide -> any
-		// rebuild would re-derive + GCD-reduce into a different tag
-		FluidStack mix = Mixture.create(Map.of(water, 1000), Map.of("H+1", 400, "SO4-2", 200), 1601);
+		// The native state has an explicit 1601 mB reference. A collapse must not
+		// reconstruct it from the derived display projection.
+		FluidStack mix = GameTestFixtures.declared(1, Map.of("H2SO4", .2), 1601);
 		tank.fill(mix, FluidAction.EXECUTE);
 		tank.fill(new FluidStack(AllFluids.THERMAL_OIL.get().getSource(), 500), FluidAction.EXECUTE);
 		tank.collapseIfNeeded();
@@ -134,55 +136,65 @@ public class CompositionGameTests {
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void mixtureDegradesToPure(GameTestHelper helper) {
-		// draining all the solute ions out of an aqueous mixture leaves pure solvent,
-		// and a single-component remainder degrades back to a pure fluid stack.
+		// Native declared-feed withdrawal leaves an engine-backed aqueous solvent
+		// state; the mixture transport identity remains stable after the solute drain.
 		ReactorTank tank = new ReactorTank(10000, () -> {});
-		ResourceLocation water = Solution.WATER;
-		FluidStack mix = Mixture.create(Map.of(water, 600), Map.of("H+1", 200, "SO4-2", 100), 900);
+		// A high-precision native observation is a normal preceding vessel action.
+		// Its session settings must not prevent the following exact transaction.
+		KernelSolutionState solventObservation = KernelSolutionState.fromDeclaredFeed(Kernel.get(), 1, Map.of(), 1000);
+		EngineBridge.derive(Kernel.get(), solventObservation, List.of());
+		// Exercise the shared session recovery before this exact ingress chain:
+		// malformed external declaration may never poison a later vessel's RAW.
+		boolean rejected = false;
+		try {
+			KernelSolutionState.fromDeclaredFeed(Kernel.get(), .6, Map.of("NotARealFormula", .1), 900);
+		} catch (RuntimeException expected) {
+			rejected = true;
+		}
+		helper.assertTrue(rejected, "invalid declared formula must be rejected");
+		FluidStack mix = GameTestFixtures.declared(.6, Map.of("H2SO4", .1), 900);
 		tank.fill(mix, FluidAction.EXECUTE);
-
 		// consume all the acid ions (the path completeRecipe uses)
 		int drained = tank.drainSolution(new ResourceLocation(ChemicalAddon.MODID, "sulfuric_acid"), 300,
 			FluidAction.EXECUTE);
 		helper.assertTrue(drained == 300, "should drain 300 mB of acid ions (got " + drained + ")");
 		tank.collapseIfNeeded();
 
-		helper.assertTrue(tank.getFluids().size() == 1, "one stack after degrading (got " + tank.getFluids().size() + ")");
+		helper.assertTrue(tank.getFluids().size() == 1, "one native stack remains (got " + tank.getFluids().size() + ")");
 		FluidStack remain = tank.getFluids().get(0);
-		helper.assertTrue(!Mixture.isMixture(remain), "should degrade to a pure fluid");
-		helper.assertTrue(remain.getFluid() == Fluids.WATER, "remaining fluid should be water");
-		helper.assertTrue(remain.getAmount() == 600,
-			"600 mB water should remain (got " + remain.getAmount() + ")");
+		helper.assertTrue(Mixture.isMixture(remain) && Mixture.engineSolution(remain) != null,
+			"native solvent remainder must retain its raw state");
+		helper.assertTrue(tank.countSolution(new ResourceLocation(ChemicalAddon.MODID, "sulfuric_acid")) == 0,
+			"the declared acid must be absent after the native removal");
 		helper.succeed();
 	}
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void mixtureSpillsAsPureComponents(GameTestHelper helper) {
-		// regression: breaking the vessel must spill a mixture as its PURE fluid
-		// component (water) — NOT as a component-less mixture whose NBT cannot survive
-		// a world fluid block. Dissolved ions have no registered fluid, so they are
-		// lost on spill by design (only fluids can pour out as blocks).
+		// Native liquor cannot be converted to a world water block without losing
+		// complexes and solid ledger. The spill queue retains its exact RAW payload
+		// until SpillLogic releases recoverable wet-residue entities.
 		ReactorTank tank = new ReactorTank(10000, () -> {});
-		ResourceLocation water = Solution.WATER;
-		FluidStack mix = Mixture.create(Map.of(water, 2000), Map.of("H+1", 400, "SO4-2", 200), 2600);
+		FluidStack mix = GameTestFixtures.declared(2, Map.of("H2SO4", .2), 2600);
 		tank.fill(mix, FluidAction.EXECUTE);
 		helper.assertTrue(Mixture.isMixture(tank.getFluids().get(0)), "baseline: tank holds a mixture");
 
 		List<FluidStack> spilled = SpillLogic.queueFluids(tank);
 		helper.assertTrue(tank.getFluids().isEmpty(), "the spill must empty the tank");
-		helper.assertTrue(!spilled.isEmpty(), "the mixture must pour out (as its water)");
+		helper.assertTrue(!spilled.isEmpty(), "the mixture must enter the spill queue");
 		for (FluidStack s : spilled) {
-			helper.assertTrue(!Mixture.isMixture(s),
-				"spilled stacks must be pure components (survive world blocks), not a mixture");
-			helper.assertTrue(s.getFluid() == Fluids.WATER, "only water is spillable (ions have no fluid)");
+			helper.assertTrue(Mixture.isMixture(s) && Mixture.engineSolution(s) != null,
+				"spill queue must retain the native solution state for residue recovery");
 		}
-		// reform: re-absorb the spilled water -> pure water, no component-less mixture
+		// Reinsert the queued payload without deriving it through the display domains.
 		for (FluidStack s : spilled) {
 			tank.fill(s.copy(), FluidAction.EXECUTE);
 		}
 		tank.collapseIfNeeded();
-		helper.assertTrue(tank.getFluids().size() == 1 && !Mixture.isMixture(tank.getFluids().get(0)),
-			"reform should yield pure water, not a component-less mixture");
+		helper.assertTrue(tank.getFluids().size() == 1 && Mixture.engineSolution(tank.getFluids().get(0)) != null,
+			"recovery must restore the native aqueous state");
+		helper.assertTrue(tank.waterInventoryMb() >= 1900,
+			"recovery must retain the mother-liquor water inventory");
 		helper.succeed();
 	}
 
@@ -191,9 +203,9 @@ public class CompositionGameTests {
 		// pouring 40 °C and 20 °C water into the same vessel blends to the
 		// amount-weighted average: (40×1000 + 20×1000) / 2000 = 30 °C
 		ReactorTank tank = new ReactorTank(10000, () -> {});
-		FluidStack hot = new FluidStack(Fluids.WATER, 1000);
+		FluidStack hot = GameTestFixtures.declared(1, Map.of(), 1000);
 		Temperature.set(hot, 40);
-		FluidStack cold = new FluidStack(Fluids.WATER, 1000);
+		FluidStack cold = GameTestFixtures.declared(1, Map.of(), 1000);
 		Temperature.set(cold, 20);
 
 		tank.fill(hot, FluidAction.EXECUTE);
@@ -210,7 +222,7 @@ public class CompositionGameTests {
 		// a pump-style drain carries the fluid's temperature (frozen) so the next
 		// vessel can continue heating/cooling from where the last one left off
 		ReactorTank src = new ReactorTank(10000, () -> {});
-		FluidStack hot = new FluidStack(Fluids.WATER, 1000);
+		FluidStack hot = GameTestFixtures.declared(1, Map.of(), 1000);
 		Temperature.set(hot, 40);
 		src.fill(hot, FluidAction.EXECUTE);
 
@@ -266,7 +278,8 @@ public class CompositionGameTests {
 
 	@GameTest(template = "empty_15", timeoutTicks = TICKS * 20)
 	public static void slurryBucketPacksSuspendedSolid(GameTestHelper helper) {
-		// a slurry bucket pre-fills water + a Suspended solid (NOT dissolved ions)
+		// A slurry bucket carries a native liquor state plus its suspended-solid
+		// ledger. Equilibrium may expose dissolved ions in the display projection.
 		ItemStack bucket = AllContainers.SLURRY_BUCKETS.get(0).get().getDefaultInstance(); // milk_of_lime
 		IFluidHandlerItem handler = bucket.getCapability(ForgeCapabilities.FLUID_HANDLER_ITEM).orElse(null);
 		helper.assertTrue(handler != null, "bucket must expose FLUID_HANDLER_ITEM");
@@ -274,11 +287,13 @@ public class CompositionGameTests {
 		FluidStack fluid = handler.getFluidInTank(0);
 		helper.assertTrue(!fluid.isEmpty() && Mixture.isMixture(fluid), "bucket should hold a mixture");
 		ResourceLocation slakedLime = new ResourceLocation(ChemicalAddon.MODID, "slaked_lime");
-		helper.assertTrue(Mixture.deriveSuspendedAmounts(fluid).getOrDefault(slakedLime, 0) > 0,
-			"milk_of_lime should hold suspended slaked lime (got " + Mixture.deriveSuspendedAmounts(fluid) + ")");
-		helper.assertTrue(Mixture.deriveIonAmounts(fluid).isEmpty(), "a slurry should carry no dissolved ions");
-		helper.assertTrue(Mixture.deriveAmounts(fluid).containsKey(Solution.WATER),
-			"bucket should hold the solvent water");
+		var state = Mixture.engineSolution(fluid);
+		helper.assertTrue(state != null, "bucket must carry an engine-owned liquor state");
+		helper.assertTrue(state != null && state.solids().stream().anyMatch(s -> s.speciesId().equals(slakedLime.toString())
+			&& s.location() == com.yu1745.chemicaladdon.composition.parity.KernelSolutionState.SolidLocation.SUSPENDED),
+			"milk_of_lime should retain suspended slaked lime in the native ledger");
+		helper.assertTrue(state != null && state.referenceMb() == fluid.getAmount(),
+			"native liquor reference must match the bucket transport amount");
 		helper.assertTrue(fluid.getAmount() == 1000, "bucket should hold 1000 mB (got " + fluid.getAmount() + ")");
 		helper.succeed();
 	}

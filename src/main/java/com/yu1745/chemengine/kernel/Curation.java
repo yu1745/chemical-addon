@@ -143,8 +143,15 @@ public final class Curation {
         for (Reaction rx : reactions) {
             sb.append(rx.name).append('\n');
             sb.append("    -start\n");
-            sb.append("    10  r = ").append(rx.rateExpression).append('\n');
-            sb.append("    20  SAVE r * TIME\n");
+            if (rx.conditionExpression == null || rx.conditionExpression.isBlank()) {
+                sb.append("    10  r = ").append(rx.rateExpression).append('\n');
+            } else {
+                sb.append("    10  IF (").append(rx.conditionExpression).append(") THEN r = ")
+                        .append(rx.rateExpression).append(" ELSE r = 0\n");
+            }
+            // JSON 的 r 是 mol/kgw/s；PHREEQC 的 SAVE 必须返回本次体系的 mol。
+            // TOT("water") 的单位是 kg water（PHREEQC BASIC reference）。
+            sb.append("    20  SAVE r * TIME * TOT(\"water\")\n");
             sb.append("    -end\n");
         }
         return sb.toString();
@@ -237,8 +244,22 @@ public final class Curation {
                 throw new IllegalStateException(
                         "master 物种名必须含元素 token: " + pe.element + " / " + pe.master);
             }
-            if (pe.molarMass <= 0) {
+            if (!Double.isFinite(pe.molarMass) || pe.molarMass <= 0) {
                 throw new IllegalStateException("摩尔质量必须 > 0: " + pe.element);
+            }
+        }
+        for (PseudoElement pe : pseudoElements) {
+            if (pe.atoms == null || pe.atoms.isEmpty()) {
+                throw new IllegalStateException("伪元素缺真实原子组成: " + pe.element);
+            }
+            for (Map.Entry<String, Double> atom : pe.atoms.entrySet()) {
+                if (atom.getKey() == null || !atom.getKey().matches("[A-Z][a-z]?")
+                        || atom.getValue() == null || !Double.isFinite(atom.getValue()) || atom.getValue() <= 0) {
+                    throw new IllegalStateException("伪元素原子组成非法: " + pe.element + " / " + atom);
+                }
+                if (byElement.containsKey(atom.getKey())) {
+                    throw new IllegalStateException("伪元素组成不得引用伪元素: " + pe.element + " / " + atom.getKey());
+                }
             }
         }
         Map<String, Reaction> byName = new LinkedHashMap<>();
@@ -255,17 +276,44 @@ public final class Curation {
             if (rx.rateExpression == null || rx.rateExpression.isBlank()) {
                 throw new IllegalStateException("反应无速率表达式: " + rx.name);
             }
-            int parmRefs = countParmRefs(rx.rateExpression);
+            if (rx.conditionExpression != null && rx.conditionExpression.isBlank()) {
+                throw new IllegalStateException("反应工况条件不能为空白: " + rx.name);
+            }
+            int parmRefs = Math.max(countParmRefs(rx.rateExpression), countParmRefs(rx.conditionExpression));
             int parmsLen = rx.parms == null ? 0 : rx.parms.length;
             if (parmRefs > parmsLen) {
                 throw new IllegalStateException("速率表达式引用 PARM(" + parmRefs + ") 但 parms 只有 "
                         + parmsLen + " 个（反应 " + rx.name + "）");
             }
-            for (String token : rx.formula.keySet()) {
+            for (Map.Entry<String, Double> term : rx.formula.entrySet()) {
+                String token = term.getKey();
+                if (token == null || term.getValue() == null || !Double.isFinite(term.getValue()) || term.getValue() == 0) {
+                    throw new IllegalStateException("-formula 系数非法: " + rx.name + " / " + term);
+                }
                 if (token.contains("(") || token.contains(")")) {
                     throw new IllegalStateException(
                             "-formula 不得用价态 token（毁池）: " + rx.name + " / " + token);
                 }
+                if (!byElement.containsKey(token) && !token.matches("[A-Z][a-z]?")) {
+                    throw new IllegalStateException("-formula 只允许真实元素或登记伪元素: "
+                            + rx.name + " / " + token);
+                }
+            }
+            if (rx.reservoirAtoms == null) rx.reservoirAtoms = Collections.emptyMap();
+            for (Map.Entry<String, Double> atom : rx.reservoirAtoms.entrySet()) {
+                if (atom.getKey() == null || !atom.getKey().matches("[A-Z][a-z]?")
+                        || atom.getValue() == null || !Double.isFinite(atom.getValue())) {
+                    throw new IllegalStateException("外部储库原子流非法: " + rx.name + " / " + atom);
+                }
+            }
+            ExpandedFormulaAudit audit = expandedFormulaAudit(rx, byElement);
+            if (rx.kindEnum() == Kind.BULK && !audit.isAtomConserving()) {
+                throw new IllegalStateException("bulk 反应展开后不守恒: " + rx.name + " / "
+                        + audit.atomDelta);
+            }
+            if (rx.kindEnum() == Kind.INTERFACE && !sameAtoms(audit.atomDelta, rx.reservoirAtoms)) {
+                throw new IllegalStateException("interface 反应的外部储库原子流不匹配: " + rx.name
+                        + " / formula=" + audit.atomDelta + " / reservoir=" + rx.reservoirAtoms);
             }
         }
         for (Phase ph : phases) {
@@ -278,8 +326,51 @@ public final class Curation {
         }
     }
 
+    /**
+     * 将 {@code -formula} 的伪元素 token 展开为真实原子源项。
+     *
+     * <p>这是元素守恒审计，<strong>不是</strong>离子反应式。KINETICS 的 -formula
+     * 仅接受元素源项，不能以伪 master 的离子电荷对 H/O/Cl 等元素 token 再做电荷配平。
+     */
+    public ExpandedFormulaAudit expandedFormulaAudit(Reaction reaction) {
+        Map<String, PseudoElement> byElement = new LinkedHashMap<>();
+        for (PseudoElement pe : pseudoElements) byElement.put(pe.element, pe);
+        return expandedFormulaAudit(reaction, byElement);
+    }
+
+    private static ExpandedFormulaAudit expandedFormulaAudit(Reaction reaction,
+                                                              Map<String, PseudoElement> pseudoByElement) {
+        Map<String, Double> delta = new TreeMap<>();
+        for (Map.Entry<String, Double> term : reaction.formula.entrySet()) {
+            PseudoElement pseudo = pseudoByElement.get(term.getKey());
+            if (pseudo == null) {
+                delta.merge(term.getKey(), term.getValue(), Double::sum);
+            } else {
+                for (Map.Entry<String, Double> atom : pseudo.atoms.entrySet()) {
+                    delta.merge(atom.getKey(), term.getValue() * atom.getValue(), Double::sum);
+                }
+            }
+        }
+        delta.entrySet().removeIf(e -> Math.abs(e.getValue()) < 1e-12);
+        return new ExpandedFormulaAudit(Collections.unmodifiableMap(delta));
+    }
+
+    private static boolean sameAtoms(Map<String, Double> left, Map<String, Double> right) {
+        if (right == null) return left.isEmpty();
+        Map<String, Double> normalized = new TreeMap<>(right);
+        normalized.entrySet().removeIf(e -> Math.abs(e.getValue()) < 1e-12);
+        if (!left.keySet().equals(normalized.keySet())) return false;
+        for (Map.Entry<String, Double> entry : left.entrySet()) {
+            if (Math.abs(entry.getValue() - normalized.get(entry.getKey())) >= 1e-12) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /** 计算速率表达式里最大的 PARM(n) 索引（校验 parms 覆盖）。 */
     private static int countParmRefs(String expr) {
+        if (expr == null) return 0;
         java.util.regex.Matcher m = java.util.regex.Pattern
                 .compile("PARM\\((\\d+)\\)").matcher(expr);
         int max = 0;
@@ -312,6 +403,8 @@ public final class Curation {
         public String label;
         public double molarMass;
         public String master;
+        /** 该内部池每 mol 所代表的真实元素原子数；仅用于守恒审计。 */
+        public Map<String, Double> atoms = Collections.emptyMap();
         public List<Species> species;
     }
 
@@ -329,7 +422,11 @@ public final class Curation {
         public String name;
         public String note;
         public Map<String, Double> formula = Collections.emptyMap();
+        /** interface 反应由外部气/液储库注入本体系的真实原子量；bulk 必须为空。 */
+        public Map<String, Double> reservoirAtoms = Collections.emptyMap();
         public String rateExpression;
+        /** Optional PHREEQC BASIC boolean condition; false means a zero rate without changing stoichiometry. */
+        public String conditionExpression;
         public double capacity = 1000.0;
         public double[] parms;
         public List<String> parmDoc;
@@ -341,6 +438,13 @@ public final class Curation {
 
         public Map<String, Double> formulaView() {
             return Collections.unmodifiableMap(formula);
+        }
+    }
+
+    /** 真实原子源项审计结果；空 map 表示元素守恒。 */
+    public record ExpandedFormulaAudit(Map<String, Double> atomDelta) {
+        public boolean isAtomConserving() {
+            return atomDelta.isEmpty();
         }
     }
 }

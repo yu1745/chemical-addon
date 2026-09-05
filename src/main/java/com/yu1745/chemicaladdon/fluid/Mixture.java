@@ -9,9 +9,15 @@ import com.yu1745.chemicaladdon.ChemicalAddon;
 import com.yu1745.chemicaladdon.composition.Chemistry;
 import com.yu1745.chemicaladdon.composition.Ion;
 import com.yu1745.chemicaladdon.composition.Solution;
+import com.yu1745.chemicaladdon.composition.parity.KernelSolutionState;
+import com.yu1745.chemicaladdon.composition.parity.Kernel;
+import com.yu1745.chemicaladdon.composition.parity.EngineBridge;
+import com.yu1745.chemengine.kernel.ChemicalBasis;
+import com.yu1745.chemengine.kernel.IPhreeqc;
 import com.yu1745.chemicaladdon.registry.AllFluids;
 
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraftforge.fluids.FluidStack;
@@ -69,6 +75,18 @@ public final class Mixture {
 	public static final String KEY_SUSPENDED = "Suspended";
 	public static final String KEY_SEDIMENT = "Sediment";
 	public static final String KEY_COLOR = "Color";
+	/**
+	 * A canonical PHREEQC {@code SOLUTION_RAW} reference state.  The text describes
+	 * {@link #KEY_ENGINE_REFERENCE_MB} mB, rather than this stack's current amount:
+	 * Forge copies an NBT tag unchanged for proportional drains, so this is the only
+	 * representation that can survive a 1 mB pipe sample without copying an entire
+	 * vessel's chemical inventory into the sample.
+	 */
+	public static final String KEY_ENGINE_SOLUTION = "EngineSolutionRaw";
+	public static final String KEY_ENGINE_REFERENCE_MB = "EngineSolutionReferenceMb";
+	public static final String KEY_ENGINE_SOLUTION_VERSION = "EngineSolutionVersion";
+	public static final String KEY_ENGINE_SOLIDS = "EngineSolutionSolids";
+	public static final String KEY_DISPLAY_REFERENCE_MB = "EngineDisplayReferenceMb";
 
 	/** The aqueous solvent (water) species id — contributes no colour (see {@link #blendColor}). */
 	public static final ResourceLocation SOLVENT = Solution.WATER;
@@ -95,11 +113,7 @@ public final class Mixture {
 
 	// ---------------------------------------------------------- molecules domain
 
-	/**
-	 * Read one ratio part with legacy compatibility: the fine grid (U18) writes
-	 * long parts; saves from the int-part era load unchanged (parts are ratios —
-	 * any magnitude is a valid composition).
-	 */
+	/** Read one long ratio part from the current display cache format. */
 	/** Integer-domain view of the charge-neutrality check (display/test maps). */
 	public static boolean isChargeNeutral(Map<String, Integer> ions) {
 		long sum = 0;
@@ -110,7 +124,7 @@ public final class Mixture {
 	}
 
 	private static long part(CompoundTag c, String key) {
-		return c.contains(key, 99) ? c.getLong(key) : c.getInt(key);
+		return c.getLong(key);
 	}
 
 	/** Read the molecular composition (species id → part). Empty map if none. */
@@ -324,10 +338,169 @@ public final class Mixture {
 		final Map<ResourceLocation, Long> sediment = new LinkedHashMap<>();
 	}
 
+	/**
+	 * Construct a new external aqueous batch from authored neutral formulae.
+	 * This is deliberately the sole state-creating entry point: it cannot be
+	 * used to reinterpret a stored display view, while every result has a raw
+	 * engine state before it can enter a tank.
+	 */
+	public static FluidStack fromDeclaredComposition(double waterKg, Map<String, Double> formulaMol,
+		int amountMb, int temperatureC, java.util.Collection<KernelSolutionState.SolidPhase> solids) {
+		if (amountMb <= 0) throw new IllegalArgumentException("mixture amount must be positive");
+		IPhreeqc q = Kernel.get();
+		synchronized (q) {
+			KernelSolutionState state = KernelSolutionState.fromDeclaredFeed(q, waterKg, formulaMol, amountMb,
+				temperatureC, solids == null ? java.util.List.of() : solids);
+			FluidStack stack = new FluidStack(fluid(), amountMb);
+			// Cache only a harmless display placeholder.  All gameplay reads the
+			// raw state through the bridge; no ratio can feed chemistry back.
+			setMolecules(stack, Map.of(SOLVENT, (long) amountMb));
+			Map<ResourceLocation, Long> suspended = new LinkedHashMap<>();
+			Map<ResourceLocation, Long> sediment = new LinkedHashMap<>();
+			for (KernelSolutionState.SolidPhase solid : state.solids()) {
+				ResourceLocation id = new ResourceLocation(solid.speciesId());
+				Map<ResourceLocation, Long> target = solid.location() == KernelSolutionState.SolidLocation.SUSPENDED
+					? suspended : sediment;
+				target.merge(id, Math.max(1L, Math.round(solid.mol() * 1000d)), Long::sum);
+			}
+			setSuspended(stack, suspended);
+			setSediment(stack, sediment);
+			setEngineSolution(stack, state);
+			Temperature.set(stack, temperatureC);
+			return stack;
+		}
+	}
+
+	/** Immutable raw-kernel state attached to a transportable mixture. */
+
+	/** Read the current versioned kernel state; missing or malformed state is invalid. */
+	@javax.annotation.Nullable
+	public static KernelSolutionState engineSolution(FluidStack stack) {
+		CompoundTag tag = stack.getTag();
+		if (tag == null || tag.getInt(KEY_ENGINE_SOLUTION_VERSION) != KernelSolutionState.VERSION
+				|| !tag.contains(KEY_ENGINE_SOLUTION) || !tag.contains(KEY_ENGINE_REFERENCE_MB, 99)) {
+			return null;
+		}
+		String raw = tag.getString(KEY_ENGINE_SOLUTION);
+		int referenceMb = tag.getInt(KEY_ENGINE_REFERENCE_MB);
+		if (raw.isBlank() || referenceMb <= 0) return null;
+		List<KernelSolutionState.SolidPhase> solids = new ArrayList<>();
+		ListTag stored = tag.getList(KEY_ENGINE_SOLIDS, net.minecraft.nbt.Tag.TAG_COMPOUND);
+		for (int i = 0; i < stored.size(); i++) {
+			CompoundTag solid = stored.getCompound(i);
+			try {
+				solids.add(new KernelSolutionState.SolidPhase(solid.getString("Species"), solid.getDouble("Mol"),
+					KernelSolutionState.SolidLocation.valueOf(solid.getString("Location"))));
+			} catch (IllegalArgumentException ignored) {
+				return null; // malformed state is rejected with the whole mixture
+			}
+		}
+		return new KernelSolutionState(raw, referenceMb, solids);
+	}
+
+	/** Store a reference solution. Callers must use a reference amount independent of later proportional drains. */
+	public static void setEngineSolution(FluidStack stack, String raw, int referenceMb) {
+		setEngineSolution(stack, new KernelSolutionState(raw, referenceMb));
+	}
+
+	/** Store the complete engine state; display tags remain an expendable cache. */
+	public static void setEngineSolution(FluidStack stack, KernelSolutionState state) {
+		if (!isMixture(stack)) {
+			throw new IllegalArgumentException("kernel state belongs only on mixture fluid");
+		}
+		CompoundTag tag = stack.getOrCreateTag();
+		tag.putString(KEY_ENGINE_SOLUTION, state.raw());
+		tag.putInt(KEY_ENGINE_REFERENCE_MB, state.referenceMb());
+		tag.putInt(KEY_ENGINE_SOLUTION_VERSION, KernelSolutionState.VERSION);
+		ListTag solids = new ListTag();
+		for (KernelSolutionState.SolidPhase solid : state.solids()) {
+			CompoundTag encoded = new CompoundTag();
+			encoded.putString("Species", solid.speciesId());
+			encoded.putDouble("Mol", solid.mol());
+			encoded.putString("Location", solid.location().name());
+			solids.add(encoded);
+		}
+		tag.put(KEY_ENGINE_SOLIDS, solids);
+		tag.putInt(KEY_DISPLAY_REFERENCE_MB, state.referenceMb());
+		refreshEngineDisplay(stack, state);
+	}
+
+	/* Native state -> cosmetic cache. This is deliberately one-way: no getter or
+	 * gameplay transaction ever turns these rounded labels back into chemistry. */
+	private static final Map<String, String> DISPLAY_IONS = ChemicalBasis.loadDefault().displayIons();
+
+	private static void refreshEngineDisplay(FluidStack stack, KernelSolutionState state) {
+		try {
+			IPhreeqc q = Kernel.get();
+			synchronized (q) {
+				var view = EngineBridge.derive(q, state, DISPLAY_IONS.keySet());
+				Map<ResourceLocation, Long> molecules = Map.of(SOLVENT,
+						Math.max(1L, Math.round(view.waterKg() * 1000 * Chemistry.UNIT_PER_MB)));
+				Map<String, Long> ions = new LinkedHashMap<>();
+				for (var entry : DISPLAY_IONS.entrySet()) {
+					long part = Math.round(view.aqueousMol().getOrDefault(entry.getKey(), 0d) * 1000 * Chemistry.UNIT_PER_MB);
+					if (part > 0) ions.merge(entry.getValue(), part, Long::sum);
+				}
+				writeDisplayIons(stack, ions); // speciation may be non-neutral; no fake H/OH balancing
+				setMolecules(stack, molecules);
+				Map<ResourceLocation, Long> suspended = new LinkedHashMap<>(), sediment = new LinkedHashMap<>();
+				for (var solid : state.solids()) {
+					ResourceLocation id = new ResourceLocation(solid.speciesId());
+					(solid.location() == KernelSolutionState.SolidLocation.SUSPENDED ? suspended : sediment)
+						.merge(id, Math.max(1L, Math.round(solid.mol() * 1000 * Chemistry.UNIT_PER_MB)), Long::sum);
+				}
+				setSuspended(stack, suspended);
+				setSediment(stack, sediment);
+			}
+		} catch (RuntimeException ex) {
+			ChemicalAddon.LOGGER.warn("Native display projection failed: {}", ex.getMessage());
+			writeDisplayIons(stack, Map.of());
+			setMolecules(stack, Map.of());
+			setSuspended(stack, Map.of());
+			setSediment(stack, Map.of());
+		}
+	}
+
+	private static void writeDisplayIons(FluidStack stack, Map<String, Long> ions) {
+		CompoundTag c = new CompoundTag();
+		for (var e : ions.entrySet()) if (e.getValue() > 0) c.putLong(e.getKey(), e.getValue());
+		stack.getOrCreateTag().put(KEY_IONS, c);
+		recolor(stack);
+	}
+
+	/**
+	 * Explicitly invalidate the native payload on a rejected or deliberately
+	 * destructive path. A stack without this payload is rejected at the tank
+	 * boundary; this method is never a display-domain conversion mechanism.
+	 */
+	public static void clearEngineSolution(FluidStack stack) {
+		CompoundTag tag = stack.getTag();
+		if (tag != null) {
+			tag.remove(KEY_ENGINE_SOLUTION);
+			tag.remove(KEY_ENGINE_REFERENCE_MB);
+			tag.remove(KEY_ENGINE_SOLUTION_VERSION);
+			tag.remove(KEY_ENGINE_SOLIDS);
+		}
+	}
+
 	private static Views deriveLongView(FluidStack stack, long scale) {
 		Views v = new Views();
+		KernelSolutionState engine = engineSolution(stack);
+		if (engine != null) {
+			deriveEngineDisplay(stack, engine.referenceMb(), scale, v);
+			return v;
+		}
 		deriveJointLong(stack, v.molecules, v.ions, v.suspended, v.sediment, scale);
 		return v;
+	}
+
+	/** Engine display cache stores extensive reference quantities, never ratio parts. */
+	private static void deriveEngineDisplay(FluidStack stack, int referenceMb, long scale, Views out) {
+		double factor = (double) stack.getAmount() * scale / referenceMb / Chemistry.UNIT_PER_MB;
+		for (var e : getMolecules(stack).entrySet()) out.molecules.put(e.getKey(), Math.round(e.getValue() * factor));
+		for (var e : getIons(stack).entrySet()) out.ions.put(e.getKey(), Math.round(e.getValue() * factor));
+		for (var e : getSuspended(stack).entrySet()) out.suspended.put(e.getKey(), Math.round(e.getValue() * factor));
+		for (var e : getSediment(stack).entrySet()) out.sediment.put(e.getKey(), Math.round(e.getValue() * factor));
 	}
 
 	private static Map<ResourceLocation, Integer> narrowMol(Map<ResourceLocation, Long> m) {

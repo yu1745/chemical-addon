@@ -133,6 +133,10 @@ public final class Species {
 
 	private final ResourceLocation id;
 	private final String formula;
+	/** Explicit neutral PHREEQC REACTION formula; null means normalize {@link #formula}. */
+	private final String engineFormula;
+	/** Optional native sit.dat phase name; avoids inventing a duplicate K. */
+	private final String enginePhase;
 	private final Phase phase;
 	private final int boilingPointC;
 	private final int meltingPointC;
@@ -149,12 +153,14 @@ public final class Species {
 	private final double gasSolubility; // dissolved units retained per water unit before degassing (NaN = default)
 	private final List<PhaseTransition> phaseTransitions;
 
-	private Species(ResourceLocation id, String formula, Phase phase, int boilingPointC, int meltingPointC,
+	private Species(ResourceLocation id, String formula, String engineFormula, String enginePhase, Phase phase, int boilingPointC, int meltingPointC,
 		List<Component> components, Set<String> dangers, List<IonComponent> ions, List<SuspendedComponent> suspended,
 		List<Equilibrium> equilibria, List<SolubilityPoint> solubility, ResourceLocation solute, int solventRatio,
 		int color, String miscibilityGroup, double gasSolubility, List<PhaseTransition> phaseTransitions) {
 		this.id = id;
 		this.formula = formula;
+		this.engineFormula = engineFormula;
+		this.enginePhase = enginePhase;
 		this.phase = phase;
 		this.boilingPointC = boilingPointC;
 		this.meltingPointC = meltingPointC;
@@ -178,6 +184,8 @@ public final class Species {
 		try {
 			JsonObject o = json.getAsJsonObject();
 			String formula = getString(o, "formula", id.getPath());
+			String engineFormula = getStringOrNull(o, "engineFormula");
+			String enginePhase = getStringOrNull(o, "enginePhase");
 			Phase phase = Phase.valueOf(getString(o, "phase", "LIQUID").toUpperCase(Locale.ROOT));
 			int bp = getInt(o, "boilingPointC", 0);
 			int mp = getInt(o, "meltingPointC", 0);
@@ -284,7 +292,7 @@ public final class Species {
 				}
 			}
 
-			return new Species(id, formula, phase, bp, mp, List.copyOf(components), Set.copyOf(dangers),
+			return new Species(id, formula, engineFormula, enginePhase, phase, bp, mp, List.copyOf(components), Set.copyOf(dangers),
 				List.copyOf(ions), List.copyOf(suspended), List.copyOf(equilibria), List.copyOf(solubility), solute,
 				solventRatio, color, miscibilityGroup, gasSolubility, List.copyOf(transitions));
 		} catch (Exception e) {
@@ -299,6 +307,26 @@ public final class Species {
 
 	public String formula() {
 		return formula;
+	}
+
+	/** Neutral public feed formula, or null when this species has no engine model.
+	 * KernelSolutionState translates it to any private PHREEQC pseudo pool. */
+	@Nullable
+	public String engineFormula() {
+		return engineFormula != null ? engineFormula : normalizeEngineFormula(formula);
+	}
+	@Nullable
+	public String enginePhase() { return enginePhase; }
+
+	/** Remove display phase labels and translate a hydrate dot to PHREEQC's colon syntax. */
+	@Nullable
+	public static String normalizeEngineFormula(String displayFormula) {
+		if (displayFormula == null) return null;
+		String normalized = displayFormula.trim()
+				.replaceFirst("\\s+(?:slurry)$", "")
+				.replaceFirst("\\((?:aq|s|l|g)\\)$", "")
+				.replace('·', ':');
+		return normalized.matches("[A-Za-z][A-Za-z0-9_:()]*") ? normalized : null;
 	}
 
 	public Phase phase() {

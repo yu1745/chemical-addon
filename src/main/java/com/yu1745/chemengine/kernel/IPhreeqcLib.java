@@ -19,7 +19,7 @@ public interface IPhreeqcLib extends Library {
     /** 从字符串装载数据库。0=OK。 */
     int LoadDatabaseString(int id, String input);
 
-    /** 执行 PHREEQC 输入脚本。返回：0=OK，1=ERROR，2=WARNING，3=ERROR+FATAL。 */
+    /** 执行 PHREEQC 输入脚本。返回本次运行遇到的错误数，0 才是成功。 */
     int RunString(int id, String input);
 
     int GetErrorStringOn(int id);

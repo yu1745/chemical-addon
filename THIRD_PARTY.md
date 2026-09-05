@@ -1,5 +1,12 @@
 # 第三方素材与代码归属
 
+## Mozilla Rhino — MPL 2.0
+
+PLC 的受限 JavaScript 模式内嵌 Mozilla Rhino 1.7.15
+（<https://github.com/mozilla/rhino>，Mozilla Public License 2.0）。本工程通过
+Gradle jar-in-jar 分发原始库，不修改 Rhino 源码；运行时使用安全标准对象、
+`ClassShutter` 和指令观察器，只向玩家脚本暴露 PLC I/O 上下文。
+
 ## PHREEQC（USGS）— 公有领域
 
 规则引擎 v2 的**质量作用/饱和指数语义**与平衡常数数值出处：

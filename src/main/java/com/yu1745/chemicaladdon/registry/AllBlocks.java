@@ -37,6 +37,7 @@ import com.yu1745.chemicaladdon.reactor.ThermometerBlock;
 import com.yu1745.chemicaladdon.reactor.ThermometerPanelBlock;
 import com.yu1745.chemicaladdon.reactor.TurbidityGaugeBlock;
 import com.yu1745.chemicaladdon.reactor.TurbidityGaugePanelBlock;
+import com.yu1745.chemicaladdon.reactor.OrpGaugeBlock;
 
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.Direction;
@@ -44,6 +45,10 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.client.model.generators.ModelFile;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import com.yu1745.chemicaladdon.vessel.VesselBlockEntity;
+import com.yu1745.chemicaladdon.control.PlcControllerBlock;
+import com.yu1745.chemicaladdon.control.PlcIoBlock;
+import com.yu1745.chemicaladdon.control.TestPaperDetectorBlock;
+import com.yu1745.chemicaladdon.control.ProcessSensorBlock;
 
 import net.minecraft.world.level.material.MapColor;
 
@@ -494,11 +499,11 @@ public class AllBlocks {
 	 *  show status + progress, redstone encodes it for batch interlocks (see
 	 *  StatusPortBlockEntity). No dial, no panel form, no renderer. */
 	public static final BlockEntry<StatusPortBlock> STATUS_PORT =
-			REGISTRATE.block("status_port", StatusPortBlock::new)
+			REGISTRATE.block("process_state_transmitter", StatusPortBlock::new)
 				.properties(p -> p.mapColor(MapColor.METAL).strength(2.5f, 6.0f))
-				.lang("Status Port")
+				.lang("Process State Transmitter")
 				.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(),
-					prov.models().cubeAll(ctx.getName(), prov.modLoc("block/" + ctx.getName()))))
+					prov.models().cubeAll(ctx.getName(), prov.modLoc("block/chemical_brick"))))
 				.simpleItem()
 				.register();
 
@@ -526,6 +531,41 @@ public class AllBlocks {
 				})
 				.simpleItem()
 				.register();
+
+	public static final BlockEntry<PlcControllerBlock> PLC_CONTROLLER =
+		REGISTRATE.block("plc_controller", PlcControllerBlock::new)
+			.properties(p -> p.mapColor(MapColor.METAL).strength(3.0f, 6.0f))
+			.lang("Chemical PLC")
+			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
+				.cubeAll(ctx.getName(), prov.modLoc("block/chemical_brick"))))
+			.simpleItem().register();
+
+	public static final BlockEntry<PlcIoBlock> PLC_IO =
+		REGISTRATE.block("plc_io", PlcIoBlock::new)
+			.properties(p -> p.mapColor(MapColor.METAL).strength(2.5f, 6.0f))
+			.lang("PLC I/O Module")
+			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
+				.cubeAll(ctx.getName(), prov.modLoc("block/chemical_brick"))))
+			.simpleItem().register();
+
+	public static final BlockEntry<TestPaperDetectorBlock> TEST_PAPER_DETECTOR =
+		REGISTRATE.block("test_paper_detector", TestPaperDetectorBlock::new)
+			.properties(p -> p.mapColor(MapColor.METAL).strength(2.0f, 5.0f))
+			.lang("Test Paper Detector")
+			.blockstate((ctx, prov) -> prov.simpleBlock(ctx.get(), prov.models()
+				.cubeAll(ctx.getName(), prov.modLoc("block/chemical_brick"))))
+			.simpleItem().register();
+
+	public static final BlockEntry<OrpGaugeBlock> ORP_GAUGE =
+		REGISTRATE.block("orp_gauge", OrpGaugeBlock::new)
+			.properties(p -> p.mapColor(MapColor.METAL).strength(2.0f,6.0f))
+			.lang("ORP / pe Gauge")
+			.blockstate((ctx,prov)->prov.simpleBlock(ctx.get(),prov.models().cubeAll(ctx.getName(),prov.modLoc("block/pressure_gauge"))))
+			.item(GaugeBlockItem::new).model((ctx,prov)->prov.getBuilder(ctx.getName()).parent(new ModelFile.UncheckedModelFile("builtin/entity"))).build().register();
+
+	public static final BlockEntry<ProcessSensorBlock> FLOW_METER = processSensor("flow_meter","Flow Meter");
+	public static final BlockEntry<ProcessSensorBlock> SOLID_BED_GAUGE = processSensor("solid_bed_gauge","Solid Bed Gauge");
+	private static BlockEntry<ProcessSensorBlock> processSensor(String id,String lang){return REGISTRATE.block(id,ProcessSensorBlock::new).properties(p->p.mapColor(MapColor.METAL).strength(2,5)).lang(lang).blockstate((ctx,prov)->prov.simpleBlock(ctx.get(),prov.models().cubeAll(ctx.getName(),prov.modLoc("block/chemical_brick")))).simpleItem().register();}
 
 	public static void register() {
 	}

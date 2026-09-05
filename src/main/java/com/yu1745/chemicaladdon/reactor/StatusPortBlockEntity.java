@@ -34,11 +34,10 @@ import net.minecraft.ChatFormatting;
  * <p><b>Redstone encoding</b> (fixed, no configuration):
  * <ul>
  * <li>unbound (or bound to a non-process vessel): strong 0, comparator 0 — silent;
- * <li>attached + REACTING: strong 0, comparator 4 — a running batch is NOT a
- * completion signal; the completion edge is the transition out of REACTING
- * (strong flips 0 → 15, e.g. to OUTPUT_FULL/NO_RECIPE);
- * <li>attached + any non-running status: strong 15, comparator fixed mapping
- * NOT_ASSEMBLED=0, TEMPERATURE=8, OUTPUT_FULL=12, NO_RECIPE=15.
+ * <li>attached: strong output uses live-zero 1 and latches to 15 when a batch
+ * leaves REACTING; acknowledgement returns it to 1;
+ * <li>comparator reports a compact enum: NOT_ASSEMBLED=1, REACTING=2,
+ * TEMPERATURE=3, OUTPUT_FULL=4, NO_RECIPE=5.
  * </ul>
  *
  * <p><b>Sync</b>: masterPos / status / progress live in the update tag
@@ -48,14 +47,13 @@ import net.minecraft.ChatFormatting;
  */
 public class StatusPortBlockEntity extends ChemicalBrickBlockEntity implements IHaveGoggleInformation {
 
-	/** Fixed comparator mapping for the non-running statuses (spec: 0/8/12/15) and
-	 * REACTING=4 (running is "busy", never "done"). */
+	/** Compact live enum; zero remains reserved for an invalid/unbound source. */
 	private static final Map<String, Integer> COMPARATOR_BY_STATUS = Map.of(
-		statusKey(ReactorControllerBlockEntity.ReactorStatus.NOT_ASSEMBLED), 0,
-		statusKey(ReactorControllerBlockEntity.ReactorStatus.REACTING), 4,
-		statusKey(ReactorControllerBlockEntity.ReactorStatus.TEMPERATURE), 8,
-		statusKey(ReactorControllerBlockEntity.ReactorStatus.OUTPUT_FULL), 12,
-		statusKey(ReactorControllerBlockEntity.ReactorStatus.NO_RECIPE), 15);
+		statusKey(ReactorControllerBlockEntity.ReactorStatus.NOT_ASSEMBLED), 1,
+		statusKey(ReactorControllerBlockEntity.ReactorStatus.REACTING), 2,
+		statusKey(ReactorControllerBlockEntity.ReactorStatus.TEMPERATURE), 3,
+		statusKey(ReactorControllerBlockEntity.ReactorStatus.OUTPUT_FULL), 4,
+		statusKey(ReactorControllerBlockEntity.ReactorStatus.NO_RECIPE), 5);
 
 	/** Progress is re-synced only after it moved by this much — the goggles
 	 * percentage does not need per-tick resolution. */
@@ -65,6 +63,7 @@ public class StatusPortBlockEntity extends ChemicalBrickBlockEntity implements I
 	private String statusName; // null = unbound / master publishes no process status
 	private float progress;
 	private float lastSyncedProgress = -1;
+	private boolean completionLatched;
 
 	public StatusPortBlockEntity(BlockPos pos, BlockState state) {
 		super(AllBlockEntities.STATUS_PORT.get(), pos, state);
@@ -96,7 +95,7 @@ public class StatusPortBlockEntity extends ChemicalBrickBlockEntity implements I
 	public Component statusComponent() {
 		return statusName != null
 			? Component.translatable("status.chemicaladdon." + statusName)
-			: Component.translatable("status_port.chemicaladdon.unbound");
+			: Component.translatable("process_state_transmitter.chemicaladdon.unbound");
 	}
 
 	/** true when the port currently sees an assembled process master. */
@@ -125,6 +124,8 @@ public class StatusPortBlockEntity extends ChemicalBrickBlockEntity implements I
 		String newStatus = readings != null ? readings.getProcessStatus().toLowerCase(Locale.ROOT) : null;
 		float newProgress = readings != null ? readings.getProcessProgress() : 0;
 		boolean encodedChanged = !Objects.equals(newStatus, statusName);
+		if (isReacting() && newStatus != null && !newStatus.equals(statusKey(ReactorControllerBlockEntity.ReactorStatus.REACTING))) completionLatched=true;
+		if (newStatus != null && newStatus.equals(statusKey(ReactorControllerBlockEntity.ReactorStatus.REACTING))) completionLatched=false;
 		statusName = newStatus;
 		progress = newProgress;
 		if (encodedChanged) {
@@ -152,11 +153,11 @@ public class StatusPortBlockEntity extends ChemicalBrickBlockEntity implements I
 
 	// ---------------------------------------------------------------- redstone
 
-	/** Strong output: 0 when unbound or REACTING (busy ≠ done), 15 for every
-	 * non-running attached status — the batch-completion edge. */
+	/** Event output: 0 invalid, 1 healthy/idle, 15 completion latched. */
 	public int strongSignal() {
-		return isAttached() && !isReacting() ? 15 : 0;
+		return !isAttached() ? 0 : completionLatched ? 15 : 1;
 	}
+	public void acknowledge(){if(completionLatched){completionLatched=false;setChanged();if(level!=null)level.updateNeighborsAt(worldPosition,getBlockState().getBlock());syncToClient();}}
 
 	/** Comparator output: fixed status mapping, 0 when unbound. */
 	public int comparatorSignal() {
@@ -182,6 +183,7 @@ public class StatusPortBlockEntity extends ChemicalBrickBlockEntity implements I
 			tag.putString("status", statusName);
 		}
 		tag.putFloat("progress", progress);
+		tag.putBoolean("completionLatched",completionLatched);
 	}
 
 	@Override
@@ -189,6 +191,7 @@ public class StatusPortBlockEntity extends ChemicalBrickBlockEntity implements I
 		super.load(tag);
 		statusName = tag.contains("status") ? tag.getString("status") : null;
 		progress = tag.getFloat("progress");
+		completionLatched=tag.getBoolean("completionLatched");
 	}
 
 	// ---------------------------------------------------------------- goggles
@@ -199,10 +202,10 @@ public class StatusPortBlockEntity extends ChemicalBrickBlockEntity implements I
 		tooltip.add(Component.literal(spacing).append(getBlockState().getBlock().getName()));
 		if (isAttached()) {
 			tooltip.add(Component.literal(spacing)
-				.append(Component.translatable("goggles.chemicaladdon.status_port", statusComponent()))
+				.append(Component.translatable("goggles.chemicaladdon.process_state_transmitter", statusComponent()))
 				.withStyle(ChatFormatting.GRAY));
 			tooltip.add(Component.literal(spacing)
-				.append(Component.translatable("goggles.chemicaladdon.status_port_progress",
+				.append(Component.translatable("goggles.chemicaladdon.process_state_transmitter_progress",
 					Math.round(progress * 100)))
 				.withStyle(ChatFormatting.AQUA));
 		} else {

@@ -6,6 +6,8 @@
 
 > 原 HANDOVER.md 的交接要点已并入本文，不再单独维护。
 
+> 2026-09 水相计量收敛：保留内部介稳池；真实化学式经 `ChemicalBasis` 转换，PHREEQC RAW 与固相 mol 账本续算。当前施工和验收契约见 [`../../plans/02-common-architecture.md`](../../plans/02-common-architecture.md) §3.2；完成态以 [`../progress.md`](../progress.md) 为准，以下历史里程碑的旧接口不构成兼容要求。
+
 ## 项目定位（一句话）
 
 Minecraft `chemical-addon` mod 的化学内核库：**IPhreeqc（CC0）原生求解器 + JNA 绑定 + Java 游戏语义门面**
